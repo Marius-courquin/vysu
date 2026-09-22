@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-22
 
 From a first external user's first hour on a fresh Mac: they could not tell, from the output of
 `vysu setup`, what was fine, what was blocking and what to run.

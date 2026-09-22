@@ -288,8 +288,9 @@ The versions of `agent-browser` and `agent-device` the engine is known to work w
 
 ## Status
 
-`v0.3.0`: every command of the original tool, project-agnostic, Expo and native mobile apps, a
-soundtrack shipped, validated end to end on iOS and Android. The design note is
+`v0.4.0`: every command of the original tool, project-agnostic, Expo and native mobile apps, a
+soundtrack shipped, validated end to end on iOS and Android; a setup that says what is blocking,
+your own Chromium browser if you want it, and an update path for engine, tools and skills. The design note is
 [docs/design.md](docs/design.md); the first consumer is the Nidz monorepo through its `.vysu/`
 folder. Bugs and requests: GitHub issues.
 
