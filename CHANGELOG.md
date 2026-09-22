@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-09-22
+
+First release: the engine extracted from the Nidz monorepo's `tools/visual/nv`, project-agnostic.
 
 - Design note and repository skeleton.
 - **Lot 1 — the engine.** `bin/vysu` and `lib/*.sh` carry every `nv` command with the same

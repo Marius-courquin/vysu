@@ -138,10 +138,9 @@ project that has its own definition of done writes a thin overlay skill on top.
 
 ## Status
 
-Pre-1.0, tagged per release. The engine is in: every command, the config contract, personas,
-services, devices, `setup` / `init` / `doctor` / `update`, the `auth0` connector, the `apns-sim`
-and `webhook` push drivers, and the two agent skills. The design note is
-[docs/design.md](docs/design.md); the lots are listed at its end.
+`v0.1.0`: every command of the original tool, project-agnostic. The design note is
+[docs/design.md](docs/design.md); the first consumer is the Nidz monorepo through its `.vysu/`
+folder. Bugs and requests: GitHub issues.
 
 ## License
 
