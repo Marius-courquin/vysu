@@ -1,0 +1,114 @@
+# .vysu/config — what this project decides. Sourced by bash: KEY='value', no expansion you would
+# not write by hand. An environment variable of the same name wins over this file; unknown keys are
+# ignored. `vysu doctor` prints the values in force and where each one came from.
+# Every key below is optional except VYSU_PROJECT: the default is what the engine runs on.
+
+# --- identity -----------------------------------------------------------------------------------
+
+# Session prefix and state folder name. Browser sessions are <project>-<persona>, device sessions
+# <project>-<platform>-<device>. Default: the project folder's name.
+VYSU_PROJECT='my-project'
+# Where captures, logs, personas, locks and device state live. Default: ~/.vysu/<project>
+# VYSU_STATE="$HOME/.vysu/my-project"
+# The engine version this project needs; doctor and every command warn below it.
+# VYSU_MIN_VERSION='0.1.0'
+
+# --- the web app --------------------------------------------------------------------------------
+
+# Default web origin: what `vysu login` opens, and what a relative flow step is read against.
+VYSU_ORIGIN='http://localhost:3000'
+# The path the web login starts at, appended to the origin. Default: /login
+VYSU_LOGIN_PATH='/login'
+# `--baseline-url @` means « the same path over there »: the deployed main a branch is read against.
+# VYSU_BASELINE_ORIGIN='https://main.example.com'
+# The viewports `vysu shots` captures. Default: the four below.
+# VYSU_SIZES='360x800,768x1024,1280x800,1440x900'
+# The languages the app offers, and the default one. `--lang` accepts nothing else.
+# VYSU_LANGS='fr,en'
+# VYSU_LANG='fr'
+# The localStorage key holding the language. Empty (the default) means `vysu lang` is unsupported.
+# VYSU_LANG_STORAGE_KEY='myapp.language'
+# Folder holding <lang>.json, relative to the project: what `click t:<key>` resolves a label through.
+# VYSU_LOCALES='packages/i18n/locales'
+# The git checkout whose sha and branch go into meta.json. Default: the project itself.
+# VYSU_WEB_REPO='apps/web'
+# The request path prefix that identifies the API in the network log. Default: /api/
+# VYSU_API_PATTERN='/api/v1/'
+# `host=label` pairs: what a report calls that API instead of its host.
+# VYSU_API_HOSTS='localhost:8080=local api.example.com=prod'
+
+# --- auth ---------------------------------------------------------------------------------------
+
+# A built-in connector (auth0 · form · none), `custom` for .vysu/auth.sh, or a path.
+VYSU_AUTH='none'
+# Options of the auth0 connector, all optional (defaults in connectors/auth/auth0.sh):
+# VYSU_AUTH0_DOMAIN='my-tenant.eu.auth0.com'
+# VYSU_AUTH0_SIGNIN_LABELS='Se connecter,Sign in'
+# VYSU_AUTH0_CONTINUE_LABELS='Continuer,Continue'
+# VYSU_AUTH0_DOOR_TEXT='Se connecter'
+# VYSU_AUTH0_HOME_TEXT='Bienvenue'
+# VYSU_AUTH0_PASSWORD_TEXT='mot de passe'
+# VYSU_AUTH0_MENU_LABEL='Menu'
+# VYSU_AUTH0_LOGOUT_LABEL='Se déconnecter'
+# VYSU_AUTH0_AFTER_LOGIN_LABELS='Entrer directement,Retour à l'"'"'accueil'
+
+# --- the mobile app -------------------------------------------------------------------------------
+
+# The app id on both platforms.
+# VYSU_MOBILE_BUNDLE='com.example.app'
+# The app's name on the iOS simulator (what `simctl`/agent-device open by).
+# VYSU_IOS_APP='My App'
+# The Expo app folder, relative to the project.
+# VYSU_MOBILE_DIR='apps/mobile'
+# Environment exported to Metro and to the native build, space-separated k=v pairs.
+# VYSU_MOBILE_ENV='APP_ENV=staging'
+# The dev-client scheme handed to Metro's URL. Empty: the dev-launcher hand-off is skipped.
+# VYSU_MOBILE_SCHEME='exp+myapp'
+# Texts that prove the app has booted, comma-separated: what `mrelaunch` waits for instead of a delay.
+# VYSU_MOBILE_READY_TEXT='Se connecter,Bienvenue,Sign in,Welcome'
+# The simulators, recent and old. Defaults: iPhone 17 Pro · vysu iPhone SE (iOS 18)
+# VYSU_IOS_DEVICE='iPhone 17 Pro'
+# VYSU_IOS_OLD_DEVICE='vysu iPhone SE (iOS 18)'
+# The default AVD, and the specs `vysu setup` creates (name:api:device:extra key=value, « ; » apart).
+# VYSU_ANDROID_AVD='vysu_pixel8_api36'
+# VYSU_ANDROID_AVDS='vysu_pixel8_api36:36:pixel_8:;vysu_pixel10pro_api36:36:pixel_8_pro:hw.lcd.width=1280 hw.lcd.height=2856 hw.lcd.density=480;vysu_pixel4a_api30:30:pixel_4a:'
+# The locale forced on the emulator at boot. Empty (the default): left untouched.
+# VYSU_ANDROID_LOCALE='fr-FR'
+
+# --- services -------------------------------------------------------------------------------------
+
+# The services `vysu up` / `vysu down` know, in start order. `vysu up all` runs them all.
+# VYSU_SERVICES='web api db'
+#
+# One service, key by key:
+#   _CMD      the command, run through `sh -c` in _DIR, in the background, logged to logs/<name>.log
+#   _DIR      where to run it, relative to the project (default: the project root)
+#   _PORT     the port it listens on: what `down` kills, and what « HEALTH=port » waits for
+#   _HEALTH   a url to poll, the literal `port` for a TCP listen check, or a command to succeed
+#   _ENV      k=v pairs exported to it (`vysu up web --env K=V` adds to, and overrides, these)
+#   _TIMEOUT  seconds to wait for HEALTH (default 30)
+#   _STOP     how to stop it (default: kill whatever listens on _PORT)
+#
+# VYSU_SERVICE_web_CMD='pnpm --filter web exec vite --port 8100 --strictPort'
+# VYSU_SERVICE_web_DIR='.'
+# VYSU_SERVICE_web_PORT=8100
+# VYSU_SERVICE_web_HEALTH='http://localhost:8100/'
+# VYSU_SERVICE_web_TIMEOUT=30
+# « vysu up web --env VITE_API_URL=http://localhost:8080 » points the dev server at a local API.
+# VYSU_SERVICE_db_CMD='make -s dev-up'
+# VYSU_SERVICE_db_HEALTH='docker exec my-db pg_isready -q'
+# VYSU_SERVICE_db_STOP='make -s dev-down'
+
+# --- push -------------------------------------------------------------------------------------------
+
+# The drivers enabled, comma-separated: apns-sim (iOS simulator) · webhook · fcm.
+# Presets are files .vysu/push/<preset>.json, with {{field}} placeholders filled by --field.
+# VYSU_PUSH='apns-sim,webhook'
+# VYSU_PUSH_WEBHOOK_URL='https://internal.example.com/api/dev/push'
+# A service account file under the state folder, for the fcm driver.
+# VYSU_FCM_SA='fcm-service-account.json'
+
+# --- video ------------------------------------------------------------------------------------------
+
+# The video theme: .vysu/themes/<name>/theme.json first, then the engine's own. Default: default
+# VYSU_THEME='default'

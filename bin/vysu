@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# vysu — look at a real app the way a reviewer does. One agent-browser session per persona, logins
+# kept across runs, screenshots and contact sheets outside every repo. Works on any web page: the
+# persona only names the session; `-` is an anonymous one.
+#
+# What the app decides — origin, auth, language key, bundle id, services, personas, push payloads,
+# brand — lives in `.vysu/config` at the root of that project, found by walking up from the cwd.
+#
+#   vysu <persona> <agent-browser args…>    passthrough (session <project>-<persona>, state restored)
+#   vysu walk <persona> <name> --url <url> [shots options…]   open + check + shots + report, in one call
+#   vysu login <persona> [url]              log the persona in through the project's auth connector
+#   vysu up <service> [--env k=v]…          start a service declared in the config, wait for its health
+#   vysu up all | down <service> | down all
+#   vysu up ios|android [--build] [--avd <name>] [--device <name>]   Metro + simulator/emulator (--build: native
+#                                           dev-client, background); --device / --avd are remembered for this owner
+#                                           iOS devices: the config's VYSU_IOS_DEVICE and VYSU_IOS_OLD_DEVICE
+#                                           AVDs: the specs of VYSU_ANDROID_AVDS, created by `vysu setup`
+#   vysu ios|android <agent-device args…>   passthrough on the chosen simulator / emulator
+#   vysu mlogin ios|android <persona>       log the persona in inside the app (one install = one session)
+#   vysu mshot ios|android <name> [label] [--baseline <name>]
+#              [--full [--step 150] [--max 12] [--top <pt>] [--bottom <pt>]]
+#                                           screenshot (1x, steady status bar) into the shots folder; --full scrolls
+#                                           and stitches, mobile has no full-page capture (--step: the scroll between
+#                                           two captures, 150 pt by default — a flick asking for more lands no further;
+#                                           --top / --bottom: the height of a bar drawn over the scroller, which
+#                                           stitch.py cannot find on its own)
+#   vysu mtap ios|android "<label>"         press by accessible label (then visible text), settled
+#   vysu mrelaunch ios|android [--textsize normal|large|xl] [--appearance light|dark] [--lang <l>]   kill + relaunch,
+#                                           wait for the screen
+#   vysu mflow ios|android <file|-> [--shots <name>]   scripted steps (tap "…" / tap t:<i18n.key> / sleep / shot /
+#                                           relaunch…) → contact sheet
+#   vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] -- "<step>" …   record the screen while the steps run →
+#                                           normalized H.264 clip + motion report + events.json (each step in clip
+#                                           seconds, with the point it tapped)
+#   vysu mlog [mark | --tail N]             Metro log since the last mark (or its last N lines)
+#   vysu push ios <preset>                  simulated APNs on the iOS simulator (driver apns-sim)
+#   vysu push <persona> <preset> [--platform ios|android] [--field k=v…]   a real push to the persona's devices
+#   vysu textsize ios|android normal|large|xl   Dynamic Type / font scale of the running simulator or emulator
+#   vysu appearance ios|android light|dark      system appearance of the running simulator or emulator
+#   vysu shots <persona> <name> [--url <url>] [--sizes WxH,…] [--dark] [--full] [--no-expand] [--no-warm]
+#              [--lang <l>] [--freeze]
+#                                           one capture per viewport, and the diff of each against:
+#                                             --full                  the whole screen: unfolds the inner scrollers, for
+#                                               an app whose shell never scrolls the document (--no-expand for a page
+#                                               that does, and to see a sticky section where it sticks); the document is
+#                                               walked through once first, so what a page reveals on scroll is painted
+#                                               before the capture (--no-warm to skip)
+#                                             --baseline <name>       an earlier shots folder
+#                                             --baseline-url <url>    the same path elsewhere, captured now — a deployed
+#                                               main is the baseline a branch is read against:
+#                                               `--baseline-url https://main.example.com/<path>`, or `--baseline-url @`
+#                                               for the same path on VYSU_BASELINE_ORIGIN (log the persona in there once)
+#                                             --ignore <css selector> repeatable, those boxes are left out of the diff
+#   vysu report <name> [--md]               a shots folder read back in ≤ 25 lines: what changed, what to open
+#   vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH]   scripted web steps (go · click · fill · press ·
+#                                           shot [--full] · check)
+#   vysu rec <persona> <name> [--fps 30] [--viewport 1440x900] [--mp4] [--cursor] [--flow <file>] -- "<step>" …
+#                                           records the steps running: normalized H.264 clip + contact sheet
+#                                           + motion report + frames/ + events.json (each step in clip seconds,
+#                                           with the box it clicked); --mp4 is a no-op, the clip is always mp4
+#   vysu lang <persona> <lang>              language of the web app (localStorage VYSU_LANG_STORAGE_KEY), then reload
+#   vysu sheet <name> [--cols N] [--max N] [--open]   contact sheet(s) ≤ 1568 px so they stay legible + index.html
+#   vysu sheet <name> --compare [--against <name>]   before / after / zones triptych (compare.png) + slider page
+#                                           (compare.html); renders through the `render` session:
+#                                           `vysu render <agent-browser args…>` to look at index.html / compare.html
+#   vysu frame <name|file> [frame.py options…]   demo-ready export of a capture, a clip or a whole shots folder
+#                                           (--preset pitch --title … --caption … for a 16:9 slide, --preset framed for
+#                                            a device frame; a mobile clip from `mrec` and a web clip from `rec` both work)
+#   vysu cut <take> --draft [--force]       a starting cut.json (montage script) from events.json + motion.txt:
+#                                           what to keep, where to freeze, one empty chapter per shot — the agent
+#                                           writes the text
+#   vysu video <take> [--format landscape|portrait|all] [--check] [--draft] [--out <dir>]
+#                                           renders cut.json with the Remotion toolkit into <take>/video/
+#   vysu box <persona> <selector|@ref> [--page]   x,y,w,h of an element (1x px; --page: document coords for a --full
+#                                           capture)
+#   vysu mark <in.png> --out <out.png> [--box x,y,w,h[:label]]… [--grow 10] [--crop auto|x,y,w,h] [--pad N] [--dim]
+#              [--zoom 2]
+#   vysu check <persona> [--save <name>]    JS errors + failed API requests of the current session
+#   vysu auth token <persona>               the persona's current API access token (for curl seeding)
+#   vysu persona add|set|list [--json]|import <file> [--prefix <P>]   the project's personas, mode 600, never printed
+#   vysu claim ios|android|<persona> [--minutes 30] [--note "<why>"]   keep a device / a session for a whole task,
+#                                           and read back what the last agent left on it: state applied, screen, and
+#                                           the one command that puts it back to the defaults
+#   vysu release ios|android|<persona> [--force] [--reset]   hand it back (--force: someone else's claim;
+#                                           --reset: defaults first — normal text, light, the default language)
+#   vysu prune [--days 30] [--match "<glob>"…] [--dry-run]   drop the shots folders older than N days,
+#                                           or the ones a glob names, whatever their age (--dry-run: just say which)
+#   vysu cache clear                        forget what is remembered per device: simulator UDIDs, emulator
+#                                           serials, scales, and the text size / appearance / language applied
+#   vysu setup [--ios-device <n>] [--ios-old-device <n>] [--android-avds "<spec>;…"]   machine-wide onboarding:
+#                                           tools, browser, simulators, emulators
+#   vysu init [--yes] [--skills-dir <dir>]  write .vysu/config in this project and install the agent skills
+#   vysu doctor                             tooling, resolved config, connectors, personas, sessions, devices, locks
+#   vysu update | vysu version              pull the engine and show the CHANGELOG since · the version and sha
+#   vysu <name> …                           an executable .vysu/commands/<name> of the project, with every VYSU_* exported
+#
+# Several agents share this Mac: every command locks the device or the persona session it drives,
+# for its duration (another one waits VYSU_LOCK_WAIT seconds, 90 by default, then gives up). A claim
+# holds one across several commands. The holder is $VYSU_OWNER, else the agent or terminal above.
+# State: $VYSU_STATE (default ~/.vysu/<project>): personas.env (credentials, chmod 600), shots/, logs/.
+# Browser state lives in ~/.agent-browser/sessions/ (managed by --restore).
+set -euo pipefail
+
+# The engine dir, through however many symlinks a PATH entry went: `lib/` is beside it, and every
+# helper is addressed from there rather than from the cwd.
+vysu_engine_dir() {
+  local src="${BASH_SOURCE[0]}" dir
+  while [ -L "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src";; esac
+  done
+  cd -P "$(dirname "$src")/.." && pwd
+}
+# shellcheck source-path=SCRIPTDIR/..
+VYSU_ENGINE="$(vysu_engine_dir)"
+export VYSU_ENGINE
+
+# lib/ is sourced, never executed: one process holds the locks, the batch file and the recorder it
+# has to clean up on the way out, and a sub-process would take none of that with it.
+# shellcheck source=lib/core.sh
+. "$VYSU_ENGINE/lib/core.sh"
+# shellcheck source=lib/persona.sh
+. "$VYSU_ENGINE/lib/persona.sh"
+# shellcheck source=lib/web.sh
+. "$VYSU_ENGINE/lib/web.sh"
+# shellcheck source=lib/mobile.sh
+. "$VYSU_ENGINE/lib/mobile.sh"
+# shellcheck source=lib/shots.sh
+. "$VYSU_ENGINE/lib/shots.sh"
+# shellcheck source=lib/flow.sh
+. "$VYSU_ENGINE/lib/flow.sh"
+# shellcheck source=lib/video.sh
+. "$VYSU_ENGINE/lib/video.sh"
+# shellcheck source=lib/services.sh
+. "$VYSU_ENGINE/lib/services.sh"
+# shellcheck source=lib/auth.sh
+. "$VYSU_ENGINE/lib/auth.sh"
+# shellcheck source=lib/push.sh
+. "$VYSU_ENGINE/lib/push.sh"
+# shellcheck source=lib/setup.sh
+. "$VYSU_ENGINE/lib/setup.sh"
+
+# shellcheck disable=SC2034  # read by core.sh, which was sourced before this line ran
+VYSU_CMD="$(printf 'vysu %s' "$*" | cut -c1-120)"
+config_load
+devices_resolve
+
+cmd="${1:-}"; [ -n "$cmd" ] || { usage; exit 1; }
+shift
+case "$cmd" in
+  login) vysu_login "$@";;
+  up) vysu_up "$@";;
+  down) vysu_down "$@";;
+  ios|android) ad "$cmd" "$@";;
+  mlogin) vysu_mlogin "$@";;
+  mshot) vysu_mshot "$@";;
+  mtap) vysu_mtap "$@";;
+  mrelaunch) vysu_mrelaunch "$@";;
+  mflow) vysu_mflow "$@";;
+  mrec) vysu_mrec "$@";;
+  mlog) vysu_mlog "$@";;
+  push) vysu_push "$@";;
+  textsize) vysu_textsize "$@";;
+  appearance) vysu_appearance "$@";;
+  shots) vysu_shots "$@";;
+  walk) vysu_walk "$@";;
+  flow) vysu_flow "$@";;
+  rec) vysu_rec "$@";;
+  report) vysu_report "$@";;
+  lang) vysu_lang "$@";;
+  sheet) vysu_sheet "$@";;
+  frame) vysu_frame "$@";;
+  cut) vysu_cut "$@";;
+  video) vysu_video "$@";;
+  box) vysu_box "$@";;
+  mark) vysu_mark "$@";;
+  check) vysu_check "$@";;
+  auth) vysu_auth "$@";;
+  persona) vysu_persona "$@";;
+  claim) vysu_claim "$@";;
+  release) vysu_release "$@";;
+  prune) vysu_prune "$@";;
+  cache) vysu_cache "$@";;
+  setup) vysu_setup "$@";;
+  init) vysu_init "$@";;
+  doctor) vysu_doctor "$@";;
+  update) vysu_update "$@";;
+  version) vysu_version "$@";;
+  # The old spellings, for one minor version: they say so on stderr and do the new thing.
+  ipush) deprecated ipush "vysu push ios <preset>"; vysu_push ios "$@";;
+  apush) deprecated apush "vysu push <persona> <preset>"; vysu_push "$@";;
+  token) deprecated token "vysu auth token <persona>"; vysu_auth token "$@";;
+  -h|--help|help) usage;;
+  # A project command wins over the persona passthrough: `.vysu/commands/seed` is a command the
+  # project named, while a persona is only ever a session name — and a persona called `seed` would
+  # otherwise make the project's own command unreachable.
+  *)
+    if project_command "$cmd"; then exec_project_command "$cmd" "$@"; else ab "$cmd" "$@"; fi
+    ;;
+esac
