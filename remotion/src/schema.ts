@@ -87,8 +87,8 @@ export const explainerSchema = z.object({
       caption: z.string(),
     })
     .nullable(),
-  // Path under public/, e.g. "music/<file>.mp3". Null plays the film silent, and is the default:
-  // no soundtrack ships with the engine.
+  // Path under public/, e.g. "music/<file>.mp3". Null plays the film silent; a cut that names no
+  // track gets the engine's own (cut.ts DEFAULT_MUSIC).
   music: z.string().nullable(),
   openingSeconds: z.number(),
   finishSeconds: z.number(),

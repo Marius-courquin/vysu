@@ -66,9 +66,9 @@ export const cutSchema = z.strictObject({
     })
     .nullable()
     .optional(),
-  // A file under public/music/ of the toolkit. No soundtrack ships with the engine: drop one in
-  // (and its licence) before naming it here.
-  music: z.string().optional(),
+  // A file under public/music/ of the toolkit. Left out, the film takes the engine's own track
+  // (DEFAULT_MUSIC, licensed in public/music/LICENSE.md); null plays it silent.
+  music: z.string().nullable().optional(),
   keep: z
     .array(
       z.union([
@@ -87,6 +87,10 @@ export const cutSchema = z.strictObject({
 // are defaults rather than required copy — the call to action in the theme, which is where a
 // project's own words live, and the caption nowhere: the address of the product is the cut's to
 // give, never the engine's to guess.
+// The track a cut plays when it names none: the one the engine ships, so a first film is complete
+// without adding anything. `"music": null` in the cut turns it off.
+export const DEFAULT_MUSIC = 'digital-clouds.mp3';
+
 const DEFAULT_CAPTION = '';
 
 export type EventsFile = z.infer<typeof eventsSchema>;
@@ -236,7 +240,7 @@ export function resolveCut(input: {
     taps: resolveTaps(cut, events, segments),
     intro,
     outro,
-    music: cut.music ? `music/${cut.music}` : null,
+    music: cut.music === null ? null : `music/${cut.music ?? DEFAULT_MUSIC}`,
     openingSeconds: intro ? OPENING_SECONDS : 0,
     finishSeconds: outro ? FINISH_SECONDS : 0,
     name,

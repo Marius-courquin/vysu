@@ -110,10 +110,10 @@ closing one. The wipes **overlap** the boundaries instead of adding to them: the
   render nothing. A project theme that declares a logo has it **drawn** into the opening and set in
   the header. The device is a drawn bezel with a soft shadow, playing the clip at its native rate,
   output at 30 fps.
-- **Music**: a track under `public/music/` of the toolkit, named by `music` in `cut.json` (55 %,
-  0.7 s fade in, 2 s fade out, looped and cut to the film's length). **No track ships with the
-  engine**: drop one in, with its licence line in `public/music/LICENSE.md` - no licence, no track.
-  No narration and no subtitles: the chapters carry the explanation.
+- **Music**: left out, the film plays the track the engine ships (`digital-clouds.mp3`, licence
+  in `public/music/LICENSE.md`); `"music": null` plays it silent; another track goes under
+  `public/music/` with its licence line first. 55 % volume, 0.7 s fade in, 2 s fade out, looped and
+  cut to the film's length. No narration and no subtitles: the chapters carry the explanation.
 
 ## Do not
 

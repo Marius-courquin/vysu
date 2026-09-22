@@ -16,6 +16,7 @@ import {
   totalSeconds,
   type CutFile,
   type EventsFile,
+  DEFAULT_MUSIC,
 } from './cut.ts';
 import { FINISH_SECONDS, OPENING_SECONDS, themeSchema, type Clip, type Segment } from './schema.ts';
 
@@ -169,7 +170,13 @@ test('the outro fills in its call to action and its caption', () => {
   assert.equal(props.finishSeconds, FINISH_SECONDS);
 });
 
-test('no intro and no outro means no scene and no music', () => {
+test('a cut that names no track plays the engine\'s own, and null plays silent', () => {
+  const base = { events, theme: defaultTheme, format: 'landscape' as const, clip, clipDuration: 48.7, name: 'take' };
+  assert.equal(resolveCut({ ...base, cut: cutSchema.parse({ version: 1 }) }).music, `music/${DEFAULT_MUSIC}`);
+  assert.equal(resolveCut({ ...base, cut: cutSchema.parse({ version: 1, music: null }) }).music, null);
+});
+
+test('no intro and no outro means no scene', () => {
   const props = resolveCut({
     cut: cutSchema.parse({ version: 1 }),
     events,
@@ -181,7 +188,6 @@ test('no intro and no outro means no scene and no music', () => {
   });
   assert.equal(props.openingSeconds, 0);
   assert.equal(props.finishSeconds, 0);
-  assert.equal(props.music, null);
 });
 
 test('the film is opening + montage + finish', () => {

@@ -104,9 +104,10 @@ What the recorder logged, every instant in **clip seconds** from the first frame
 - `outro` is `{ title, subtitle?, cta?, caption? }`: `cta` is the ink pill's label (followed by a
   ↗), defaulting to the theme's own `cta` and then to nothing, and `caption` the line under it
   (empty by default — the product's address is the cut's to give).
-- `music` names a file under `public/music/`. No soundtrack ships with the engine: drop one in,
-  with its licence, before naming it here. It plays at 55 %, fades in over 0.7 s, fades out over the
-  last 2 s, loops if shorter than the film and is trimmed to it. No narration, no captions.
+- `music` names a file under `public/music/`. Left out, the film plays the track the engine ships
+  (`digital-clouds.mp3`, licence in `public/music/LICENSE.md`); `null` plays it silent; another
+  file needs its licence line there first. It plays at 55 %, fades in over 0.7 s, fades out over
+  the last 2 s, loops if shorter than the film and is trimmed to it. No narration, no captions.
 - `taps` is the explicit fallback for a take with no `events.json`: clip seconds plus logical
   units. It is merged with whatever `events.json` yields.
 - `clip.size` supplies the logical size when there is no `events.json`. Pixel size and duration
