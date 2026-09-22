@@ -557,7 +557,9 @@ vysu_prune() {
   before="$(du -sk "$SHOTS" | cut -f1)"
   while IFS= read -r d; do
     [ -n "$d" ] || continue
-    rm -rf "$d"; n=$((n + 1))
+    # `vysu video` copies the take's clip under the toolkit's public/ so staticFile() can serve it.
+    # Nothing else ever reclaims that copy, and it is the take's whole clip: it goes with the take.
+    rm -rf "$d" "$REMOTION/public/takes/$(basename "$d")"; n=$((n + 1))
   done < <(find "$SHOTS" "${find_args[@]}")
   after="$(du -sk "$SHOTS" | cut -f1)"
   echo "pruned: $n folder(s)$what, $(( (before - after) / 1024 )) MB freed ($SHOTS)"
