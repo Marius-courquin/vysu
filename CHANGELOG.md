@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: a project whose `.vysu/` does not sit inside `VYSU_PROJECT_DIR` — a config kept in a
+  worktree while the project dir stays the checkout its relative paths point into — lost its theme,
+  its `auth.sh`, its push drivers and presets and its `commands/`. The engine now exports
+  `VYSU_DIR`, the folder the loaded config sits in, and everything of the project is looked up
+  there; `render.ts` tries it before `$VYSU_PROJECT_DIR/.vysu`.
+- Fixed: `vysu setup` with no terminal to answer its one question installed and created anyway —
+  npm globals, a browser, an iOS simulator, a system image and an AVD per spec. With no tty it now
+  reports and creates nothing; `--yes` asks for the installing run, `--dry-run` for a report.
+- Fixed: `vysu doctor` ended on its `cache:` line, exit 1, whenever the state folder held no cache
+  file — `grep` finding nothing is not a failure, and a fresh project is where doctor has most
+  to say.
+- Fixed: `vysu prune` left the toolkit's copy of every rendered take behind in
+  `remotion/public/takes/`, which nothing else ever reclaimed — a whole clip per take.
+- `vysu up <platform> --build` ends its log with `vysu: <platform> build exited <rc>`, so a `tail`
+  answers « did it build? » without reading the build tool's own wording.
+- Fixed: the AVD line of `vysu setup` printed the whole spec tail where the API level belongs.
+- Docs: the `form` connector options, `VYSU_FCM_SCOPE` / `VYSU_FCM_ENDPOINT` and `VYSU_DIR` are in
+  `docs/config.md`, `VYSU_UI_GLOBS` in `templates/config.example`, and `VYSU_THEME` is described
+  where it acts — `vysu cut --draft` writes it into `cut.json`, a render reads it from there.
+
 ## 0.2.1 — 2026-09-22
 
 - First Android run of the native mode, on an API 30 image: the app-log tail falls back to `-v uid`
@@ -7,20 +29,6 @@
   and `VYSU_MOBILE_READY_TEXT` with several screens now matches (it never did, in expo mode too).
 - A bare `--lang en` maps to `en-US` on Android and iOS, no longer `en-EN`.
 - Known: Android honours one locale change per emulator; the second `mrelaunch --lang` is ignored.
-
-## Unreleased
-
-- Fixed, from the first end-to-end native run on Android (a release APK on a Pixel 4a / API 30):
-  `logcat --uid` does not exist before API 31, and the app-log tail died on it — the uid is grepped
-  out of `-v uid` there instead; `up android` returned on a system whose services were not back
-  after the locale's zygote restart; a uid lookup that found nothing ended `up` under pipefail
-  instead of saying the app is not installed; and the tail, which `adb root` takes down with adbd,
-  is restarted after a `mrelaunch --lang` — `vysu mlog` says so when one is no longer alive.
-- Fixed: `VYSU_MOBILE_READY_TEXT` naming more than one screen never matched — the alternation went
-  to a basic `grep`, where `|` is a literal. A native relaunch that took 25 s takes 3 s.
-- Known: on Android, a locale set once is not changed again by `mrelaunch --lang`. The framework
-  persists it in `Settings.System.system_locales`, which wins over `persist.sys.locale` at every
-  later zygote restart and is rewritten from the live configuration when the setting is edited.
 
 ## 0.2.0 — 2026-09-22
 

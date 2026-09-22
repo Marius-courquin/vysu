@@ -58,6 +58,17 @@ Options of the `auth0` connector, all optional; the defaults live in
 | `VYSU_AUTH0_MENU_LABEL` / `VYSU_AUTH0_LOGOUT_LABEL` | the two labels of the mobile sign-out | `Menu` / `Sign out` |
 | `VYSU_AUTH0_AFTER_LOGIN_LABELS` | buttons pressed if they show up after the login | `Continue,Back home` |
 
+Options of the `form` connector — a plain e-mail + password page — all optional; the defaults live
+in [`connectors/auth/form.sh`](../connectors/auth/form.sh).
+
+| Key | Meaning | Example |
+|---|---|---|
+| `VYSU_FORM_EMAIL_LABELS` | names of the e-mail field, comma-separated | `E-mail,Email,Identifiant` |
+| `VYSU_FORM_PASSWORD_LABELS` | names of the password field | `Mot de passe,Password` |
+| `VYSU_FORM_SUBMIT_LABELS` | names of the submit button | `Se connecter,Sign in` |
+| `VYSU_FORM_TOKEN_JS` | an expression evaluated in the page whose value is the API token | `localStorage.getItem("access_token")` |
+| `VYSU_FORM_HOME_TEXT` | mobile: the text that proves the login went through | `Welcome` |
+
 ## The mobile app
 
 | Key | Meaning | Default | Example |
@@ -131,6 +142,8 @@ VYSU_SERVICE_db_STOP='make -s dev-down'
 | `VYSU_PUSH` | the drivers enabled, comma-separated: `apns-sim` (iOS simulator) · `webhook` · `fcm` | empty | `apns-sim,webhook` |
 | `VYSU_PUSH_WEBHOOK_URL` | the endpoint the `webhook` driver posts to | empty | `https://internal.example.com/api/dev/push` |
 | `VYSU_FCM_SA` | a service account file under the state folder, for the `fcm` driver | empty | `fcm-service-account.json` |
+| `VYSU_FCM_SCOPE` | the OAuth scope the `fcm` driver asks for | the Firebase messaging scope | `https://www.googleapis.com/auth/firebase.messaging` |
+| `VYSU_FCM_ENDPOINT` | where a send goes instead of the real FCM endpoint — tests only | the real endpoint | `http://localhost:8099/v1/projects/demo/messages:send` |
 
 Presets are files `.vysu/push/<preset>.json`, with `{{field}}` placeholders filled by
 `--field k=v` and then by the persona's own variables.
@@ -139,7 +152,7 @@ Presets are files `.vysu/push/<preset>.json`, with `{{field}}` placeholders fill
 
 | Key | Meaning | Default | Example |
 |---|---|---|---|
-| `VYSU_THEME` | the video theme: `.vysu/themes/<name>/theme.json` first, then the engine's own | `default` | `my-brand` |
+| `VYSU_THEME` | the theme `vysu cut --draft` writes into the new `cut.json`: `themes/<name>/theme.json` beside the config first, then the engine's own. A render reads the theme from `cut.json`, never from this key | `default` | `my-brand` |
 
 ## Keys that live in the environment only
 
@@ -149,6 +162,7 @@ These are not written to `.vysu/config`; they are exported for one command or on
 |---|---|---|
 | `VYSU_CONFIG` | a config file to use, so one can be tried from outside its project | discovered by walking up from `$PWD` |
 | `VYSU_PROJECT_DIR` | the project root, instead of discovering it | discovered |
+| `VYSU_DIR` | read-only, exported by the engine: the folder the loaded config sits in, where its themes, connectors, push presets and commands are looked up. `$VYSU_PROJECT_DIR/.vysu` unless `VYSU_CONFIG` names a config elsewhere | resolved from the config |
 | `VYSU_PERSONAS` | the personas file, so one can be tried without moving the state folder | `$VYSU_STATE/personas.env` |
 | `VYSU_SHOTS` | the shots folder | `$VYSU_STATE/shots` |
 | `VYSU_LOCK_WAIT` | seconds a command waits for a busy device or session before giving up | `90` |

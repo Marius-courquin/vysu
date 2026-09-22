@@ -142,5 +142,11 @@ VYSU_AUTH='none'
 
 # --- video ------------------------------------------------------------------------------------------
 
-# The video theme: .vysu/themes/<name>/theme.json first, then the engine's own. Default: default
+# The video theme `vysu cut --draft` writes into the new cut.json: themes/<name>/theme.json beside
+# this file first, then the engine's own. A render reads the theme from cut.json. Default: default
 # VYSU_THEME='default'
+
+# --- agent hooks ------------------------------------------------------------------------------------
+
+# Which changed files count as UI, comma-separated. Read by templates/hooks/stop-reminder.sh only.
+# VYSU_UI_GLOBS='**/*.tsx,**/*.vue,**/*.svelte,**/*.css'

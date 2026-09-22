@@ -104,8 +104,9 @@ closing one. The wipes **overlap** the boundaries instead of adding to them: the
   opening title lines, the end card. A ripple is a `secondary` outline growing 18 -> 60 pt in
   0.4 s, with no cursor.
 - **Brand**: colours, radii, shadows and fonts come from the theme, never from a palette invented
-  for the video. The theme is `.vysu/themes/<name>/theme.json` in the project (resolved first), and
-  otherwise the engine's own `themes/<name>/`; `VYSU_THEME` names it and `default` is the neutral
+  for the video. The theme is `themes/<name>/theme.json` beside the project's config (resolved
+  first), and otherwise the engine's own `themes/<name>/`. A render reads its name from `cut.json`;
+  `VYSU_THEME` is what `vysu cut --draft` writes there. `default` is the neutral
   one that ships - a grey-blue palette, Inter, and no logo, in which case the lockup blocks simply
   render nothing. A project theme that declares a logo has it **drawn** into the opening and set in
   the header. The device is a drawn bezel with a soft shadow, playing the clip at its native rate,
