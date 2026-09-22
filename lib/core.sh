@@ -104,6 +104,14 @@ config_defaults() {
   : "${VYSU_MOBILE_DIR:=}"
   : "${VYSU_MOBILE_ENV:=}"
   : "${VYSU_MOBILE_SCHEME:=}"
+  # What kind of mobile app this is: an Expo dev-client served by Metro, or a native app (Swift,
+  # Kotlin, Flutter, .NET) already built. A project that names an Expo folder means expo; anything
+  # else — including no mobile app at all — means native, where `up` installs and launches, full stop.
+  : "${VYSU_MOBILE_KIND:=$( [ -n "$VYSU_MOBILE_DIR" ] && echo expo || echo native )}"
+  : "${VYSU_IOS_APP_PATH:=}"
+  : "${VYSU_ANDROID_APK:=}"
+  : "${VYSU_MOBILE_BUILD_IOS:=}"
+  : "${VYSU_MOBILE_BUILD_ANDROID:=}"
   : "${VYSU_IOS_DEVICE:=}"
   : "${VYSU_IOS_OLD_DEVICE:=vysu iPhone SE (iOS 18)}"
   : "${VYSU_ANDROID_AVD:=}"
@@ -495,7 +503,8 @@ vysu_reset() { # resource — back to the defaults, only what differs from them
       local platform="${1%%-*}" args
       args="$(mreset_args "$platform")"
       [ -n "$args" ] || { echo "reset: $platform already in its defaults"; return; }
-      listening 8081 || { echo "reset: $platform left as it is — Metro is not running (vysu up $platform)"; return; }
+      [ "$(mobile_kind)" != expo ] || listening 8081 \
+        || { echo "reset: $platform left as it is — Metro is not running (vysu up $platform)"; return; }
       # shellcheck disable=SC2086  # the flags are built as a word list on purpose
       vysu_mrelaunch "$platform" $args >/dev/null
       echo "reset: vysu mrelaunch $platform$args"
