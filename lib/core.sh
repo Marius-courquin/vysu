@@ -96,7 +96,9 @@ config_defaults() {
   : "${VYSU_WEB_REPO:=}"
   : "${VYSU_API_PATTERN:=/api/}"
   : "${VYSU_API_HOSTS:=}"
-  : "${VYSU_AUTH:=}"
+  # No login until a project names a connector: `login` then opens the url and `auth token` prints
+  # nothing, which is the right answer for a static site, a Storybook and a page behind no door.
+  : "${VYSU_AUTH:=none}"
   : "${VYSU_MOBILE_BUNDLE:=}"
   : "${VYSU_IOS_APP:=}"
   : "${VYSU_MOBILE_DIR:=}"
@@ -138,7 +140,7 @@ config_paths() {
   LOCK_WAIT="$VYSU_LOCK_WAIT"
   PY="$VYSU_ENGINE/py"
   MARK="$PY/mark.py"; MOTION="$PY/motion.py"; DIFF="$PY/diff.py"; FRAME="$PY/frame.py"
-  COMPARE="$PY/compare.py"; STITCH="$PY/stitch.py"; TAKE="$PY/take.py"
+  COMPARE="$PY/compare.py"; STITCH="$PY/stitch.py"; TAKE="$PY/take.py"; FIELDS="$PY/fields.py"
   REMOTION="$VYSU_ENGINE/remotion"
   # Relative to the project: that is how a config names a folder inside its own repo.
   LOCALES="$(project_path "$(cfg LOCALES)")"
@@ -303,7 +305,9 @@ rec_stop() {
   else kill -INT "$pid" 2>/dev/null || true; fi
   wait "$pid" 2>/dev/null || true
 }
-trap 'rm -f "$BATCH" "$STATE/.ab-err-$$"; rec_stop; locks_release' EXIT
+# auth_test_close is a no-op unless `vysu auth test` is running: its throwaway browser session is
+# closed whichever way vysu ends, a failed login included.
+trap 'auth_test_close; rm -f "$BATCH" "$STATE/.ab-err-$$"; rec_stop; locks_release' EXIT
 
 # --- what a capture and a take remember --------------------------------------------------------
 

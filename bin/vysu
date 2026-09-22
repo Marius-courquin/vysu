@@ -77,6 +77,9 @@
 #              [--zoom 2]
 #   vysu check <persona> [--save <name>]    JS errors + failed API requests of the current session
 #   vysu auth token <persona>               the persona's current API access token (for curl seeding)
+#   vysu auth test <persona> [ios|android]  run the project's auth connector once and print each step that
+#                                           held; web: a throwaway session of its own, closed at the end,
+#                                           mobile: the real app (one install = one session)
 #   vysu persona add|set|list [--json]|import <file> [--prefix <P>]   the project's personas, mode 600, never printed
 #   vysu claim ios|android|<persona> [--minutes 30] [--note "<why>"]   keep a device / a session for a whole task,
 #                                           and read back what the last agent left on it: state applied, screen, and

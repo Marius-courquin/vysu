@@ -19,8 +19,18 @@ ab_quiet() { # <command…> — run it, with that one line filtered out of its s
   rm -f "$err"
   return "$rc"
 }
-session_of() { printf '%s-%s' "$(cfg PROJECT)" "$1"; }
-ab() { lock_take "web-$(slug "$1")"; ab_quiet agent-browser --session "$(session_of "$1")" --restore "${@:2}"; }
+# `vysu auth test` drives a session of its own — its own profile, no cookies, dropped at the end —
+# while the connector it exercises still reads the credentials of the real persona it was given.
+# Set by auth.sh for the duration of a test, empty the rest of the time.
+AUTH_TEST_SESSION=""
+session_of() {
+  [ -z "$AUTH_TEST_SESSION" ] || { printf '%s' "$AUTH_TEST_SESSION"; return; }
+  printf '%s-%s' "$(cfg PROJECT)" "$1"
+}
+# What that session's lock is called: a test must not hold the real persona's session, which it
+# never touches, for as long as it runs.
+web_lock_of() { [ -z "$AUTH_TEST_SESSION" ] && printf 'web-%s' "$(slug "$1")" || printf 'web-authtest'; }
+ab() { lock_take "$(web_lock_of "$1")"; ab_quiet agent-browser --session "$(session_of "$1")" --restore "${@:2}"; }
 # The primitive a connector drives the browser with: the same session, the same lock, no batch.
 web() { ab "$@"; }
 # The first visible button among several names: a label differs by language and by version, and a
@@ -44,7 +54,7 @@ vysu_web_session() { agent-browser session list 2>/dev/null | grep -q "$(session
 # than not, and a variable emptied there would come back full in the parent shell.
 bcmd() { local IFS=$'\t'; mkdir -p "$STATE"; printf '%s\n' "$*" >>"$BATCH"; }
 brun() { # persona → the batch results as JSON, the queue emptied
-  lock_take "web-$(slug "$1")"
+  lock_take "$(web_lock_of "$1")"
   local json; json="$(python3 -c 'import sys, json; print(json.dumps([l.split("\t") for l in open(sys.argv[1]).read().splitlines() if l]))' "$BATCH")"
   rm -f "$BATCH"
   printf '%s' "$json" | ab_quiet agent-browser --session "$(session_of "$1")" --restore batch --json || true
