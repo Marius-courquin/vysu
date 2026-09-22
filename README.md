@@ -28,9 +28,11 @@ vysu walk alice home --url http://localhost:3000/
 
 ## Status
 
-Being extracted from the Nidz monorepo (`tools/visual/nv`). The design note is
-[docs/design.md](docs/design.md); the lots are listed at its end. Nothing here is usable before
-lot 1 lands.
+The engine is in (lot 1): every `nv` command, the config contract, personas, services, devices,
+the `auth0` connector and the `apns-sim` / `webhook` push drivers. Still to come: the `form` and
+`none` connectors, `fcm`, `vysu auth test` and `py/fields.py` (lot 2), the agent skills and the
+connector docs (lot 3). The design note is [docs/design.md](docs/design.md); the lots are listed
+at its end.
 
 ## License
 
