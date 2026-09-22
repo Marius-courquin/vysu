@@ -67,12 +67,26 @@ VYSU_AUTH='none'
 
 # --- the mobile app -------------------------------------------------------------------------------
 
+# What kind of app this is: `expo` (a dev-client served by Metro) or `native` (Swift, Kotlin,
+# Flutter, .NET — already built, no bundler). Default: expo when VYSU_MOBILE_DIR is set, else native.
+# In native mode `up` boots the device, installs the app when it is missing and starts its log;
+# there is no Metro, no adb reverse and no bundle wait.
+# VYSU_MOBILE_KIND='native'
 # The app id on both platforms.
 # VYSU_MOBILE_BUNDLE='com.example.app'
 # The app's name on the iOS simulator (what `simctl`/agent-device open by).
 # VYSU_IOS_APP='My App'
 # The Expo app folder, relative to the project.
 # VYSU_MOBILE_DIR='apps/mobile'
+# Native: the app `up ios` installs when the bundle is not on the simulator (or `up ios --reinstall`).
+# A .app built for `iphonesimulator`, relative to the project.
+# VYSU_IOS_APP_PATH='build/Build/Products/Debug-iphonesimulator/App.app'
+# Native: the same for Android, an .apk installed by `up android`.
+# VYSU_ANDROID_APK='app/build/outputs/apk/debug/app-debug.apk'
+# What `up <platform> --build` runs, in VYSU_MOBILE_DIR (the project root when it is unset), in the
+# background, logged to logs/<platform>-build.log. In expo mode these default to `npx expo run:…`.
+# VYSU_MOBILE_BUILD_IOS='xcodebuild -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath build'
+# VYSU_MOBILE_BUILD_ANDROID='./gradlew assembleDebug'
 # Environment exported to Metro and to the native build, space-separated k=v pairs.
 # VYSU_MOBILE_ENV='APP_ENV=staging'
 # The dev-client scheme handed to Metro's URL. Empty: the dev-launcher hand-off is skipped.

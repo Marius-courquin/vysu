@@ -117,10 +117,13 @@ are ignored. `vysu doctor` prints the resolved values and where each comes from.
 | `VYSU_API_HOSTS` | `host=label` pairs for the API label in reports | `localhost:8080=local api.prep.nidz.fr=prep` |
 | `VYSU_AUTH` | built-in connector name, or a path; default `none` (no login) | `auth0` |
 | `VYSU_AUTH_*` | connector options, documented by each connector | see § 6 |
+| `VYSU_MOBILE_KIND` | `expo` (dev-client + Metro) or `native` (already built, no bundler); default `expo` when `VYSU_MOBILE_DIR` is set, else `native` | `expo` |
 | `VYSU_MOBILE_BUNDLE` | app id on both platforms | `fr.nidz.app.next.prep` |
 | `VYSU_IOS_APP` | app name on the iOS simulator | `Nidz (prep)` |
 | `VYSU_MOBILE_DIR` | Expo app folder (relative to the project dir) | `apps/nidz-next-apps/apps/mobile` |
 | `VYSU_MOBILE_ENV` | env exported to Metro and the native build | `NIDZ_ENV=prep` |
+| `VYSU_IOS_APP_PATH` / `VYSU_ANDROID_APK` | native: the `.app` (built for `iphonesimulator`) and the `.apk` `up` installs when the device has none | — |
+| `VYSU_MOBILE_BUILD_IOS` / `_ANDROID` | what `up <platform> --build` runs; in expo mode they default to the `npx expo run:` commands | — |
 | `VYSU_MOBILE_SCHEME` | dev-client scheme handed to Metro's URL | `exp+nidz` |
 | `VYSU_MOBILE_READY_TEXT` | texts that prove the app has booted, comma-separated: what `mrelaunch` and a mobile login wait for instead of a delay | `Se connecter,Bienvenue,Menu,…` |
 | `VYSU_IOS_DEVICE` / `VYSU_IOS_OLD_DEVICE` | simulators, recent and old | `iPhone 17 Pro` / `Nidz iPhone SE (iOS 18)` |
@@ -273,6 +276,33 @@ Mobile targets stay in the engine (they are Expo and simulator mechanics, not ap
 `vysu up ios|android [--build] [--device|--avd]` reads `VYSU_MOBILE_DIR`, `VYSU_MOBILE_ENV`,
 `VYSU_MOBILE_BUNDLE`, `VYSU_IOS_APP`, `VYSU_ANDROID_LOCALE`. The dev-client search paths (Xcode
 DerivedData, `android/app/build/outputs/apk/debug/app-debug.apk`) are Expo conventions and stay.
+
+### 7.1 Native mobile apps (addendum)
+
+`VYSU_MOBILE_KIND` splits the mobile targets in two. Everything that is Metro — the bundler
+started by `up`, `adb reverse`, the dev-launcher hand-off of `mobile_load_bundle`, the « Bundled »
+line `mrelaunch` waits for, `down metro` — happens in **expo** mode only. In **native** mode (a
+Swift, Kotlin, Flutter or .NET app, already built) the same commands do strictly less:
+
+- `up ios|android` boots the device exactly as before (locale, frozen status bar, GPU flags, the
+  same locks), installs the app from `VYSU_IOS_APP_PATH` / `VYSU_ANDROID_APK` when the bundle is
+  not on the device or `--reinstall` is given, starts the app-log tail, and ends on
+  `→ vysu ios open "<app>" --foreground`. `--build` runs `VYSU_MOBILE_BUILD_IOS` / `_ANDROID` in
+  the background, logged to `logs/<platform>-build.log`, the way the `expo run:` command already
+  was — those two keys are what the expo default now goes through.
+- `mrelaunch` terminates, applies text size / appearance / language (iOS still takes
+  `-AppleLanguages` per launch), launches, then waits for `VYSU_MOBILE_READY_TEXT` or five seconds.
+  It writes no `metro` field, and the `claim` / `doctor` state lines leave it out.
+- `mlog [ios|android] [mark | --tail N]` reads `logs/<platform>-app.log`, written by the tail
+  `up` started: on iOS `simctl spawn <udid> log stream --style compact --predicate
+  'processImagePath ENDSWITH "/<executable>" AND eventType == "logEvent" AND messageType != debug'`
+  (the executable comes from the app bundle's `CFBundleExecutable`; matching the path rather than
+  the pid is what survives a relaunch), on Android `adb logcat -v time -T 1 --uid <uid of the
+  package>` (same reason: a uid outlives every process the app starts). `down applog [ios|android]`
+  stops them.
+
+Everything above agent-device — `mshot`, `mtap`, `mflow`, `mrec`, `textsize`, `appearance`,
+`push ios`, the auth connectors — is unchanged: it never knew what was behind the app.
 
 ## 8. Devices
 

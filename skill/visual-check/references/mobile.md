@@ -105,6 +105,23 @@ stop the stitching too early; a **sticky element inside** the scroller (a filter
 header) repeats from one piece to the next; a transient banner ("Refreshing…") ends up in the tall
 image and shows up again at the next `--baseline`.
 
+## Expo or native (`VYSU_MOBILE_KIND`)
+
+An Expo app (`expo`, the default as soon as `VYSU_MOBILE_DIR` is set) runs behind Metro: `vysu up`
+starts the bundler on 8081, `mrelaunch` waits for its "Bundled" line and `vysu mlog` reads
+`logs/metro.log`. A **native** app (`native` — Swift, Kotlin, Flutter, .NET — and the default when
+no `VYSU_MOBILE_DIR` is set) has none of that, and nothing above agent-device changes: `mshot`,
+`mtap`, `mflow`, `mrec`, `textsize`, `appearance`, `push ios` and the auth connectors behave
+identically. What differs: `vysu up ios|android` boots the device, installs the app from
+`VYSU_IOS_APP_PATH` / `VYSU_ANDROID_APK` when it is not there (`--reinstall` to force it), starts a
+tail of the app's own log and prints `→ vysu ios open "<app>" --foreground`; `--build` runs
+`VYSU_MOBILE_BUILD_IOS` / `_ANDROID` in the background (`logs/<platform>-build.log`); `mrelaunch`
+launches and waits for `VYSU_MOBILE_READY_TEXT` (five seconds when the project names none), with no
+`metro` in the `claim` state line; and `vysu mlog [ios|android] [mark | --tail N]` reads
+`logs/<platform>-app.log` — `log stream` filtered on the app's process on iOS, `logcat --uid` of
+the package on Android, both surviving a relaunch. `vysu down applog` stops those tails,
+`vysu down metro` stays the expo one. `vysu doctor` prints the kind in force.
+
 ## Android: what `vysu up android` sets (do not redo it by hand)
 
 Host GPU, 4 GB and 4 cores (a stock AVD ships with the GPU off and 1.5 GB: software rendering, ANRs

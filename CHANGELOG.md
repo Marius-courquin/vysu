@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+- **Native mobile apps.** `VYSU_MOBILE_KIND` is `expo` (a dev-client served by Metro) or `native`
+  (Swift, Kotlin, Flutter, .NET — already built); the default is `expo` when `VYSU_MOBILE_DIR` is
+  set and `native` otherwise, and `vysu doctor` prints it. Everything above agent-device — `mshot`,
+  `mtap`, `mflow`, `mrec`, `textsize`, `appearance`, `push ios`, the auth connectors — already
+  worked on any app and is untouched.
+  - In native mode `vysu up ios|android` boots the device as before (locale, frozen status bar, GPU
+    flags, the same locks), installs the app from `VYSU_IOS_APP_PATH` / `VYSU_ANDROID_APK` when the
+    bundle is not on it (`--reinstall` forces it), starts a tail of the app's own log and ends on
+    `→ vysu ios open "<app>" --foreground`: no Metro, no `adb reverse`.
+  - `VYSU_MOBILE_BUILD_IOS` / `_ANDROID` are what `up <platform> --build` runs, in
+    `VYSU_MOBILE_DIR` (the project root when it is unset), in the background, logged to
+    `logs/<platform>-build.log`; in expo mode they default to the `npx expo run:` commands, so the
+    two kinds share one code path.
+  - `vysu mrelaunch` in native mode terminates, applies text size / appearance / language (iOS
+    still takes `-AppleLanguages` per launch), launches and waits for `VYSU_MOBILE_READY_TEXT`, or
+    five seconds when the project names none. It writes no `metro` field, and the `claim` /
+    `doctor` state lines leave it out.
+  - `vysu mlog [ios|android] [mark | --tail N]` reads `logs/<platform>-app.log` in native mode and
+    `logs/metro.log` in expo mode: on iOS `simctl spawn … log stream` matched on the app's
+    executable path, on Android `logcat --uid` of the package — both survive a relaunch, where a
+    pid filter would not. `vysu down applog [ios|android]` stops the tails; `down metro` stays.
+  - `vysu init` asks "mobile app: none / expo (Metro dev-client) / native" and writes the matching
+    keys; `init_ask` now also accepts answers piped in, instead of silently taking every default
+    when stdin is not a TTY.
+- Fixed: `up ios|android` read "the app is not installed" from its own pipeline — `grep -q` leaves
+  on the first match, `simctl listapps` dies of SIGPIPE and `pipefail` turned that into a missing
+  app. The check is `simctl get_app_container` (which answers for a system app too) and a captured
+  `pm list packages`.
+- Fixed: `mrelaunch` no longer spends its fifteen snapshot tries waiting for a screen when no
+  agent-device session is open on the device — there is nothing to read until `vysu <platform> open`.
+
 ## 0.1.0 — 2026-09-22
 
 First release: the engine extracted from the Nidz monorepo's `tools/visual/nv`, project-agnostic.

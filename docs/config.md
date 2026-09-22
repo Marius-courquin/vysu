@@ -62,9 +62,14 @@ Options of the `auth0` connector, all optional; the defaults live in
 
 | Key | Meaning | Default | Example |
 |---|---|---|---|
+| `VYSU_MOBILE_KIND` | `expo` (a dev-client served by Metro) or `native` (Swift, Kotlin, Flutter, .NET — already built, no bundler) | `expo` when `VYSU_MOBILE_DIR` is set, else `native` | `native` |
 | `VYSU_MOBILE_BUNDLE` | the app id on both platforms | empty | `com.example.app` |
 | `VYSU_IOS_APP` | the app's name on the iOS simulator (what `simctl` / agent-device open by) | empty | `My App` |
 | `VYSU_MOBILE_DIR` | the Expo app folder, relative to the project | empty | `apps/mobile` |
+| `VYSU_IOS_APP_PATH` | native: a `.app` built for `iphonesimulator`, installed by `up ios` when the bundle is not on the device (or `up ios --reinstall`) | empty | `build/Build/Products/Debug-iphonesimulator/App.app` |
+| `VYSU_ANDROID_APK` | native: the same for Android, installed by `up android` | empty | `app/build/outputs/apk/debug/app-debug.apk` |
+| `VYSU_MOBILE_BUILD_IOS` | what `up ios --build` runs, in `VYSU_MOBILE_DIR` (the project root when it is unset), in the background, logged to `logs/ios-build.log` | `npx expo run:ios --device "<device>" --no-bundler` in expo mode, empty in native mode | `xcodebuild -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath build` |
+| `VYSU_MOBILE_BUILD_ANDROID` | the same for `up android --build` | `npx expo run:android --device "<avd>" --no-bundler` in expo mode, empty in native mode | `./gradlew assembleDebug` |
 | `VYSU_MOBILE_ENV` | environment exported to Metro and to the native build, space-separated `k=v` | empty | `APP_ENV=staging` |
 | `VYSU_MOBILE_SCHEME` | the dev-client scheme handed to Metro's URL; empty skips the dev-launcher hand-off | empty | `exp+myapp` |
 | `VYSU_MOBILE_READY_TEXT` | texts that prove the app has booted, comma-separated: what `mrelaunch` waits for instead of a delay | empty (a fixed delay) | `Sign in,Welcome` |
@@ -79,6 +84,14 @@ The default AVD specs:
 ```
 vysu_pixel8_api36:36:pixel_8:;vysu_pixel10pro_api36:36:pixel_8_pro:hw.lcd.width=1280 hw.lcd.height=2856 hw.lcd.density=480;vysu_pixel4a_api30:30:pixel_4a:
 ```
+
+In **native mode** `vysu up ios|android` boots the device, applies the locale and the status bar,
+installs the app when it is missing and starts a tail of its log into `logs/<platform>-app.log`
+(iOS: `simctl spawn … log stream` on the app's process; Android: `logcat --uid` of the package, so
+the filter survives a relaunch). There is no Metro, no `adb reverse` and no bundle wait:
+`vysu mrelaunch` terminates, applies text size / appearance / language, launches, and waits for
+`VYSU_MOBILE_READY_TEXT` — or five seconds when the project names nothing. `vysu mlog` reads that
+app log instead of `metro.log`, and `vysu down applog [ios|android]` stops the tails.
 
 `vysu setup` also writes `~/.vysu/devices.env` with `VYSU_IOS_DEVICE`, `VYSU_IOS_OLD_DEVICE` and
 `VYSU_ANDROID_AVDS`: a machine says which devices it has, and a project config still wins over it.

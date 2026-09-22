@@ -92,7 +92,7 @@ with defaults and examples is in [docs/config.md](docs/config.md).
 | identity | `VYSU_PROJECT`, `VYSU_STATE`, `VYSU_MIN_VERSION` | session prefix, state folder, the engine version you need |
 | the web app | `VYSU_ORIGIN`, `VYSU_LOGIN_PATH`, `VYSU_BASELINE_ORIGIN`, `VYSU_SIZES`, `VYSU_LANGS`/`VYSU_LANG`/`VYSU_LANG_STORAGE_KEY`, `VYSU_LOCALES`, `VYSU_WEB_REPO`, `VYSU_API_PATTERN`, `VYSU_API_HOSTS` | what is opened, what `--baseline-url @` points at, which viewports, which languages, what a report calls the API |
 | auth | `VYSU_AUTH`, `VYSU_AUTH0_*` | which connector signs a persona in, and its labels |
-| the mobile app | `VYSU_MOBILE_BUNDLE`, `VYSU_IOS_APP`, `VYSU_MOBILE_DIR`, `VYSU_MOBILE_ENV`, `VYSU_MOBILE_SCHEME`, `VYSU_MOBILE_READY_TEXT`, `VYSU_IOS_DEVICE`/`VYSU_IOS_OLD_DEVICE`, `VYSU_ANDROID_AVD`/`VYSU_ANDROID_AVDS`, `VYSU_ANDROID_LOCALE` | which app on which devices, and how it is started |
+| the mobile app | `VYSU_MOBILE_KIND`, `VYSU_MOBILE_BUNDLE`, `VYSU_IOS_APP`, `VYSU_MOBILE_DIR`, `VYSU_MOBILE_ENV`, `VYSU_MOBILE_SCHEME`, `VYSU_MOBILE_READY_TEXT`, `VYSU_IOS_APP_PATH`/`VYSU_ANDROID_APK`, `VYSU_MOBILE_BUILD_IOS`/`_ANDROID`, `VYSU_IOS_DEVICE`/`VYSU_IOS_OLD_DEVICE`, `VYSU_ANDROID_AVD`/`VYSU_ANDROID_AVDS`, `VYSU_ANDROID_LOCALE` | which app on which devices, and how it is started |
 | services | `VYSU_SERVICES`, `VYSU_SERVICE_<name>_CMD/_DIR/_PORT/_HEALTH/_ENV/_TIMEOUT/_STOP` | what `vysu up` and `vysu down` know |
 | push | `VYSU_PUSH`, `VYSU_PUSH_WEBHOOK_URL`, `VYSU_FCM_SA` | which drivers, and what they need |
 | video | `VYSU_THEME` | the brand of the explainer video |
@@ -100,6 +100,46 @@ with defaults and examples is in [docs/config.md](docs/config.md).
 An environment variable of the same name wins over the file, so `VYSU_ORIGIN=… vysu shots …`
 overrides a value for one command. `vysu doctor` prints what is in force and where each value came
 from.
+
+## Native apps
+
+The mobile side is not Expo-only. agent-device drives whatever is on the simulator or the emulator
+through accessibility, so `mshot`, `mtap`, `mflow`, `mrec`, `textsize`, `appearance` and
+`push ios` work on a Swift, Kotlin, Flutter or .NET app out of the box. `VYSU_MOBILE_KIND='native'`
+(the default as soon as no `VYSU_MOBILE_DIR` is set) tells `up`, `mrelaunch` and `mlog` that there
+is no Metro in front of the app: `up` boots the device, installs the app and tails its log,
+`mrelaunch` launches and waits for a screen, and `mlog` reads that log instead of `metro.log`.
+
+Four keys, all optional:
+
+```bash
+VYSU_MOBILE_KIND='native'
+VYSU_IOS_APP_PATH='build/Build/Products/Debug-iphonesimulator/App.app'   # installed when missing
+VYSU_ANDROID_APK='app/build/outputs/apk/debug/app-debug.apk'
+VYSU_MOBILE_BUILD_IOS='xcodebuild -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath build'
+VYSU_MOBILE_BUILD_ANDROID='./gradlew assembleDebug'
+```
+
+A smoke test that needs no app of your own — Apple's Settings is on every simulator:
+
+```bash
+mkdir -p /tmp/native-demo/.vysu && cd /tmp/native-demo
+cat > .vysu/config <<'EOF'
+VYSU_PROJECT='native-demo'
+VYSU_MOBILE_KIND='native'
+VYSU_MOBILE_BUNDLE='com.apple.Preferences'
+VYSU_IOS_APP='Settings'
+VYSU_MOBILE_READY_TEXT='General,Général'
+VYSU_AUTH='none'
+EOF
+vysu up ios                              # boots the simulator, tails the app log
+vysu ios open "Settings" --foreground     # the agent-device session
+vysu mshot ios settings                   # a 1x capture, diffable
+vysu mtap ios "General"
+vysu mshot ios general --baseline settings
+vysu mlog --tail 5                        # the Settings process's own log
+vysu down applog && vysu prune --match 'settings' --match 'general'
+```
 
 ## Writing an auth connector
 
