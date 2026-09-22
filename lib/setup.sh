@@ -370,12 +370,13 @@ vysu_init() {
 
   local project origin login_path baseline auth mobile kind bundle ios_app mobile_dir push webhook
   local ios_app_path android_apk
-  init_ask project "project name" "$(basename "$root")"
-  init_ask origin "web origin" "http://localhost:3000"
-  init_ask login_path "login path" "/login"
-  init_ask baseline "baseline origin (the deployed main, empty for none)" ""
-  init_ask auth "auth connector (auth0 | form | none | custom)" "none"
-  init_ask mobile "mobile app: none / expo (Metro dev-client) / native (Swift, Kotlin, Flutter…)" "none"
+  [ "$INIT_YES" = 1 ] || info "Enter keeps the value in brackets; every answer can be changed later in .vysu/config"
+  init_ask project "project name (session prefix and state folder)" "$(basename "$root")"
+  init_ask origin "web origin — where the app runs locally" "http://localhost:3000"
+  init_ask login_path "login path — the page on that origin where a user signs in (/ if the home page has the login; anything if there is no login)" "/login"
+  init_ask baseline "baseline origin — the deployed main, that a branch is diffed against (empty for none)" ""
+  init_ask auth "auth connector — auth0 | form (an e-mail + password form on the login page) | none (no login) | custom" "none"
+  init_ask mobile "mobile app — none | expo (Metro dev-client) | native (Swift, Kotlin, Flutter…)" "none"
   kind=""; bundle=""; ios_app=""; mobile_dir=""; ios_app_path=""; android_apk=""
   case "$mobile" in
     [eE]*|[yY]*)
