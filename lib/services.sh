@@ -192,7 +192,10 @@ mobile_up() {
     local locale; locale="$(cfg ANDROID_LOCALE)"
     if [ -n "$locale" ] && [ "$(adb shell getprop persist.sys.locale 2>/dev/null | tr -d '\r')" != "$locale" ]; then
       adb root >/dev/null 2>&1 && adb shell "setprop persist.sys.locale $locale; setprop ctl.restart zygote" >/dev/null 2>&1
-      sleep 20; wait_android_boot
+      # A zygote restart brings `sys.boot_completed` back to 1 well before the system services are:
+      # `up` used to return on a device whose activity manager still answered « is the system
+      # running? », taking the app-log's dumpsys and the first launch down with it.
+      sleep 20; wait_android_boot; wait_android_shell
     fi
     # Metro reachable as localhost from the emulator (adbd restarts drop it) — expo only.
     [ "$kind" != expo ] || adb reverse tcp:8081 tcp:8081 >/dev/null

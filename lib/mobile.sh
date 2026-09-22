@@ -72,7 +72,10 @@ mobile_kind() {
 # The app's own log in native mode, one file per platform, written by the tail `vysu up` starts.
 mobile_applog_file() { printf '%s/%s-app.log' "$LOGS" "$1"; }
 mobile_applog_pid() { printf '%s/applog-%s.pid' "$STATE" "$1"; }
-mobile_applog_alive() { local f; f="$(mobile_applog_pid "$1")"; [ -s "$f" ] && kill -0 "$(cat "$f")" 2>/dev/null; }
+# The pid file holds one pid per line: the tail is a single process on iOS and on a recent Android,
+# and an « adb logcat | grep » pair on an older one. The first line is the one whose death means the
+# tail is over, and `applog_stop` kills them all.
+mobile_applog_alive() { local f; f="$(mobile_applog_pid "$1")"; [ -s "$f" ] && kill -0 "$(head -1 "$f")" 2>/dev/null; }
 # `vysu mlog` with no platform: the one that was last written to, iOS when neither exists yet.
 mobile_applog_platform() {
   local newest="" p
@@ -99,6 +102,10 @@ ios_app_executable() { # bundle
 android_app_uid() { # package
   adb shell dumpsys package "$1" 2>/dev/null | grep -m1 -oE '(userId|uid)=[0-9]+' | cut -d= -f2 | tr -d '\r'
 }
+# `logcat --uid` only exists from API 31: on an API 30 image the tail dies on « Unknown option
+# '--uid' » and the log holds that one line. There, `-v uid` prints the uid of every line — « (10166:
+# 2291) » — and the same filter is applied here, which survives a relaunch exactly as --uid does.
+android_logcat_has_uid() { adb -s "$ANDROID_SERIAL" shell logcat --help 2>&1 | grep -q -- '--uid'; }
 # The tail `vysu up <platform>` starts in native mode: the app's own log, from now on, into
 # logs/<platform>-app.log, which `vysu mlog` then reads exactly as it reads Metro's.
 applog_start() { # platform
@@ -114,18 +121,30 @@ applog_start() { # platform
         --predicate "processImagePath ENDSWITH \"/$exe\" AND eventType == \"logEvent\" AND messageType != debug" \
         >"$log" 2>&1 </dev/null & echo $! >"$pidf" )
   else
-    local uid; uid="$(android_app_uid "$bundle")"
+    # `|| true`, like the iOS side: no uid is an answer — the app is not there, or the system
+    # services are not back yet — and under pipefail the empty grep would end `up` on the spot,
+    # before the line below could say which.
+    local uid; uid="$(android_app_uid "$bundle" || true)"
     [ -n "$uid" ] || { echo "android: $bundle is not installed — no app log (vysu up android --reinstall)"; return 0; }
-    ( nohup adb -s "$ANDROID_SERIAL" logcat -v time -T 1 --uid="$uid" >"$log" 2>&1 </dev/null & echo $! >"$pidf" )
+    if android_logcat_has_uid; then
+      ( nohup adb -s "$ANDROID_SERIAL" logcat -v time -T 1 --uid="$uid" >"$log" 2>&1 </dev/null & echo $! >"$pidf" )
+    else
+      ( nohup sh -c "adb -s '$ANDROID_SERIAL' logcat -v time -v uid -T 1 2>/dev/null | grep --line-buffered -E '\( *$uid: *[0-9]+\)'" \
+          >"$log" 2>/dev/null </dev/null & echo $! >"$pidf" )
+      # The shell holds the pipeline, but killing it would leave `adb logcat` writing into a grep
+      # nobody reads: its pid is noted too, and stopping it is what ends the other two.
+      sleep 1
+      pgrep -f "adb -s $ANDROID_SERIAL logcat -v time -v uid" >>"$pidf" 2>/dev/null || true
+    fi
   fi
   echo "$platform: app log → $log (vysu mlog)"
 }
 applog_stop() { # platform… — what `vysu down applog` calls
-  local platform pidf stopped=0
+  local platform pidf pid stopped=0
   for platform in "$@"; do
     pidf="$(mobile_applog_pid "$platform")"
     [ -s "$pidf" ] || continue
-    kill "$(cat "$pidf")" 2>/dev/null || true
+    while read -r pid; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || true; done <"$pidf"
     rm -f "$pidf"
     echo "$platform: app log stopped"; stopped=1
   done
@@ -445,6 +464,10 @@ vysu_mrelaunch() {
     if [ "$(adb shell getprop persist.sys.locale 2>/dev/null | tr -d '\r')" != "$android_locale" ]; then
       adb root >/dev/null 2>&1 && adb shell "setprop persist.sys.locale $android_locale; setprop ctl.restart zygote" >/dev/null 2>&1
       sleep 20; wait_android_boot; wait_android_shell
+      # `adb root` restarts adbd, which takes the native app-log tail down with it: without this the
+      # log freezes at the last line before the language change and `vysu mlog` answers « nothing
+      # since the mark » for the rest of the session. A no-op when the tail is still alive.
+      [ "$kind" != native ] || applog_start "$platform" >/dev/null
     fi
   fi
   [ -z "$lang" ] || mstate_set "$platform" lang "$lang"
@@ -531,6 +554,11 @@ vysu_mlog() {
   else
     platform="${platform:-$(mobile_applog_platform)}"
     log="$(mobile_applog_file "$platform")"; markfile="$STATE/$platform-app.mark"; name="$platform"
+    # A dead tail and a quiet app read the same on screen — an empty answer — and the difference
+    # matters: a tail dies with the adbd it was attached to (`adb root`, an emulator restart), and
+    # every line after that is simply not in the file.
+    mobile_applog_alive "$platform" \
+      || echo "vysu: $platform: the app log is no longer tailing — it stops at $(date -r "$log" +%H:%M) (vysu up $platform)" >&2
   fi
   [ -f "$log" ] || die "no $log (vysu up ${platform:-ios|android} starts it)"
   case "${1:-}" in
