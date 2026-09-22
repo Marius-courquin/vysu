@@ -15,6 +15,15 @@ One line, on a Mac or Linux box with `git`:
 curl -fsSL https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.sh | bash
 ```
 
+**While the repository is private**, that raw URL is not reachable and a plain `git clone` asks
+for a login it cannot get: log in once with the GitHub CLI, then clone with it and run the
+installer from the clone.
+
+```bash
+brew install gh && gh auth login          # once; pick GitHub.com, HTTPS, login in the browser
+gh repo clone Marius-courquin/vysu ~/vysu && ~/vysu/install.sh
+```
+
 It clones the engine into `~/vysu` (or updates it), makes `vysu` reachable — a link into a
 directory already on your PATH when one is writable, else a PATH line in your shell's startup file
 (zsh, bash or fish) — and prints `vysu version`. **Open a new terminal** afterwards if it says so.

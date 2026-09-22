@@ -3,6 +3,10 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.sh | bash
 #
+# While the repository is private, the raw file above is not reachable: log in once with the GitHub
+# CLI (`brew install gh && gh auth login`), then
+#   gh repo clone Marius-courquin/vysu ~/vysu && ~/vysu/install.sh
+#
 # What it does, in order:
 #   1. git clone https://github.com/Marius-courquin/vysu into $VYSU_INSTALL_DIR (default ~/vysu),
 #      or `git pull` when it is already there;
@@ -26,7 +30,13 @@ if [ -d "$DIR/.git" ]; then
 elif [ -e "$DIR" ]; then
   die "$DIR exists and is not a vysu checkout (set VYSU_INSTALL_DIR to another folder)"
 else
-  git clone -q "$REPO" "$DIR" 2>/dev/null || die "cannot clone $REPO — no network, or the repository is private and this machine has no GitHub access to it (ask for access, or: gh auth login)"
+  # A private repository needs an authenticated clone: the GitHub CLI has the login when the
+  # user ran `gh auth login`; plain git only has it when a credential helper or an SSH key is set.
+  if [ -z "${VYSU_REPO:-}" ] && command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+    gh repo clone Marius-courquin/vysu "$DIR" -- -q 2>/dev/null || die "cannot clone with gh — is your account a collaborator of Marius-courquin/vysu?"
+  else
+    git clone -q "$REPO" "$DIR" 2>/dev/null || die "cannot clone $REPO — no network, or the repository is private and this machine is not logged in: brew install gh && gh auth login, then run this again"
+  fi
   say "engine: cloned into $DIR"
 fi
 chmod +x "$DIR/bin/vysu"
