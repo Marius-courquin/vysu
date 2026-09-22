@@ -9,11 +9,33 @@ video. It works the same for Claude Code, Codex, or a human in a terminal.
 
 ## Install
 
+One line, on a Mac or Linux box with `git`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.sh | bash
+```
+
+It clones the engine into `~/vysu` (or updates it), makes `vysu` reachable — a link into a
+directory already on your PATH when one is writable, else a PATH line in your shell's startup file
+(zsh, bash or fish) — and prints `vysu version`. **Open a new terminal** afterwards if it says so.
+No tool is installed at that point: that is `vysu setup`'s job, and it asks before creating any
+simulator or emulator.
+
+```bash
+vysu setup                     # node tools, the browser, simulators, emulators
+```
+
+By hand, the same thing is:
+
 ```bash
 git clone https://github.com/Marius-courquin/vysu ~/vysu
-echo 'export PATH="$HOME/vysu/bin:$PATH"' >> ~/.zshrc && exec zsh
-vysu setup                     # tools, browser, simulators, emulators (asks before creating devices)
+~/vysu/bin/vysu version        # works right away, from its path
+export PATH="$HOME/vysu/bin:$PATH"   # then add that line to ~/.zshrc, ~/.bash_profile or your fish config
 ```
+
+`vysu: command not found` after the install means the shell has not read the PATH line yet: open
+a new terminal, or check which shell you run (`echo $SHELL`) and that the line went into its
+startup file. `~/vysu/bin/vysu version` proves the engine itself is fine.
 
 Then, in your project:
 
