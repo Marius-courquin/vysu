@@ -74,6 +74,28 @@ def light_inside(gray, top, bottom, x0, x1):
     return inner.mean() > 170 and inner.std() < 42
 
 
+def closed_sides(gray, top, bottom, x0, x1, edge):
+    """Both sides carry a vertical border, which is what makes the rectangle a box.
+
+    Two horizontal lines with whitespace between them — the gap under a field, the room above a
+    button — otherwise read as a field twice as often as a field does. The border is looked for a
+    few pixels out from the ends of the horizontal run, since a rounded corner cuts that run short.
+    """
+    rows = slice(top + 4, bottom - 3)
+    inner = gray[top + 3 : bottom - 2, x0 + 4 : x1 - 3]
+    if inner.size == 0 or rows.start >= rows.stop:
+        return False
+    level = inner.mean()
+    for lo, hi in ((x0 - 14, x0 + 5), (x1 - 4, x1 + 15)):
+        lo, hi = max(lo, 0), min(hi, gray.shape[1])
+        if lo >= hi:
+            return False
+        column = gray[rows, lo:hi] < level - edge
+        if column.size == 0 or column.mean(axis=0).max() < 0.6:
+            return False
+    return True
+
+
 def fields(image, scale, min_width, min_height, max_height, edge):
     gray = np.asarray(image.convert("L"), dtype=np.int16)
     height, width = gray.shape
@@ -95,13 +117,21 @@ def fields(image, scale, min_width, min_height, max_height, edge):
                 continue
             if not light_inside(gray, top, bottom, x0, x1):
                 continue
+            if not closed_sides(gray, top, bottom, x0, x1, edge):
+                continue
             boxes.append((x0, top, x1 - x0 + 1, span + 1))
             break
-    # A field found twice — its border answered on two rows a pixel apart — is one field.
+    # A field found twice is one field: its border answered on two rows a pixel apart, or a line
+    # above it paired with its own bottom and wrapped it. The inner box is the field itself.
     unique = []
-    for box in sorted(boxes, key=lambda b: b[1]):
-        if unique and abs(unique[-1][1] - box[1]) <= 4:
-            continue
+    for box in sorted(boxes, key=lambda b: (b[1], -b[3])):
+        if unique:
+            last = unique[-1]
+            overlap = min(last[1] + last[3], box[1] + box[3]) - max(last[1], box[1])
+            if abs(last[1] - box[1]) <= 4 or overlap > 0.5 * min(last[3], box[3]):
+                if box[3] < last[3]:
+                    unique[-1] = box
+                continue
         unique.append(box)
     return [
         {"x": round(x / scale), "y": round(y / scale), "w": round(w / scale), "h": round(h / scale)}
