@@ -94,8 +94,10 @@
 #                                           or the ones a glob names, whatever their age (--dry-run: just say which)
 #   vysu cache clear                        forget what is remembered per device: simulator UDIDs, emulator
 #                                           serials, scales, and the text size / appearance / language applied
-#   vysu setup [--ios-device <n>] [--ios-old-device <n>] [--android-avds "<spec>;…"]   machine-wide onboarding:
-#                                           tools, browser, simulators, emulators
+#   vysu setup [--yes] [--dry-run] [--ios-device <n>] [--ios-old-device <n>] [--android-avds "<spec>;…"]
+#                                           machine-wide onboarding: tools, browser, simulators, emulators.
+#                                           With no terminal to answer, it reports and creates nothing;
+#                                           --yes is how a script asks for the installing run
 #   vysu init [--yes] [--skills-dir <dir>]  write .vysu/config in this project and install the agent skills
 #   vysu doctor                             tooling, resolved config, connectors, personas, sessions, devices, locks
 #   vysu update | vysu version              pull the engine and show the CHANGELOG since · the version and sha

@@ -42,15 +42,24 @@ vysu_update() {
 avd_specs() { local IFS=';'; printf '%s\n' $(cfg ANDROID_AVDS); }
 
 vysu_setup() {
-  local ios_device="" ios_old="" avds=""
+  local ios_device="" ios_old="" avds="" assume_yes=0 dry=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --ios-device) ios_device="$2"; shift 2;;
       --ios-old-device) ios_old="$2"; shift 2;;
       --android-avds) avds="$2"; shift 2;;
+      --yes|-y) assume_yes=1; shift;;
+      --dry-run) dry=1; shift;;
       *) die "vysu setup: unknown option $1";;
     esac
   done
+  # An agent runs setup to read the machine, not to change it: with no terminal to answer the one
+  # question below, an installing run would download system images and create simulators nobody
+  # asked for. Reporting is the default there, and `--yes` is how a script asks for the real thing.
+  if [ "$dry" = 0 ] && [ "$assume_yes" = 0 ] && [ ! -t 0 ]; then
+    dry=1
+    echo "(no terminal, and no --yes: reporting only — nothing is installed or created)"
+  fi
   mkdir -p "$STATE/shots" "$LOGS" "$HOME/.vysu"
   echo "## tools"
   command -v node >/dev/null || die "node missing (>= 22)"
@@ -58,9 +67,13 @@ vysu_setup() {
   local tool
   for tool in agent-browser agent-device; do
     if command -v "$tool" >/dev/null; then echo "$tool: $($tool --version 2>/dev/null | head -1)"
+    elif [ "$dry" = 1 ]; then echo "$tool: missing (npm i -g $tool)"
     else echo "$tool: installing…"; npm i -g "$tool" >/dev/null 2>&1 && echo "$tool: $($tool --version 2>/dev/null | head -1)"; fi
   done
-  [ -d "$HOME/.agent-browser/browsers" ] || { echo "agent-browser: downloading Chrome for Testing…"; agent-browser install >/dev/null 2>&1; }
+  if [ ! -d "$HOME/.agent-browser/browsers" ]; then
+    if [ "$dry" = 1 ]; then echo "agent-browser: no browser (agent-browser install)"
+    else echo "agent-browser: downloading Chrome for Testing…"; agent-browser install >/dev/null 2>&1; fi
+  fi
   python3 -c 'import numpy, PIL' 2>/dev/null && echo "python3: numpy + pillow ok" \
     || echo "python3: numpy / pillow missing — pip3 install --user numpy pillow"
   command -v ffmpeg >/dev/null && echo "ffmpeg: $(ffmpeg -version 2>/dev/null | head -1 | cut -d' ' -f1-3)" \
@@ -74,8 +87,12 @@ vysu_setup() {
   local want_avds="${avds:-$(cfg ANDROID_AVDS)}"
   echo "ios (recent): $want_ios"
   echo "ios (old):    $want_old"
-  local spec
-  while IFS= read -r spec; do [ -z "$spec" ] || echo "avd:          ${spec%%:*} (api ${spec#*:}, ${spec})"; done < <(VYSU_ANDROID_AVDS="$want_avds" avd_specs)
+  local spec spec_rest
+  while IFS= read -r spec; do
+    [ -n "$spec" ] || continue
+    spec_rest="${spec#*:}"
+    echo "avd:          ${spec%%:*} (api ${spec_rest%%:*}, ${spec})"
+  done < <(VYSU_ANDROID_AVDS="$want_avds" avd_specs)
   if [ -z "$ios_device$ios_old$avds" ] && [ -t 0 ]; then
     local answer; printf 'Keep these? [Y/n] ' >&2; IFS= read -r answer
     case "$answer" in
@@ -87,12 +104,16 @@ vysu_setup() {
     esac
   fi
   # Below the project config in precedence: a machine says what it has, a project says what it wants.
-  { echo "# written by vysu setup — the devices this machine drives."
-    echo "VYSU_IOS_DEVICE='$want_ios'"
-    echo "VYSU_IOS_OLD_DEVICE='$want_old'"
-    echo "VYSU_ANDROID_AVDS='$want_avds'"
-  } >"$HOME/.vysu/devices.env"
-  echo "devices.env: $HOME/.vysu/devices.env"
+  if [ "$dry" = 1 ]; then
+    echo "devices.env: $HOME/.vysu/devices.env (unchanged — reporting only)"
+  else
+    { echo "# written by vysu setup — the devices this machine drives."
+      echo "VYSU_IOS_DEVICE='$want_ios'"
+      echo "VYSU_IOS_OLD_DEVICE='$want_old'"
+      echo "VYSU_ANDROID_AVDS='$want_avds'"
+    } >"$HOME/.vysu/devices.env"
+    echo "devices.env: $HOME/.vysu/devices.env"
+  fi
 
   echo "## ios"
   if command -v xcrun >/dev/null; then
@@ -100,6 +121,7 @@ vysu_setup() {
     local rt; rt="$(xcrun simctl list runtimes available -j 2>/dev/null | python3 -c "import sys,json; rs=[r for r in json.load(sys.stdin)['runtimes'] if r['platform']=='iOS' and r['version'].startswith('18.')]; print(rs[-1]['identifier'] if rs else '')")"
     if [ -z "$rt" ]; then echo "ios 18: runtime missing — xcodebuild -downloadPlatform iOS -buildVersion 18.6 (8.9 GB) for the pre-redesign iPhone"
     elif xcrun simctl list devices 2>/dev/null | grep -q "$want_old"; then echo "ios: « $want_old » present"
+    elif [ "$dry" = 1 ]; then echo "ios: « $want_old » missing (vysu setup --yes creates it)"
     else xcrun simctl create "$want_old" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$rt" >/dev/null 2>&1 && echo "ios: « $want_old » created (iPhone SE 3rd gen, $rt)"; fi
   else
     echo "ios: Xcode missing — iOS checks unavailable"
@@ -113,6 +135,7 @@ vysu_setup() {
       [ -n "$spec" ] || continue
       local name="${spec%%:*}" rest="${spec#*:}"; local api="${rest%%:*}"; rest="${rest#*:}"; local device="${rest%%:*}"; local extra="${rest#*:}"
       if [ -d "$HOME/.android/avd/$name.avd" ]; then echo "avd $name: present"; continue; fi
+      if [ "$dry" = 1 ]; then echo "avd $name: missing (vysu setup --yes creates it)"; continue; fi
       local image="system-images;android-$api;google_apis;$abi"
       [ -d "$ANDROID_SDK/system-images/android-$api/google_apis/$abi" ] || { echo "avd $name: downloading $image…"; yes | "$sdkm" --install "$image" >"$LOGS/sdk-api$api.log" 2>&1; }
       echo no | "$avdm" create avd -n "$name" -k "$image" -d "$device" --force >/dev/null 2>&1 || { echo "avd $name: creation failed"; continue; }
@@ -281,6 +304,9 @@ vysu_doctor() {
              MOBILE_BUILD_ANDROID ANDROID_LOCALE SERVICES PUSH THEME MIN_VERSION; do
     local value; value="$(cfg "$key")"
     [ -n "$value" ] || continue
+    # A project with no mobile app has no mobile kind either: the default reads « native », which
+    # says nothing true about it.
+    [ "$key" != MOBILE_KIND ] || [ -n "$(cfg MOBILE_BUNDLE)" ] || continue
     echo "  VYSU_$key = $value ($(config_origin "$key"))"
   done
   auth_describe_line
@@ -304,7 +330,9 @@ vysu_doctor() {
   # shellcheck disable=SC2010,SC2012  # the cache files are named by vysu itself, one prefix each
   local cached
   # shellcheck disable=SC2010  # the cache files are named by vysu itself, one prefix each
-  cached="$(ls "$STATE" 2>/dev/null | grep -E '^(ios-udid-|android-serial-|scale-|state-)' | tr '\n' ' ')"
+  # An empty cache is an answer, not a failure: `grep` finding nothing ends the pipeline under
+  # pipefail, and doctor would stop here — on a fresh project, exactly where it has most to say.
+  cached="$(ls "$STATE" 2>/dev/null | grep -E '^(ios-udid-|android-serial-|scale-|state-)' | tr '\n' ' ' || true)"
   echo "cache: ${cached:-(empty)}$( [ -n "$cached" ] && printf ' — vysu cache clear')"
   echo "ios device: $IOS_DEVICE$(device_origin ios-device)"
   local serial; serial="$(android_serial)"
