@@ -344,6 +344,34 @@ locks and claims, state folder size. `vysu update`: `git pull --ff-only` in the 
 prints the CHANGELOG entries since the previous version. `vysu version`: the VERSION file and the
 short sha.
 
+**0.4 addendum — one report grammar, the browser, and staying up to date.**
+
+`lib/ui.sh` gives every report line one of three shapes and no fourth: `ok` (✓, green, with the
+version), `warn` (!, yellow, optional and missing — what it unlocks, and the command), `miss` (✗,
+red, required and missing — the command). `ui_head` opens a section in bold, `summary` closes on
+`ready: N · optional missing: M · required missing: K`, then each distinct command once, then the
+next steps; `ui_status` is the exit code, 1 as soon as something required is missing. Colours
+follow the tty of the stream they go to, and drop out under `NO_COLOR` or `--no-color`. `die` takes
+a second argument, the command to run next, on its own line. `setup`, `doctor` and `install.sh`
+(which inlines the same six functions, since it runs before the engine exists) speak only that.
+
+The browser is a choice with a default that stays: Chrome for Testing, downloaded by agent-browser
+and driven headless, because one pinned browser is what makes a diff mean a change in the app and
+what keeps a personal profile out of a capture. `VYSU_BROWSER_PATH` — config key, environment, or
+`~/.vysu/machine.env` — names an installed Chromium-based browser instead, passed to every session
+and to the batch as `--executable-path` (`VYSU_BROWSER_ARGS` → `--args`); `vysu setup` lists what
+`/Applications` holds and offers one, `--browser <path|default>` is the scripted form, `doctor`
+names the one in force. `~/.vysu/devices.env` becomes `~/.vysu/machine.env` — it now holds a
+browser as well as devices — and the old name is still read, just below it.
+
+Staying up to date is three moving parts, all visible. `tools.env` in the engine root names the
+`agent-browser` and `agent-device` versions this engine was checked against; `setup` and `update`
+install `@latest` when the machine is below one, `doctor` and `version` only say so. `init` stamps
+every skill it copies with `<!-- vysu-skill <version> -->` after the frontmatter, so `doctor` can
+print `skills: installed 0.3.0 · engine 0.4.0 → vysu init --refresh-skills`; `--refresh-skills`
+re-copies them and touches nothing else. `update` ends on that same line, and moves an engine
+pinned at a tag onto the remote's default branch rather than failing on a detached HEAD.
+
 ## 10. Video toolkit
 
 `remotion/` moves whole. `themes/default/theme.json` is neutral: Inter only, no logo (the header and

@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+From a first external user's first hour on a fresh Mac: they could not tell, from the output of
+`vysu setup`, what was fine, what was blocking and what to run.
+
+- **Every report line says one of three things, and shows it.** `lib/ui.sh`: `✓` fine, with the
+  version · `!` missing and optional, with what it unlocks and the command · `✗` missing and
+  required, with the command — green, yellow, red on a terminal, plain everywhere else
+  (`NO_COLOR`, `--no-color`, a pipe). `vysu setup` ends on `ready: N · optional missing: M ·
+  required missing: K`, then each command to run once, then the two next steps, and **exits 1 when
+  something required is missing** (node, `agent-browser`, `agent-device`, python3 with numpy and
+  Pillow). `vysu doctor` keeps its content and gets the markers; `install.sh` speaks the same
+  grammar. `die` takes a second argument — the command to run next — printed on its own line.
+- **A browser of your own.** `VYSU_BROWSER_PATH` (config key, environment, or `~/.vysu/machine.env`)
+  drives an installed Chromium-based browser instead of the downloaded Chrome for Testing;
+  `VYSU_BROWSER_ARGS` adds launch flags. `vysu setup` lists what `/Applications` holds (Brave,
+  Chrome, Edge, Chromium) and offers one, `--browser <path|default>` is the scripted form, and
+  `vysu doctor` names the browser in force. The default does not move: Chrome for Testing,
+  headless, the same rendering on every machine and no personal profile touched — the README says
+  why, and warns that a personal browser may not match a baseline captured elsewhere and that
+  Brave's shields alter pages.
+- **`~/.vysu/devices.env` is now `~/.vysu/machine.env`** — it holds a browser as well as devices.
+  The old name is still read, just below it, so nothing breaks on an update.
+- **The update path.** `tools.env` in the engine root names the `agent-browser` and `agent-device`
+  versions this engine was checked against: `vysu setup` and `vysu update` install `<tool>@latest`
+  when the machine is below one, `vysu doctor` warns, and `vysu version` prints both versions
+  against their minimums. `vysu update` now reads: the pull, the CHANGELOG since, the tools, and a
+  reminder when this project's skills are older than the engine. It also moves an engine pinned at
+  a tag onto the remote's default branch instead of failing on a detached HEAD.
+- **Skills carry their version.** `vysu init` stamps every `SKILL.md` it installs with
+  `<!-- vysu-skill <version> -->` after the frontmatter; `vysu doctor` prints
+  `skills: installed 0.3.0 · engine 0.4.0 → vysu init --refresh-skills` when they differ, and
+  `vysu init --refresh-skills [--skills-dir <dir>]` re-copies them without touching `.vysu/config`.
+
 ## 0.3.0 — 2026-09-22
 
 The validated release: every command exercised on a real Expo app, on a native release APK, on

@@ -34,6 +34,28 @@ simulator or emulator.
 vysu setup                     # node tools, the browser, simulators, emulators
 ```
 
+Every line of the installer and of `vysu setup` says exactly one of three things — `✓` it is fine,
+with the version; `!` it is missing and optional, with what it unlocks and the command; `✗` it is
+missing and required, with the command — and `setup` ends on the counts, the exact commands to run
+and the two next steps. It exits 1 when something required is missing (node, `agent-browser`,
+`agent-device`, python3 with numpy and Pillow), 0 otherwise, so a script can branch on it.
+
+```
+## summary
+ready: 6 · optional missing: 5 · required missing: 0
+
+run:
+  brew install ffmpeg
+  vysu setup --yes
+
+next:
+  cd <your project> && vysu init      the .vysu/config of that project
+  vysu persona add <name>             credentials, mode 600, never printed
+```
+
+Colours go away on their own when the output is not a terminal, and `--no-color` or `NO_COLOR=1`
+turns them off anywhere.
+
 By hand, the same thing is:
 
 ```bash
@@ -121,7 +143,7 @@ with defaults and examples is in [docs/config.md](docs/config.md).
 | Section | Keys | What it decides |
 |---|---|---|
 | identity | `VYSU_PROJECT`, `VYSU_STATE`, `VYSU_MIN_VERSION` | session prefix, state folder, the engine version you need |
-| the web app | `VYSU_ORIGIN`, `VYSU_LOGIN_PATH`, `VYSU_BASELINE_ORIGIN`, `VYSU_SIZES`, `VYSU_LANGS`/`VYSU_LANG`/`VYSU_LANG_STORAGE_KEY`, `VYSU_LOCALES`, `VYSU_WEB_REPO`, `VYSU_API_PATTERN`, `VYSU_API_HOSTS` | what is opened, what `--baseline-url @` points at, which viewports, which languages, what a report calls the API |
+| the web app | `VYSU_ORIGIN`, `VYSU_LOGIN_PATH`, `VYSU_BASELINE_ORIGIN`, `VYSU_SIZES`, `VYSU_LANGS`/`VYSU_LANG`/`VYSU_LANG_STORAGE_KEY`, `VYSU_LOCALES`, `VYSU_WEB_REPO`, `VYSU_API_PATTERN`, `VYSU_API_HOSTS`, `VYSU_BROWSER_PATH`/`VYSU_BROWSER_ARGS` | what is opened, what `--baseline-url @` points at, which viewports, which languages, what a report calls the API, which browser renders it |
 | auth | `VYSU_AUTH`, `VYSU_AUTH0_*` | which connector signs a persona in, and its labels |
 | the mobile app | `VYSU_MOBILE_KIND`, `VYSU_MOBILE_BUNDLE`, `VYSU_IOS_APP`, `VYSU_MOBILE_DIR`, `VYSU_MOBILE_ENV`, `VYSU_MOBILE_SCHEME`, `VYSU_MOBILE_READY_TEXT`, `VYSU_IOS_APP_PATH`/`VYSU_ANDROID_APK`, `VYSU_MOBILE_BUILD_IOS`/`_ANDROID`, `VYSU_IOS_DEVICE`/`VYSU_IOS_OLD_DEVICE`, `VYSU_ANDROID_AVD`/`VYSU_ANDROID_AVDS`, `VYSU_ANDROID_LOCALE` | which app on which devices, and how it is started |
 | services | `VYSU_SERVICES`, `VYSU_SERVICE_<name>_CMD/_DIR/_PORT/_HEALTH/_ENV/_TIMEOUT/_STOP` | what `vysu up` and `vysu down` know |
@@ -131,6 +153,36 @@ with defaults and examples is in [docs/config.md](docs/config.md).
 An environment variable of the same name wins over the file, so `VYSU_ORIGIN=… vysu shots …`
 overrides a value for one command. `vysu doctor` prints what is in force and where each value came
 from.
+
+## The browser
+
+`agent-browser install` downloads **Chrome for Testing** and every session runs it headless. That
+is the default, and it is deliberate: one pinned browser renders a page the same way on your
+machine, on a colleague's and in CI, so a diff means a change in the app — and it opens no personal
+profile, so no extension, no theme and no logged-in tab of your own ends up in a capture.
+
+When you would rather see your own browser, name its executable:
+
+```bash
+vysu setup --browser "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+vysu setup --browser default          # back to Chrome for Testing
+```
+
+`vysu setup` lists the Chromium-based browsers it finds in `/Applications` (Brave, Chrome, Edge,
+Chromium — not Safari, not Firefox: agent-browser drives Chromium) and, with a terminal to answer,
+offers to use one. The choice is written into `~/.vysu/machine.env`; a project can override it in
+`.vysu/config` and a single command through the environment:
+
+```bash
+VYSU_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' vysu walk - home --url https://example.com/
+VYSU_BROWSER_ARGS='--disable-blink-features=AutomationControlled'   # optional launch flags
+```
+
+**A personal browser may render a page differently from a baseline captured elsewhere** — a
+different major version, different fonts, a different GPU path — so a `--baseline-url` diff is only
+trustworthy when both sides ran the same browser. **Brave's shields alter pages** (blocked scripts,
+stubbed APIs, changed layout): a capture taken through it is Brave's view of your app, not a
+reviewer's. `vysu doctor` names the browser in force, and where the value came from.
 
 ## Native apps
 
@@ -180,9 +232,34 @@ at all (`none`). For anything else, `vysu init` copies a commented template to `
 connector may call, and how to test it — is in
 [`connectors/auth/README.md`](connectors/auth/README.md).
 
+## Updating
+
+```bash
+vysu update                    # the engine, the node tools, and what changed
+```
+
+`vysu update` fast-forwards the engine checkout (moving it off a tag onto the default branch when
+it was pinned), prints the CHANGELOG entries since the version you were on, then checks
+`agent-browser` and `agent-device` against `tools.env` — the versions this engine is known to work
+with — and installs `<tool>@latest` when either is below. Run inside a project, it also says when
+that project's copies of the skills are older than the engine:
+
+```
+! skills: installed 0.3.0 · engine 0.4.0 → vysu init --refresh-skills
+```
+
+`vysu init --refresh-skills` re-copies this engine's skills into `.claude/skills/` (or
+`--skills-dir <dir>`) and touches nothing else — not `.vysu/config`, not your personas. Each
+`SKILL.md` carries a `<!-- vysu-skill <version> -->` marker so `vysu doctor` can compare them.
+
+A project that needs a given engine sets `VYSU_MIN_VERSION` in its `.vysu/config`: every command
+then warns — and `vysu doctor` says so first — while the machine is below it. `vysu version` prints
+the engine version, its sha, and the two tools' versions against their minimums.
+
 ## Agent skills
 
-`vysu init` installs two skills into `.claude/skills/` (or `--skills-dir <dir>`):
+`vysu init` installs two skills into `.claude/skills/` (or `--skills-dir <dir>`), and
+`vysu init --refresh-skills` re-copies them after an engine update:
 
 - **`visual-check`** — the token-aware loop, the commands, how to read a diff / report / contact
   sheet, mobile devices and large text, notifications, a local stack, troubleshooting.
@@ -206,6 +283,8 @@ project that has its own definition of done writes a thin overlay skill on top.
   itself: the install is `git clone` plus PATH.
 
 `vysu setup` checks all of it and installs what it can; `vysu doctor` says what is still missing.
+The versions of `agent-browser` and `agent-device` the engine is known to work with live in
+[`tools.env`](tools.env); `setup` and `update` upgrade a machine that is below them.
 
 ## Status
 

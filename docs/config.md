@@ -3,7 +3,10 @@
 A project's `.vysu/config` is sourced by bash: `KEY='value'`, with no expansion you would not write
 by hand. An environment variable of the same name **wins over the file**, and unknown keys are
 ignored. `vysu doctor` prints the values in force and where each one came from (`env`, `config`,
-`devices.env`, `default`).
+`machine.env`, `devices.env`, `default`). `~/.vysu/machine.env` is what `vysu setup` writes about
+this machine — its simulators, its AVDs, its browser — and sits below the project config: a machine
+says what it has, a project says what it wants. It was called `devices.env` until 0.4.0, and a file
+of that name is still read, just below it.
 
 Every key is optional except `VYSU_PROJECT`, whose default is the project folder's name. A value an
 app has to decide — an origin, a bundle id, a locales folder — has no sensible default and stays
@@ -36,6 +39,8 @@ empty; the command that needs one says which key is missing.
 | `VYSU_WEB_REPO` | the git checkout whose sha and branch go into `meta.json` | the project itself | `apps/web` |
 | `VYSU_API_PATTERN` | the request path prefix that identifies the API in the network log | `/api/` | `/api/v1/` |
 | `VYSU_API_HOSTS` | `host=label` pairs: what a report calls that API instead of its host | empty | `localhost:8080=local api.example.com=prod` |
+| `VYSU_BROWSER_PATH` | the Chromium-based browser every web session runs in. Empty is the Chrome for Testing agent-browser downloads, headless — the same rendering on every machine, no personal profile, no extension. Also read from `~/.vysu/machine.env`, where `vysu setup --browser` writes it | empty | `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser` |
+| `VYSU_BROWSER_ARGS` | launch flags handed to that browser, comma-separated | empty | `--disable-blink-features=AutomationControlled` |
 
 ## Auth
 

@@ -9,7 +9,14 @@ VYSU_CMD="${VYSU_CMD:-vysu}"
 # that subshell only, and let the command carry on with an empty result: the signal ends the script
 # itself, through its EXIT trap.
 trap 'exit 1' USR1
-die() { echo "vysu: $*" >&2; kill -USR1 "$VYSU_PID" 2>/dev/null; exit 1; }
+# `die "<what went wrong>"`, and `die "<what went wrong>" "<the command that fixes it>"`: the second
+# line is what the reader runs next, and it is the only thing they have to read.
+die() {
+  local msg="$1"; shift || true
+  printf '%svysu: %s%s\n' "${E_ON:-}" "$msg" "${E_OFF:-}" >&2
+  [ $# -eq 0 ] || printf 'next: %s\n' "$*" >&2
+  kill -USR1 "$VYSU_PID" 2>/dev/null; exit 1
+}
 log() { echo "vysu: $*" >&2; }
 usage() { awk 'NR > 1 { if (substr($0, 1, 1) != "#") exit; print }' "$VYSU_ENGINE/bin/vysu"; }
 slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | tr -s '-'; }
@@ -23,6 +30,8 @@ deprecated() { echo "vysu: « $1 » is the old spelling — use « $2 » (it sti
 # and only a command needing a persona, a service or a connector says what is missing.
 VYSU_PROJECT_DIR="${VYSU_PROJECT_DIR:-}"
 VYSU_CONFIG_FILE=""
+# What this machine has, written by `vysu setup`: the devices it drives and the browser it opens.
+MACHINE_ENV="$HOME/.vysu/machine.env"
 config_find() {
   if [ -n "${VYSU_CONFIG:-}" ]; then
     [ -f "$VYSU_CONFIG" ] || die "no config file $VYSU_CONFIG (VYSU_CONFIG)"
@@ -54,10 +63,13 @@ config_load() {
   local snapshot; snapshot="$(config_env_snapshot)"
   VYSU_ENV_KEYS=" $(printf '%s\n' "$snapshot" | sed -n 's/^export \([A-Za-z0-9_]*\)=.*/\1/p' | tr '\n' ' ')"
   config_find
-  # The global device file `vysu setup` writes sits below the project config: a machine says which
-  # simulators it has, a project says which ones it wants.
-  # shellcheck disable=SC1091  # the user's own file, absent on a fresh machine
+  # The machine-wide file `vysu setup` writes sits below the project config: a machine says which
+  # simulators and which browser it has, a project says which ones it wants. `devices.env` is the
+  # name it had until 0.4.0 and is still read, first, so an engine update changes nothing.
+  # shellcheck disable=SC1091  # the user's own files, absent on a fresh machine
   [ ! -f "$HOME/.vysu/devices.env" ] || { set -a; . "$HOME/.vysu/devices.env"; set +a; }
+  # shellcheck disable=SC1090
+  [ ! -f "$MACHINE_ENV" ] || { set -a; . "$MACHINE_ENV"; set +a; }
   # shellcheck disable=SC1090  # the project's own file, its path only known at runtime
   [ -z "$VYSU_CONFIG_FILE" ] || { set -a; . "$VYSU_CONFIG_FILE"; set +a; }
   eval "$snapshot"
@@ -69,6 +81,7 @@ config_origin() { # KEY
   case "$VYSU_ENV_KEYS" in *" VYSU_$1 "*) printf 'env'; return;; esac
   local set_in="^[[:space:]]*(export[[:space:]]+)?VYSU_$1="
   if [ -n "$VYSU_CONFIG_FILE" ] && grep -qE "$set_in" "$VYSU_CONFIG_FILE" 2>/dev/null; then printf 'config'; return; fi
+  if [ -f "$MACHINE_ENV" ] && grep -qE "$set_in" "$MACHINE_ENV" 2>/dev/null; then printf 'machine.env'; return; fi
   if [ -f "$HOME/.vysu/devices.env" ] && grep -qE "$set_in" "$HOME/.vysu/devices.env" 2>/dev/null; then printf 'devices.env'; return; fi
   printf 'default'
 }
@@ -96,6 +109,10 @@ config_defaults() {
   : "${VYSU_WEB_REPO:=}"
   : "${VYSU_API_PATTERN:=/api/}"
   : "${VYSU_API_HOSTS:=}"
+  # Empty means the browser agent-browser downloaded: Chrome for Testing, headless, the same
+  # rendering on every machine. A path here is an installed Chromium-based browser instead.
+  : "${VYSU_BROWSER_PATH:=}"
+  : "${VYSU_BROWSER_ARGS:=}"
   # No login until a project names a connector: `login` then opens the url and `auth token` prints
   # nothing, which is the right answer for a static site, a Storybook and a page behind no door.
   : "${VYSU_AUTH:=none}"

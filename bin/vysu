@@ -95,12 +95,23 @@
 #   vysu cache clear                        forget what is remembered per device: simulator UDIDs, emulator
 #                                           serials, scales, and the text size / appearance / language applied
 #   vysu setup [--yes] [--dry-run] [--ios-device <n>] [--ios-old-device <n>] [--android-avds "<spec>;…"]
+#              [--browser <path|default>]
 #                                           machine-wide onboarding: tools, browser, simulators, emulators.
+#                                           Every line is one of three things — fine (with the version),
+#                                           optional and missing, required and missing — and it ends on the
+#                                           counts and the exact commands to run (exit 1 on a required one).
 #                                           With no terminal to answer, it reports and creates nothing;
-#                                           --yes is how a script asks for the installing run
+#                                           --yes is how a script asks for the installing run.
+#                                           --browser names an installed Chromium-based browser to drive
+#                                           instead of the downloaded Chrome for Testing, `default` clears it
 #   vysu init [--yes] [--skills-dir <dir>]  write .vysu/config in this project and install the agent skills
+#   vysu init --refresh-skills [--skills-dir <dir>]   re-copy this engine's skills, and nothing else
 #   vysu doctor                             tooling, resolved config, connectors, personas, sessions, devices, locks
-#   vysu update | vysu version              pull the engine and show the CHANGELOG since · the version and sha
+#   vysu update | vysu version              pull the engine, then the CHANGELOG since, the node tools it needs
+#                                           and a reminder when this project's skills are older · the version,
+#                                           the sha and the tools' versions
+#
+# `--no-color` (or NO_COLOR, or a stdout that is not a terminal) drops the markers' colours.
 #   vysu <name> …                           an executable .vysu/commands/<name> of the project, with every VYSU_* exported
 #
 # Several agents share this Mac: every command locks the device or the persona session it drives,
@@ -127,6 +138,9 @@ export VYSU_ENGINE
 
 # lib/ is sourced, never executed: one process holds the locks, the batch file and the recorder it
 # has to clean up on the way out, and a sub-process would take none of that with it.
+# ui.sh before everything: core.sh's `die` paints itself with the colours decided there.
+# shellcheck source=lib/ui.sh
+. "$VYSU_ENGINE/lib/ui.sh"
 # shellcheck source=lib/core.sh
 . "$VYSU_ENGINE/lib/core.sh"
 # shellcheck source=lib/persona.sh
@@ -151,6 +165,10 @@ export VYSU_ENGINE
 . "$VYSU_ENGINE/lib/setup.sh"
 
 # shellcheck disable=SC2034  # read by core.sh, which was sourced before this line ran
+# A leading `--no-color` is the global form (`vysu --no-color doctor`); setup, init and doctor take
+# it among their own options too. Only leading, so a `rec` step that says --no-color stays a step.
+case "${1:-}" in --no-color) ui_no_color; shift;; esac
+
 VYSU_CMD="$(printf 'vysu %s' "$*" | cut -c1-120)"
 config_load
 devices_resolve

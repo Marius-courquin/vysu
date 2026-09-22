@@ -20,24 +20,48 @@ set -euo pipefail
 REPO="${VYSU_REPO:-https://github.com/Marius-courquin/vysu}"
 DIR="${VYSU_INSTALL_DIR:-$HOME/vysu}"
 
-say() { printf '%s\n' "$*"; }
-die() { printf 'install: %s\n' "$*" >&2; exit 1; }
+# The same three things a `vysu setup` line says, inlined: this script runs before lib/ui.sh
+# exists on the machine. Markers are coloured only on a terminal, and NO_COLOR is honoured.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  M_OK=$'\033[32m✓\033[0m'; M_WARN=$'\033[33m!\033[0m'
+  M_INFO=$'\033[2m·\033[0m'; H_ON=$'\033[1m'; H_OFF=$'\033[0m'
+else
+  M_OK='✓'; M_WARN='!'; M_INFO='·'; H_ON=''; H_OFF=''
+fi
+E_ON=''; E_OFF=''
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then E_ON=$'\033[31m'; E_OFF=$'\033[0m'; fi
+OK_N=0; WARN_N=0
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '%s %s\n' "$M_OK" "$*"; OK_N=$((OK_N + 1)); }
+warn() { printf '%s %s\n' "$M_WARN" "$*"; WARN_N=$((WARN_N + 1)); }
+info() { printf '%s %s\n' "$M_INFO" "$*"; }
+head_() { printf '\n%s## %s%s\n' "$H_ON" "$*" "$H_OFF"; }
+# One red line for what went wrong, one plain line for what to run about it.
+die() {
+  printf '%sinstall: %s%s\n' "$E_ON" "$1" "$E_OFF" >&2
+  [ $# -lt 2 ] || printf 'next: %s\n' "$2" >&2
+  exit 1
+}
 
-command -v git >/dev/null || die "git is missing (macOS: xcode-select --install)"
+head_ "engine"
+command -v git >/dev/null || die "git is missing" "xcode-select --install"
 
 if [ -d "$DIR/.git" ]; then
-  git -C "$DIR" pull -q --ff-only && say "engine: updated in $DIR"
+  git -C "$DIR" pull -q --ff-only || die "cannot update the checkout in $DIR" "cd $DIR && git status"
+  ok "engine: updated in $DIR"
 elif [ -e "$DIR" ]; then
-  die "$DIR exists and is not a vysu checkout (set VYSU_INSTALL_DIR to another folder)"
+  die "$DIR exists and is not a vysu checkout" "VYSU_INSTALL_DIR=~/vysu-engine $0"
 else
   # A private repository needs an authenticated clone: the GitHub CLI has the login when the
   # user ran `gh auth login`; plain git only has it when a credential helper or an SSH key is set.
   if [ -z "${VYSU_REPO:-}" ] && command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
-    gh repo clone Marius-courquin/vysu "$DIR" -- -q 2>/dev/null || die "cannot clone with gh — is your account a collaborator of Marius-courquin/vysu?"
+    gh repo clone Marius-courquin/vysu "$DIR" -- -q 2>/dev/null \
+      || die "cannot clone with gh — is your account a collaborator of Marius-courquin/vysu?" "gh auth status"
   else
-    git clone -q "$REPO" "$DIR" 2>/dev/null || die "cannot clone $REPO — no network, or the repository is private and this machine is not logged in: brew install gh && gh auth login, then run this again"
+    git clone -q "$REPO" "$DIR" 2>/dev/null \
+      || die "cannot clone $REPO — no network, or the repository is private and this machine is not logged in" "brew install gh && gh auth login"
   fi
-  say "engine: cloned into $DIR"
+  ok "engine: cloned into $DIR"
 fi
 chmod +x "$DIR/bin/vysu"
 
@@ -60,18 +84,28 @@ if [ -z "$linked" ]; then
   esac
   mkdir -p "$(dirname "$rc")"; touch "$rc"
   grep -qF "$DIR/bin" "$rc" || { printf '\n# vysu\n%s\n' "$line" >>"$rc"; }
-  say "path: $line  (added to $rc)"
+  warn "path: $line — added to $rc, which this terminal has not read yet"
 else
-  say "path: $linked → $DIR/bin/vysu"
+  ok "path: $linked → $DIR/bin/vysu"
 fi
 
 # 4. The proof, through the absolute path — the current shell has not re-read anything yet.
-say "check: $("$DIR/bin/vysu" version)"
-say ""
-if [ -n "$linked" ] && command -v vysu >/dev/null 2>&1; then
-  say "vysu is ready in this terminal."
+head_ "check"
+if out="$("$DIR/bin/vysu" version 2>&1)"; then
+  ok "$(printf '%s' "$out" | head -1)"
+  printf '%s\n' "$out" | tail -n +2 | while IFS= read -r l; do info "$l"; done
 else
-  say "Open a NEW terminal (or run: source $rc), then check with: vysu version"
+  die "the engine does not answer: $out" "$DIR/bin/vysu version"
 fi
-say "Next: vysu setup          (tools, browser, simulators and emulators — asks before creating devices)"
-say "      cd <your project> && vysu init"
+if [ -n "$linked" ] && command -v vysu >/dev/null 2>&1; then
+  ok "vysu is ready in this terminal"
+else
+  warn "vysu is not on this terminal's PATH yet — open a new terminal${rc:+, or: source $rc}"
+fi
+
+head_ "summary"
+printf 'ready: %d · to do: %d\n' "$OK_N" "$WARN_N"
+printf '\nnext:\n'
+[ -n "$linked" ] || printf '  %s\n' "source $rc                          (or open a new terminal)"
+printf '  %s\n' "vysu setup                          tools, browser, simulators, emulators"
+printf '  %s\n' "cd <your project> && vysu init      the .vysu/config of that project"

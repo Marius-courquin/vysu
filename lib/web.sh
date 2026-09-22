@@ -30,7 +30,23 @@ session_of() {
 # What that session's lock is called: a test must not hold the real persona's session, which it
 # never touches, for as long as it runs.
 web_lock_of() { [ -z "$AUTH_TEST_SESSION" ] && printf 'web-%s' "$(slug "$1")" || printf 'web-authtest'; }
-ab() { lock_take "$(web_lock_of "$1")"; ab_quiet agent-browser --session "$(session_of "$1")" --restore "${@:2}"; }
+# Which browser every session runs in. Empty by default, and that is the point: agent-browser
+# downloads Chrome for Testing and drives it headless, so a capture looks the same on every
+# machine, no personal profile is touched and no extension rewrites the page. VYSU_BROWSER_PATH
+# names an installed Chromium-based browser instead, for whoever wants to see their own.
+BROWSER_OPTS=()
+browser_opts() {
+  BROWSER_OPTS=()
+  local exe args; exe="$(cfg BROWSER_PATH)"; args="$(cfg BROWSER_ARGS)"
+  [ -z "$exe" ] || { [ -x "$exe" ] || die "VYSU_BROWSER_PATH is not an executable: $exe" "vysu setup --browser default"; BROWSER_OPTS+=(--executable-path "$exe"); }
+  [ -z "$args" ] || BROWSER_OPTS+=(--args "$args")
+}
+browser_name() { # what to call the browser in a report
+  local exe; exe="$(cfg BROWSER_PATH)"
+  [ -n "$exe" ] || { printf 'Chrome for Testing (agent-browser default, headless)'; return; }
+  printf '%s · %s' "$(basename "$exe")" "$exe"
+}
+ab() { lock_take "$(web_lock_of "$1")"; browser_opts; ab_quiet agent-browser --session "$(session_of "$1")" --restore "${BROWSER_OPTS[@]+"${BROWSER_OPTS[@]}"}" "${@:2}"; }
 # The primitive a connector drives the browser with: the same session, the same lock, no batch.
 web() { ab "$@"; }
 # The first visible button among several names: a label differs by language and by version, and a
@@ -57,7 +73,8 @@ brun() { # persona → the batch results as JSON, the queue emptied
   lock_take "$(web_lock_of "$1")"
   local json; json="$(python3 -c 'import sys, json; print(json.dumps([l.split("\t") for l in open(sys.argv[1]).read().splitlines() if l]))' "$BATCH")"
   rm -f "$BATCH"
-  printf '%s' "$json" | ab_quiet agent-browser --session "$(session_of "$1")" --restore batch --json || true
+  browser_opts
+  printf '%s' "$json" | ab_quiet agent-browser --session "$(session_of "$1")" --restore "${BROWSER_OPTS[@]+"${BROWSER_OPTS[@]}"}" batch --json || true
 }
 # Reads those results: a failed step stops vysu here with what agent-browser said, and every
 # « /*vysubox*/ » eval — the boxes an --ignore selector resolved to — comes back as one line. A wait

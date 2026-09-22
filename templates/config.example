@@ -36,6 +36,15 @@ VYSU_LOGIN_PATH='/login'
 # VYSU_API_PATTERN='/api/v1/'
 # `host=label` pairs: what a report calls that API instead of its host.
 # VYSU_API_HOSTS='localhost:8080=local api.example.com=prod'
+# Which browser every web session runs in. Empty (the default) is the Chrome for Testing that
+# agent-browser downloads, driven headless: the same rendering on every machine, no personal
+# profile opened, no extension rewriting the page. A path here drives an installed Chromium-based
+# browser instead (Brave, Chrome, Edge, Chromium — not Safari, not Firefox), which is worth knowing
+# when a capture is diffed against a baseline taken elsewhere; Brave's shields alter pages.
+# `vysu setup` lists the ones it finds and writes the choice into ~/.vysu/machine.env.
+# VYSU_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+# Launch flags handed to the browser, comma-separated.
+# VYSU_BROWSER_ARGS='--disable-blink-features=AutomationControlled'
 
 # --- auth ---------------------------------------------------------------------------------------
 
