@@ -128,5 +128,9 @@ auth_test() { # <persona> [ios|android]
 # the test rather than after, so « no cookies » is true even then.
 auth_test_close_state() {
   rm -f "$HOME/.agent-browser/sessions/$AUTH_TEST_SESSION-$AUTH_TEST_SESSION.json"
+  # Only when one is actually running: closing a session that is not there starts a daemon just to
+  # stop it, and that shutdown lands on the browser the test opens a second later — the page comes
+  # back blank half way through the login, which is a long way from where the real fault is.
+  agent-browser session list 2>/dev/null | grep -q "$AUTH_TEST_SESSION\$" || return 0
   agent-browser --session "$AUTH_TEST_SESSION" close >/dev/null 2>&1 || true
 }
