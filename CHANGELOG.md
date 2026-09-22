@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-09-22
 
+- **A soundtrack ships with the engine.** `digital-clouds.mp3` (Mixkit licence, see
+  `remotion/public/music/LICENSE.md`) plays in every film whose cut names no `music`; `"music": null`
+  keeps a film silent; another track needs its licence line first.
 - **Native mobile apps.** `VYSU_MOBILE_KIND` is `expo` (a dev-client served by Metro) or `native`
   (Swift, Kotlin, Flutter, .NET — already built); the default is `expo` when `VYSU_MOBILE_DIR` is
   set and `native` otherwise, and `vysu doctor` prints it. Everything above agent-device — `mshot`,
