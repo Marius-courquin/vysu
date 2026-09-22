@@ -101,9 +101,9 @@ What the recorder logged, every instant in **clip seconds** from the first frame
   `*between asterisks*`. In a chapter it is `secondary` under a hand-drawn underline, drawn in as
   the title lands; in the Opening it is a plain `secondary` word (no underline); in the Finish it is
   `primary` (the film ends on the brand, not on an instruction).
-- `outro` is `{ title, subtitle?, cta?, caption? }`: `cta` is the ink pill's label (default
-  "En savoir plus", followed by a ↗) and `caption` the line under it (empty by default — the
-  product's address is the cut's to give).
+- `outro` is `{ title, subtitle?, cta?, caption? }`: `cta` is the ink pill's label (followed by a
+  ↗), defaulting to the theme's own `cta` and then to nothing, and `caption` the line under it
+  (empty by default — the product's address is the cut's to give).
 - `music` names a file under `public/music/`. No soundtrack ships with the engine: drop one in,
   with its licence, before naming it here. It plays at 55 %, fades in over 0.7 s, fades out over the
   last 2 s, loops if shorter than the film and is trimmed to it. No narration, no captions.
@@ -162,8 +162,9 @@ Tap ripple: a `secondary` outline opening 18 → 60 pt over 0.4 s, no cursor, no
 ## Themes
 
 `theme.json` is the only project-specific code path: colours, font stacks, the `.woff2` faces
-(loaded with `@remotion/fonts`), an optional `logo`, radii and the device shadow. Porting the
-toolkit to another product is a folder plus its assets, no code.
+(loaded with `@remotion/fonts`), an optional `logo`, an optional `cta` (the outro pill's default
+label, in the project's own words and language), radii and the device shadow. Porting the toolkit
+to another product is a folder plus its assets, no code.
 
 A theme name is resolved in two places, project first:
 
@@ -175,7 +176,8 @@ A theme name is resolved in two places, project first:
    already point inside `public/` (`fonts/…`) and are used as they are.
 
 `themes/default/` is the neutral fallback: a grey-blue palette, Inter for both the display and the
-body face, and no `logo` — so a project that has not declared a brand still renders a clean film.
+body face, "Learn more" as its `cta` and no `logo` — so a project that has not declared a brand
+still renders a clean film.
 
 ## Rendering
 

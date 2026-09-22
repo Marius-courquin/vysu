@@ -84,9 +84,9 @@ export const cutSchema = z.strictObject({
 });
 
 // The outro's call to action and its caption are usually the same across a project's films, so they
-// are defaults rather than required copy. The caption defaults to nothing: the address of the
-// product is the cut's to give, never the engine's to guess.
-const DEFAULT_CTA = 'En savoir plus';
+// are defaults rather than required copy — the call to action in the theme, which is where a
+// project's own words live, and the caption nowhere: the address of the product is the cut's to
+// give, never the engine's to guess.
 const DEFAULT_CAPTION = '';
 
 export type EventsFile = z.infer<typeof eventsSchema>;
@@ -222,13 +222,13 @@ export function resolveCut(input: {
     ? {
         title: cut.outro.title,
         subtitle: cut.outro.subtitle ?? null,
-        cta: cut.outro.cta ?? DEFAULT_CTA,
+        cta: cut.outro.cta ?? theme.cta ?? '',
         caption: cut.outro.caption ?? DEFAULT_CAPTION,
       }
     : null;
   return {
     format,
-    lang: cut.lang ?? 'fr',
+    lang: cut.lang ?? 'en',
     theme,
     clip,
     segments,

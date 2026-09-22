@@ -160,7 +160,8 @@ test('the outro fills in its call to action and its caption', () => {
   assert.deepEqual(props.outro, {
     title: 'À vous de *l’essayer*.',
     subtitle: 'La suite se passe dans l’application.',
-    cta: 'En savoir plus',
+    // A cut that names no call to action takes the theme's own: the default theme says "Learn more".
+    cta: defaultTheme.cta,
     caption: '',
   });
   assert.equal(props.music, 'music/digital-clouds.mp3', 'music is resolved under public/music/');

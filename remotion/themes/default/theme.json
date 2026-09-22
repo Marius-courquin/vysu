@@ -30,6 +30,7 @@
       { "family": "Inter", "weight": 600, "file": "fonts/inter-latin-600-normal-LgqL8muc.woff2" }
     ]
   },
+  "cta": "Learn more",
   "radius": { "device": 92, "browser": 20 },
   "shadow": {
     "device": "0 40px 90px rgba(16, 24, 40, 0.20), 0 8px 20px rgba(16, 24, 40, 0.10)",

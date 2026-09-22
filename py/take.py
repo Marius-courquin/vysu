@@ -217,12 +217,13 @@ def cmd_draft(args):
         # The project's video theme, resolved by the engine: `.vysu/themes/<name>` first, then the
         # toolkit's own. Absent from the config, the neutral `default` theme is what renders.
         "theme": os.environ.get("VYSU_THEME") or "default",
-        "lang": meta.get("lang") or "fr",
+        # The take's own language, then the project's, then English: the engine is neutral and a
+        # film that says nothing about its language is not a French one.
+        "lang": meta.get("lang") or os.environ.get("VYSU_LANG") or "en",
         "intro": {"title": re.sub(r"[-_]+", " ", args.take).strip().capitalize(), "subtitle": ""},
         "outro": {"title": "", "caption": ""},
         "keep": keep,
         "chapters": chapters,
-        "milestones": [],
         "taps": [],
     }
     print(json.dumps(cut, ensure_ascii=False, indent=1))

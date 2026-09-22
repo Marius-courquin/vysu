@@ -36,6 +36,9 @@ export const themeSchema = z.object({
   }),
   // Optional: a theme that declares no logo simply renders no lockup (header, Opening, Finish).
   logo: z.object({ lockup: z.string(), mark: z.string() }).optional(),
+  // The outro pill's label when a cut names none: the same words across a project's films, and in
+  // the project's own language. Absent from theme and cut alike, the pill carries no label.
+  cta: z.string().optional(),
   radius: z.object({ device: z.number(), browser: z.number() }),
   shadow: z.object({ device: z.string(), float: z.string() }),
 });
