@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-09-22
+
+The validated release: every command exercised on a real Expo app, on a native release APK, on
+Apple's Settings app, and a full film rendered with a project theme and the shipped soundtrack.
 
 - Fixed: a project whose `.vysu/` does not sit inside `VYSU_PROJECT_DIR` — a config kept in a
   worktree while the project dir stays the checkout its relative paths point into — lost its theme,

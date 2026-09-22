@@ -178,8 +178,8 @@ project that has its own definition of done writes a thin overlay skill on top.
 
 ## Status
 
-`v0.2.0`: every command of the original tool, project-agnostic, Expo and native mobile apps, a
-soundtrack shipped. The design note is
+`v0.3.0`: every command of the original tool, project-agnostic, Expo and native mobile apps, a
+soundtrack shipped, validated end to end on iOS and Android. The design note is
 [docs/design.md](docs/design.md); the first consumer is the Nidz monorepo through its `.vysu/`
 folder. Bugs and requests: GitHub issues.
 
