@@ -45,6 +45,22 @@ mob_press_all() { # platform "<label>,<label>…"
   done
   return "$pressed"
 }
+# The text fields on screen, read from a capture rather than from the tree: a login form inside a
+# system web surface (SafariViewService on iOS 18, a Chrome Custom Tab) is invisible to the
+# platform's accessibility, and a connector that cannot read it has nothing else to aim at. Prints
+# py/fields.py's JSON — boxes in points, top to bottom — and answers 1 when it sees none, so a
+# connector can say what it expected instead of tapping at a constant.
+mob_fields() { # platform
+  local platform="$1"; [ -n "$platform" ] || die "mob_fields: ios or android"
+  [ -f "$FIELDS" ] || die "fields.py missing ($FIELDS)"
+  local png="$STATE/fields-$platform.png"
+  mkdir -p "$STATE"
+  # Same 1x capture as `vysu mshot`: the boxes then come back in the points a press is given in.
+  local args=(); read -r -a args <<<"$(mcapture_args "$platform")"
+  ad "$platform" screenshot "$png" "${args[@]}" >/dev/null
+  "$FIELDS" "$png" --json
+}
+
 mobile_app() { [ "$1" = ios ] && printf '%s' "$(cfg IOS_APP)" || printf '%s' "$(cfg MOBILE_BUNDLE)"; }
 # `simctl … booted` is ambiguous once two simulators run: always address the chosen device's UDID.
 # Resolving it costs a full `simctl list` (~1 s), so it is remembered per device name; `sim` forgets

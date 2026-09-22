@@ -21,6 +21,19 @@ auth0_domain() { auth0_opt DOMAIN auth0.com; }
 # shellcheck disable=SC2086  # splitting on the comma is the point: one label per line
 auth0_labels() { local IFS=,; printf '%s\n' $1; }
 
+# The centre of the first text field on screen, in points, for the surfaces the platform's
+# accessibility cannot read: the picture is all there is to go by there.
+auth0_first_field() { # platform → « x y »
+  mob_fields "$1" | python3 -c '
+import json, sys
+boxes = json.load(sys.stdin)
+if not boxes:
+    raise SystemExit(1)
+box = boxes[0]
+print("%d %d" % (box["x"] + box["w"] // 2, box["y"] + box["h"] // 2))
+'
+}
+
 auth_describe() {
   printf 'Auth0 Universal Login on *%s*, identifier-first (sign-in: %s)' \
     "$(auth0_domain)" "$(auth0_opt SIGNIN_LABELS 'Se connecter,Sign in')"
@@ -34,6 +47,7 @@ auth_web_login() { # persona url
   continue_labels="$(auth0_opt CONTINUE_LABELS 'Continuer,Continue')"
 
   web "$persona" open "$url" >/dev/null
+  step "open $url"
   # A door carries no form: its button starts the redirect. Other apps land on Auth0 directly.
   if ! web "$persona" get url | grep -q "$(auth0_domain)"; then
     web "$persona" wait 'button' >/dev/null
@@ -42,20 +56,24 @@ auth_web_login() { # persona url
       || die "login: no sign-in button on $url (VYSU_AUTH0_SIGNIN_LABELS)"
   fi
   web "$persona" wait --url "**$(auth0_domain)**" >/dev/null
+  step "reach $(auth0_domain)"
   # Identifier-first Universal Login: e-mail, then password on a second page.
   web "$persona" wait 'input#username' >/dev/null
   web "$persona" fill 'input#username' "$PERSONA_EMAIL" >/dev/null
   # shellcheck disable=SC2046
   web_click_any "$persona" $(auth0_labels "$continue_labels") \
     || die "login: no continue button after the e-mail (VYSU_AUTH0_CONTINUE_LABELS)"
+  step "fill the e-mail field"
   web "$persona" wait 'input#password' >/dev/null
   web "$persona" fill 'input#password' "$PERSONA_PASSWORD" >/dev/null
   # shellcheck disable=SC2046
   web_click_any "$persona" $(auth0_labels "$continue_labels") \
     || die "login: no continue button after the password (VYSU_AUTH0_CONTINUE_LABELS)"
+  step "fill the password field"
   local origin; origin="$(printf '%s' "$url" | sed -E 's#^(https?://[^/]+).*#\1#')"
   web "$persona" wait --url "${origin}/**" >/dev/null
   web "$persona" wait 2500 >/dev/null
+  step "land back on ${origin}"
   echo "logged in: $persona ($PERSONA_EMAIL) → $(web "$persona" get url | tail -1)"
 }
 
@@ -108,19 +126,25 @@ auth_mobile_login() { # platform persona
   # The field's label is the visible « e-mail » one on iOS, a bare "username" in the Custom Tab.
   if ! mob "$platform" wait 'role="textfield"' 20000 >/dev/null 2>&1 && ! mob "$platform" wait 'id="username"' 8000 >/dev/null 2>&1; then
     [ "$platform" = ios ] || die "$platform: the login form did not show up"
-    # iOS 18 (the old iPhone): agent-device cannot read the SafariViewService sheet — blind flow by
-    # geometry: Auth0's fields sit at 57 % (e-mail) and 65 % (password) of the height, centred.
-    local px; px="$(sim io screenshot /tmp/vysu-ios-probe.png >/dev/null 2>&1 && python3 -c "from PIL import Image; im=Image.open('/tmp/vysu-ios-probe.png'); print(im.width//2, im.height//2)")"
-    local w="${px% *}" h="${px#* }"
-    mob ios press $((w / 2)) $((h * 571 / 1000)) >/dev/null; sleep 1
+    # iOS 18 (the old iPhone): agent-device cannot read the SafariViewService sheet. The fields are
+    # then read out of the picture (mob_fields → py/fields.py) rather than tapped at the constants
+    # this used to carry (« 57 % and 65 % of the height »), which no longer hold as soon as Auth0
+    # moves a logo. Identifier-first means one field at a time: the first box is the e-mail, and
+    # after the submit the same probe, run again on the password page, gives the password.
+    local point
+    point="$(auth0_first_field ios)" || die "ios: no text field found on the sheet (py/fields.py saw none)"
+    # shellcheck disable=SC2086  # « x y », two arguments on purpose
+    mob ios press $point >/dev/null; sleep 1
     mob ios type "$PERSONA_EMAIL" >/dev/null; mob ios keyboard return >/dev/null; sleep 4
-    mob ios press $((w / 2)) $((h * 655 / 1000)) >/dev/null; sleep 1
+    point="$(auth0_first_field ios)" || die "ios: no password field found after the e-mail (py/fields.py saw none)"
+    # shellcheck disable=SC2086
+    mob ios press $point >/dev/null; sleep 1
     mob ios type "$PERSONA_PASSWORD" >/dev/null; mob ios keyboard return >/dev/null; sleep 6
     mob_press_any ios "Autoriser,Allow" || true
     mob_wait_text ios "$home" 30000 || true
     mob_press_all ios "$after" || true
     mstate_set ios persona "$persona"
-    echo "ios: logged in as $persona ($PERSONA_EMAIL) — blind flow (iOS 18 sheet not readable)"; return
+    echo "ios: logged in as $persona ($PERSONA_EMAIL) — fields read from the capture (iOS 18 sheet not readable)"; return
   fi
   mob "$platform" fill 'role="textfield"' "$PERSONA_EMAIL" >/dev/null 2>&1 || mob "$platform" fill 'id="username"' "$PERSONA_EMAIL" >/dev/null
   mob "$platform" keyboard return >/dev/null 2>&1 || mob_press_any "$platform" "Continuer,Continue"
