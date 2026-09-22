@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-09-22
+
+- First Android run of the native mode, on an API 30 image: the app-log tail falls back to `-v uid`
+  where `logcat --uid` does not exist, `up` waits for the system services after the locale change,
+  and `VYSU_MOBILE_READY_TEXT` with several screens now matches (it never did, in expo mode too).
+- A bare `--lang en` maps to `en-US` on Android and iOS, no longer `en-EN`.
+- Known: Android honours one locale change per emulator; the second `mrelaunch --lang` is ignored.
+
 ## Unreleased
 
 - Fixed, from the first end-to-end native run on Android (a release APK on a Pixel 4a / API 30):

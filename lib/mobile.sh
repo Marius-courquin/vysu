@@ -414,7 +414,16 @@ vysu_appearance() {
 
 # A language as the two platforms spell it: « fr » is fr-FR to Android and fr_FR to iOS. A project
 # whose languages are not plain two-letter codes gives the full tag in VYSU_LANGS.
-android_locale_of() { case "$1" in *-*) printf '%s' "$1";; *) printf '%s-%s' "$1" "$(echo "$1" | tr '[:lower:]' '[:upper:]')";; esac; }
+# A bare language becomes a locale: the region is the language's own where the two share a code
+# (fr-FR, de-DE), and the usual one where they do not (en-US, not en-EN).
+android_locale_of() {
+  case "$1" in
+    *-*) printf '%s' "$1";;
+    en) printf 'en-US';; ja) printf 'ja-JP';; zh) printf 'zh-CN';; ko) printf 'ko-KR';;
+    sv) printf 'sv-SE';; da) printf 'da-DK';; cs) printf 'cs-CZ';; el) printf 'el-GR';; uk) printf 'uk-UA';;
+    *) printf '%s-%s' "$1" "$(echo "$1" | tr '[:lower:]' '[:upper:]')";;
+  esac
+}
 ios_locale_of() { printf '%s' "$(android_locale_of "$1")" | tr '-' '_'; }
 
 # Start the app. Android goes through the launcher intent (`am start` needs the activity name,
