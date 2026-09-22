@@ -1,0 +1,29 @@
+{
+  "name": "vysu-explainer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "node scripts/render.ts",
+    "test": "node --test src/*.test.ts src/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.526",
+    "@remotion/cli": "4.0.526",
+    "@remotion/fonts": "4.0.526",
+    "@remotion/layout-utils": "^4.0.526",
+    "@remotion/media": "4.0.526",
+    "@remotion/renderer": "4.0.526",
+    "mediabunny": "1.59.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.526",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.9.2",
+    "@types/react": "19.3.0",
+    "typescript": "7.0.2"
+  }
+}

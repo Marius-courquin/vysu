@@ -1,0 +1,38 @@
+{
+  "name": "default",
+  "colors": {
+    "background": "#F4F6FA",
+    "card": "#FFFFFF",
+    "foreground": "#101828",
+    "muted": "#475467",
+    "mutedFill": "#EDF1F7",
+    "tertiary": "#667085",
+    "subtle": "#98A2B3",
+    "border": "#D6DEE9",
+    "divider": "#E7EDF4",
+    "primary": "#2563EB",
+    "primaryTint": "#E3ECFD",
+    "primaryText": "#1D4ED8",
+    "secondary": "#E07A2F",
+    "secondaryTint": "#FCEEE1",
+    "secondaryText": "#B45309",
+    "success": "#16A34A",
+    "successTint": "#E3F3E9",
+    "decorPeach": "#F6D9BE",
+    "decorBlue": "#C3D6F2"
+  },
+  "fonts": {
+    "display": "'Inter', system-ui, sans-serif",
+    "body": "'Inter', system-ui, sans-serif",
+    "faces": [
+      { "family": "Inter", "weight": 400, "file": "fonts/inter-latin-400-normal-C38fXH4l.woff2" },
+      { "family": "Inter", "weight": 500, "file": "fonts/inter-latin-500-normal-Cerq10X2.woff2" },
+      { "family": "Inter", "weight": 600, "file": "fonts/inter-latin-600-normal-LgqL8muc.woff2" }
+    ]
+  },
+  "radius": { "device": 92, "browser": 20 },
+  "shadow": {
+    "device": "0 40px 90px rgba(16, 24, 40, 0.20), 0 8px 20px rgba(16, 24, 40, 0.10)",
+    "float": "0 10px 28px rgba(16, 24, 40, 0.12)"
+  }
+}
