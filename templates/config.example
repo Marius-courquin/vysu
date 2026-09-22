@@ -39,7 +39,10 @@ VYSU_LOGIN_PATH='/login'
 
 # --- auth ---------------------------------------------------------------------------------------
 
-# A built-in connector (auth0 · form · none), `custom` for .vysu/auth.sh, or a path.
+# A built-in connector (auth0 · form · none), `custom` for .vysu/auth.sh, or a path. Default: none
+# — the url is opened as it is and `vysu auth token` prints nothing, which is what a static site, a
+# Storybook or a public page needs. `vysu auth test <persona>` runs the one in force and says which
+# step held. The contract is connectors/auth/README.md, the template connectors/auth/example.sh.
 VYSU_AUTH='none'
 # Options of the auth0 connector, all optional (defaults in connectors/auth/auth0.sh):
 # VYSU_AUTH0_DOMAIN='my-tenant.eu.auth0.com'
@@ -51,6 +54,14 @@ VYSU_AUTH='none'
 # VYSU_AUTH0_MENU_LABEL='Menu'
 # VYSU_AUTH0_LOGOUT_LABEL='Se déconnecter'
 # VYSU_AUTH0_AFTER_LOGIN_LABELS='Entrer directement,Retour à l'"'"'accueil'
+# Options of the form connector, all optional (defaults in connectors/auth/form.sh). Labels are
+# matched by <label>, then placeholder, then input type on the web, and by accessibility label on
+# mobile; the login is done when the page has left the login url.
+# VYSU_FORM_EMAIL_LABELS='E-mail,Email,Adresse e-mail,Identifiant,Username'
+# VYSU_FORM_PASSWORD_LABELS='Mot de passe,Password'
+# VYSU_FORM_SUBMIT_LABELS='Se connecter,Connexion,Sign in,Log in,Login,Submit'
+# An expression evaluated in the page whose value is the API token. Empty: this app exposes none.
+# VYSU_FORM_TOKEN_JS='localStorage.getItem("access_token")'
 
 # --- the mobile app -------------------------------------------------------------------------------
 
@@ -105,8 +116,13 @@ VYSU_AUTH='none'
 # Presets are files .vysu/push/<preset>.json, with {{field}} placeholders filled by --field.
 # VYSU_PUSH='apns-sim,webhook'
 # VYSU_PUSH_WEBHOOK_URL='https://internal.example.com/api/dev/push'
-# A service account file under the state folder, for the fcm driver.
+# The fcm driver: the service account JSON (absolute, ~-relative, or relative to the state folder)
+# and the persona's device tokens (vysu persona set alice FCM_TOKEN_IOS <token>). The preset file is
+# the FCM `message` body; the driver adds the token.
 # VYSU_FCM_SA='fcm-service-account.json'
+# VYSU_FCM_SCOPE='https://www.googleapis.com/auth/firebase.messaging'
+# Where a send goes instead of the real FCM endpoint. For tests only.
+# VYSU_FCM_ENDPOINT='http://localhost:8099/v1/projects/demo/messages:send'
 
 # --- video ------------------------------------------------------------------------------------------
 

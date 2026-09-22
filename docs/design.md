@@ -114,13 +114,14 @@ are ignored. `vysu doctor` prints the resolved values and where each comes from.
 | `VYSU_WEB_REPO` | git checkout whose sha and branch go into `meta.json` | `apps/nidz-next-apps` |
 | `VYSU_API_PATTERN` | request path prefix that identifies the API in the network log | `/api/v1/` |
 | `VYSU_API_HOSTS` | `host=label` pairs for the API label in reports | `localhost:8080=local api.prep.nidz.fr=prep` |
-| `VYSU_AUTH` | built-in connector name, or a path | `auth0` |
+| `VYSU_AUTH` | built-in connector name, or a path; default `none` (no login) | `auth0` |
 | `VYSU_AUTH_*` | connector options, documented by each connector | see § 6 |
 | `VYSU_MOBILE_BUNDLE` | app id on both platforms | `fr.nidz.app.next.prep` |
 | `VYSU_IOS_APP` | app name on the iOS simulator | `Nidz (prep)` |
 | `VYSU_MOBILE_DIR` | Expo app folder (relative to the project dir) | `apps/nidz-next-apps/apps/mobile` |
 | `VYSU_MOBILE_ENV` | env exported to Metro and the native build | `NIDZ_ENV=prep` |
 | `VYSU_MOBILE_SCHEME` | dev-client scheme handed to Metro's URL | `exp+nidz` |
+| `VYSU_MOBILE_READY_TEXT` | texts that prove the app has booted, comma-separated: what `mrelaunch` and a mobile login wait for instead of a delay | `Se connecter,Bienvenue,Menu,…` |
 | `VYSU_IOS_DEVICE` / `VYSU_IOS_OLD_DEVICE` | simulators, recent and old | `iPhone 17 Pro` / `Nidz iPhone SE (iOS 18)` |
 | `VYSU_ANDROID_AVD` / `VYSU_ANDROID_AVDS` | default AVD, and the specs `vysu setup` creates | `nidz_pixel8_api36` / the three specs of `nv setup` |
 | `VYSU_ANDROID_LOCALE` | locale forced on the emulator at boot; empty = untouched | `fr-FR` |
@@ -189,6 +190,7 @@ Built-ins:
   menu, dev-launcher deep link). Options: `VYSU_AUTH0_DOMAIN` (default: any `*.auth0.com`),
   `VYSU_AUTH0_SIGNIN_LABELS` (default `Se connecter,Sign in`), `VYSU_AUTH0_CONTINUE_LABELS`
   (`Continuer,Continue`), `VYSU_AUTH0_DOOR_TEXT` (mobile door screen text, `Se connecter`),
+  `VYSU_AUTH0_PASSWORD_TEXT` (the password page's own text, `mot de passe`),
   `VYSU_AUTH0_HOME_TEXT` (mobile text that proves the login, `Bienvenue`), `VYSU_AUTH0_MENU_LABEL`
   / `VYSU_AUTH0_LOGOUT_LABEL` for the mobile logout, `VYSU_AUTH0_AFTER_LOGIN_LABELS` (buttons
   pressed if they show up after login, `Entrer directement,Retour à l'accueil`).
@@ -197,7 +199,9 @@ Built-ins:
   Options: `VYSU_FORM_EMAIL_LABELS`, `VYSU_FORM_PASSWORD_LABELS`, `VYSU_FORM_SUBMIT_LABELS`,
   `VYSU_FORM_TOKEN_JS` (an expression evaluated in the page that prints the token, optional).
   Mobile: the same by accessibility labels.
-- `none` — no login; `auth_web_login` just opens the url. For static sites and Storybooks.
+- `none` — no login; `auth_web_login` just opens the url and `auth_web_token` prints nothing. For
+  static sites and Storybooks, and the engine's default: without a config, or with no `VYSU_AUTH`
+  in one, that is the connector in force, and `doctor` says `auth: none (default)`.
 
 `vysu auth test <persona> [ios|android]` runs the connector once with a throwaway session name
 (`<project>-authtest`), prints each step as it passes, and closes the session. Its exit code is the
@@ -213,7 +217,8 @@ ios|android] [--field k=v]…`. Presets are files `.vysu/push/<preset>.json`; th
   (today's `ipush`). The three Nidz presets move to `nidz-env/.vysu/push/`.
 - `fcm` — a real FCM HTTP v1 send with a service account (`VYSU_FCM_SA`, a path under the state
   folder) to the token held by the persona (`VYSU_PERSONA_<NAME>_FCM_TOKEN_IOS` / `_ANDROID`). The
-  JWT is signed with `openssl`, no Python package. The preset holds the FCM message body.
+  JWT is signed with `openssl`, no Python package. The preset holds the FCM message body, and the
+  driver adds the `token`. `VYSU_FCM_ENDPOINT` replaces the endpoint, for tests only.
 - `webhook` — POST `{email, preset, platform, fields}` to `VYSU_PUSH_WEBHOOK_URL`, prints the
   results the endpoint returns (today's `apush`, the Nidz cockpit being the endpoint).
 
