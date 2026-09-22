@@ -5,7 +5,7 @@
 
 push_load() { # driver name — the project's own driver first, then the engine's
   local file="$VYSU_ENGINE/connectors/push/$1.sh"
-  [ -z "$VYSU_PROJECT_DIR" ] || [ ! -f "$VYSU_PROJECT_DIR/.vysu/push-drivers/$1.sh" ] || file="$VYSU_PROJECT_DIR/.vysu/push-drivers/$1.sh"
+  [ -z "$VYSU_DIR" ] || [ ! -f "$VYSU_DIR/push-drivers/$1.sh" ] || file="$VYSU_DIR/push-drivers/$1.sh"
   [ -f "$file" ] || die "no push driver « $1 » ($file)"
   # shellcheck disable=SC1090  # the driver the project enabled, resolved at runtime
   . "$file"
@@ -29,7 +29,7 @@ push_describe_line() { # for doctor
 push_payload() { # preset "k=v" …
   local preset="$1"; shift
   need_project
-  local file="$VYSU_PROJECT_DIR/.vysu/push/$preset.json"
+  local file="$VYSU_DIR/push/$preset.json"
   [ -f "$file" ] || die "no push preset « $preset » ($file)"
   PUSH_FILE="$file" python3 - "$@" <<'PY'
 import os, re, sys

@@ -62,20 +62,22 @@ function serveFile(source: string, servedDir: string): string {
   return path.basename(target);
 }
 
-// A theme is looked up in the PROJECT first — $VYSU_PROJECT_DIR/.vysu/themes/<name>/ — so a project
-// carries its own brand without touching the engine, and only then among the engine's own themes.
+// A theme is looked up in the PROJECT first — themes/<name>/ beside the config the engine loaded —
+// so a project carries its own brand without touching the engine, and only then among the engine's
+// own themes. $VYSU_DIR is that folder, $VYSU_PROJECT_DIR/.vysu in the ordinary case and not when a
+// config lives in a worktree while the project dir stays the checkout its paths point into.
 function loadTheme(name: string): Theme {
-  const projectDir = process.env.VYSU_PROJECT_DIR;
-  const projectFile = projectDir
-    ? path.join(path.resolve(expandHome(projectDir)), '.vysu', 'themes', name, 'theme.json')
-    : null;
+  const dirs = [process.env.VYSU_DIR, process.env.VYSU_PROJECT_DIR ? path.join(process.env.VYSU_PROJECT_DIR, '.vysu') : ''];
+  const candidates = dirs
+    .filter((d): d is string => Boolean(d))
+    .map((d) => path.join(path.resolve(expandHome(d)), 'themes', name, 'theme.json'));
+  const projectFile = candidates.find((f) => fs.existsSync(f)) ?? null;
   const engineFile = path.join(ROOT, 'themes', name, 'theme.json');
-  const fromProject = projectFile !== null && fs.existsSync(projectFile);
+  const fromProject = projectFile !== null;
   const file = fromProject ? projectFile! : engineFile;
   if (!fs.existsSync(file)) {
-    fail(
-      `unknown theme "${name}": no ${projectFile ?? '$VYSU_PROJECT_DIR/.vysu/themes/' + name + '/theme.json'} and no ${engineFile}`,
-    );
+    const looked = candidates.length > 0 ? candidates : ['$VYSU_DIR/themes/' + name + '/theme.json'];
+    fail(`unknown theme "${name}": no ${[...looked, engineFile].join(' and no ')}`);
   }
   const parsed = themeSchema.safeParse(readJson(file));
   if (!parsed.success) fail(`${file} is invalid:\n${issues(parsed.error)}`);

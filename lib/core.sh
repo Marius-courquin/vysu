@@ -155,7 +155,13 @@ config_paths() {
   WEB_REPO="$(project_path "$(cfg WEB_REPO)")"
   MOBILE_DIR="$(project_path "$(cfg MOBILE_DIR)")"
   BATCH="$STATE/.batch-$$"
-  export VYSU_PROJECT_DIR VYSU_PROJECT VYSU_STATE VYSU_THEME
+  # The folder the loaded config sits in — themes, connectors, push presets and project commands
+  # are beside it. It is $VYSU_PROJECT_DIR/.vysu in the ordinary case, and not in the one that
+  # matters: a config kept in a worktree while VYSU_PROJECT_DIR stays the checkout its relative
+  # paths point into. Whoever needs an asset of the project reads this, never the pair.
+  VYSU_DIR=""
+  [ -z "$VYSU_CONFIG_FILE" ] || VYSU_DIR="$(cd "$(dirname "$VYSU_CONFIG_FILE")" && pwd)"
+  export VYSU_PROJECT_DIR VYSU_PROJECT VYSU_STATE VYSU_THEME VYSU_DIR
 }
 project_path() { # a config path, absolute or relative to the project dir
   [ -n "$1" ] || return 0
@@ -171,12 +177,12 @@ need_cfg() { # KEY explanation — a config key a command cannot work without
 }
 # `vysu <name>` with no engine command of that name: the project's own executable, with everything
 # vysu resolved exported so the command reads the same values the engine does.
-project_command() { [ -n "$VYSU_PROJECT_DIR" ] && [ -x "$VYSU_PROJECT_DIR/.vysu/commands/$1" ]; }
+project_command() { [ -n "$VYSU_DIR" ] && [ -x "$VYSU_DIR/commands/$1" ]; }
 exec_project_command() {
   local name="$1"; shift
   local var
   for var in $(compgen -v | grep '^VYSU_'); do export "${var?}"; done
-  exec "$VYSU_PROJECT_DIR/.vysu/commands/$name" "$@"
+  exec "$VYSU_DIR/commands/$name" "$@"
 }
 
 # --- who holds what ----------------------------------------------------------------------------

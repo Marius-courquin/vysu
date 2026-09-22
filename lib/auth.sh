@@ -13,11 +13,11 @@ auth_load() {
   [ -z "$AUTH_LOADED" ] || return 0
   local named file; named="$(cfg AUTH)"
   # A project that dropped an auth.sh in `.vysu/` and named no connector means that one.
-  if [ "$(config_origin AUTH)" = default ] && [ -n "$VYSU_PROJECT_DIR" ] && [ -f "$VYSU_PROJECT_DIR/.vysu/auth.sh" ]; then
+  if [ "$(config_origin AUTH)" = default ] && [ -n "$VYSU_DIR" ] && [ -f "$VYSU_DIR/auth.sh" ]; then
     named=custom
   fi
   case "$named" in
-    custom) file="$VYSU_PROJECT_DIR/.vysu/auth.sh";;
+    custom) file="$VYSU_DIR/auth.sh";;
     */*) file="$(project_path "$named")";;
     *) file="$VYSU_ENGINE/connectors/auth/$named.sh";;
   esac

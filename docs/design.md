@@ -348,8 +348,9 @@ short sha.
 
 `remotion/` moves whole. `themes/default/theme.json` is neutral: Inter only, no logo (the header and
 the outro hide the logo block when `logo` is absent, `schema.ts` makes it optional), a grey-blue
-palette. A project theme lives in `.vysu/themes/<name>/` and is resolved first by `render.ts`
-(`VYSU_PROJECT_DIR`), then in the engine. `take.py` writes `VYSU_THEME` into `cut.json`. The
+palette. A project theme lives in `themes/<name>/` beside the config the engine loaded and is
+resolved first by `render.ts` (`VYSU_DIR`, which is `$VYSU_PROJECT_DIR/.vysu` unless `VYSU_CONFIG`
+names a config elsewhere), then in the engine. `take.py` writes `VYSU_THEME` into `cut.json`. The
 `theme.test.ts` that mirrors `@nidz/tokens` leaves the engine: it becomes
 `nidz-env/.vysu/themes/nidz/check.mjs`. `vysu video` runs `npm ci` in `remotion/` when
 `node_modules` is missing, once, and says so.
