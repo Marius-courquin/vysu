@@ -87,8 +87,9 @@ vysu_pixel8_api36:36:pixel_8:;vysu_pixel10pro_api36:36:pixel_8_pro:hw.lcd.width=
 
 In **native mode** `vysu up ios|android` boots the device, applies the locale and the status bar,
 installs the app when it is missing and starts a tail of its log into `logs/<platform>-app.log`
-(iOS: `simctl spawn … log stream` on the app's process; Android: `logcat --uid` of the package, so
-the filter survives a relaunch). There is no Metro, no `adb reverse` and no bundle wait:
+(iOS: `simctl spawn … log stream` on the app's process; Android: `logcat --uid` of the package — or,
+on an image older than API 31, where `--uid` does not exist, the same uid grepped out of `-v uid` —
+so the filter survives a relaunch). There is no Metro, no `adb reverse` and no bundle wait:
 `vysu mrelaunch` terminates, applies text size / appearance / language, launches, and waits for
 `VYSU_MOBILE_READY_TEXT` — or five seconds when the project names nothing. `vysu mlog` reads that
 app log instead of `metro.log`, and `vysu down applog [ios|android]` stops the tails.

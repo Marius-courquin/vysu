@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Fixed, from the first end-to-end native run on Android (a release APK on a Pixel 4a / API 30):
+  `logcat --uid` does not exist before API 31, and the app-log tail died on it — the uid is grepped
+  out of `-v uid` there instead; `up android` returned on a system whose services were not back
+  after the locale's zygote restart; a uid lookup that found nothing ended `up` under pipefail
+  instead of saying the app is not installed; and the tail, which `adb root` takes down with adbd,
+  is restarted after a `mrelaunch --lang` — `vysu mlog` says so when one is no longer alive.
+- Fixed: `VYSU_MOBILE_READY_TEXT` naming more than one screen never matched — the alternation went
+  to a basic `grep`, where `|` is a literal. A native relaunch that took 25 s takes 3 s.
+- Known: on Android, a locale set once is not changed again by `mrelaunch --lang`. The framework
+  persists it in `Settings.System.system_locales`, which wins over `persist.sys.locale` at every
+  later zygote restart and is rewritten from the live configuration when the setting is edited.
+
 ## 0.2.0 — 2026-09-22
 
 - **A soundtrack ships with the engine.** `digital-clouds.mp3` (Mixkit licence, see
