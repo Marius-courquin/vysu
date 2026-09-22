@@ -93,7 +93,13 @@ fi
 head_ "check"
 if out="$("$DIR/bin/vysu" version 2>&1)"; then
   ok "$(printf '%s' "$out" | head -1)"
-  printf '%s\n' "$out" | tail -n +2 | while IFS= read -r l; do info "$l"; done
+  # The two node drivers, which `vysu setup` installs right after this: a MISSING here is the
+  # next thing to do, not a remark.
+  while IFS= read -r l; do
+    case "$l" in *MISSING*) warn "$l (vysu setup)";; *) info "$l";; esac
+  done <<EOF
+$(printf '%s\n' "$out" | tail -n +2)
+EOF
 else
   die "the engine does not answer: $out" "$DIR/bin/vysu version"
 fi
@@ -106,6 +112,6 @@ fi
 head_ "summary"
 printf 'ready: %d · to do: %d\n' "$OK_N" "$WARN_N"
 printf '\nnext:\n'
-[ -n "$linked" ] || printf '  %s\n' "source $rc                          (or open a new terminal)"
-printf '  %s\n' "vysu setup                          tools, browser, simulators, emulators"
-printf '  %s\n' "cd <your project> && vysu init      the .vysu/config of that project"
+[ -n "$linked" ] || printf '  %-36s %s\n' "source $rc" "(or open a new terminal)"
+printf '  %-36s %s\n' "vysu setup" "tools, browser, simulators, emulators"
+printf '  %-36s %s\n' "cd <your project> && vysu init" "the .vysu/config of that project"
