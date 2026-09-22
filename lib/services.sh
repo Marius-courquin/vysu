@@ -169,7 +169,13 @@ mobile_up() {
     local cmd; cmd="$(mobile_build_cmd "$what")"
     local key=MOBILE_BUILD_IOS; [ "$what" = ios ] || key=MOBILE_BUILD_ANDROID
     [ -n "$cmd" ] || die "vysu up $what --build: VYSU_$key is not set (the command that builds the app)"
-    ( cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup sh -c "$cmd" >"$LOGS/$what-build.log" 2>&1 </dev/null & )
+    # Fire-and-forget, but not silent about how it ended: the last line of the log is the exit
+    # status, so a `tail` answers « did it build? » without reading the tool's own wording.
+    local script; script="$cmd
+rc=\$?
+echo \"vysu: $what build exited \$rc\"
+exit \$rc"
+    ( cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup sh -c "$script" >"$LOGS/$what-build.log" 2>&1 </dev/null & )
     echo "$what: build started in $mdir (5-10 min the first time) — tail -f $LOGS/$what-build.log"; return
   fi
   if [ "$kind" = expo ] && ! listening 8081; then
