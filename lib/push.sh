@@ -3,8 +3,9 @@
 # one — `vysu push ios <preset>` on the simulator, `vysu push <persona> <preset>` for real.
 # shellcheck shell=bash
 
-push_load() { # driver name
+push_load() { # driver name — the project's own driver first, then the engine's
   local file="$VYSU_ENGINE/connectors/push/$1.sh"
+  [ -z "$VYSU_PROJECT_DIR" ] || [ ! -f "$VYSU_PROJECT_DIR/.vysu/push-drivers/$1.sh" ] || file="$VYSU_PROJECT_DIR/.vysu/push-drivers/$1.sh"
   [ -f "$file" ] || die "no push driver « $1 » ($file)"
   # shellcheck disable=SC1090  # the driver the project enabled, resolved at runtime
   . "$file"

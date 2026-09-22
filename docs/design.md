@@ -85,6 +85,7 @@ Per consumer project, `.vysu/`:
 config                bash-sourced KEY=value, the only required file
 auth.sh               optional custom auth connector (else a built-in named in config)
 push/<preset>.json    push payload templates
+push-drivers/<n>.sh   optional project push drivers, a name shared with a built-in wins over it
 commands/<name>       executables: `vysu <name>` runs them when the engine has no such command
 themes/<name>/        theme.json + brand/ + fonts/ for the video toolkit
 flows/                scripted flows, any extension

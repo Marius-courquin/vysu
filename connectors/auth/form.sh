@@ -9,9 +9,11 @@
 #   VYSU_FORM_PASSWORD_LABELS [Mot de passe,Password]
 #   VYSU_FORM_SUBMIT_LABELS   [Se connecter,Connexion,Sign in,Log in,Login,Submit]
 #   VYSU_FORM_TOKEN_JS        []   an expression evaluated in the page whose value is the token
+#   VYSU_FORM_HOME_TEXT       []   mobile: the text(s) that prove the login, comma-separated;
+#                                  falls back to VYSU_MOBILE_READY_TEXT, then to a fixed wait
 #
 # Mobile: the same, by accessibility label — the labels above are matched against what the platform
-# announces, and the app is home when it shows one of VYSU_MOBILE_READY_TEXT.
+# announces, and the app is home when it shows one of VYSU_FORM_HOME_TEXT.
 # shellcheck shell=bash
 
 form_opt() { cfg "FORM_$1" "$2"; }
@@ -142,14 +144,14 @@ auth_mobile_login() { # platform persona
   step "submit"
   # Home is one of the screens the project named: the app under test is the only thing that knows
   # what the other side of its own login looks like.
-  local ready; ready="$(cfg MOBILE_READY_TEXT)"
+  local ready; ready="$(form_opt HOME_TEXT "$(cfg MOBILE_READY_TEXT)")"
   if [ -n "$ready" ]; then
     local text seen=1
     form_labels "$ready"; local screens=(${FORM_LABELS[@]+"${FORM_LABELS[@]}"})
     for text in ${screens[@]+"${screens[@]}"}; do
       mob_wait_text "$platform" "$text" 20000 && { seen=0; break; }
     done
-    [ "$seen" = 0 ] || die "$platform: none of VYSU_MOBILE_READY_TEXT showed up after the submit"
+    [ "$seen" = 0 ] || die "$platform: none of VYSU_FORM_HOME_TEXT showed up after the submit"
     step "the app is home"
   else
     sleep 5

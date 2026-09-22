@@ -61,9 +61,8 @@ the file's header with the default in brackets.
 
 ## Writing one
 
-Copy the shortest built-in (`apns-sim.sh`, sixteen lines) next to your project and name it in
-`VYSU_PUSH`; a driver that lives in the project rather than in the engine is not supported yet —
-open an issue if you need one, it is a two-line change in `push_load`.
+Copy the shortest built-in (`apns-sim.sh`, sixteen lines) to `.vysu/push-drivers/<name>.sh` in your
+project and name it in `VYSU_PUSH`: a project driver of the same name as a built-in wins over it.
 
 ## Testing one
 

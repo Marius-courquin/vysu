@@ -62,6 +62,8 @@ VYSU_AUTH='none'
 # VYSU_FORM_SUBMIT_LABELS='Se connecter,Connexion,Sign in,Log in,Login,Submit'
 # An expression evaluated in the page whose value is the API token. Empty: this app exposes none.
 # VYSU_FORM_TOKEN_JS='localStorage.getItem("access_token")'
+# Mobile: the text(s) that prove the login, comma-separated (default: VYSU_MOBILE_READY_TEXT).
+# VYSU_FORM_HOME_TEXT='Welcome'
 
 # --- the mobile app -------------------------------------------------------------------------------
 

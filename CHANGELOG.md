@@ -44,3 +44,5 @@
     and the engine's own defaults are neutral: the outro's call to action comes from the theme
     (optional `cta`, "Learn more" in `themes/default`) and a film's language from the take, then
     `VYSU_LANG`, then English.
+  - A project may ship its own push driver in `.vysu/push-drivers/<name>.sh`; the `form`
+    connector's mobile login takes `VYSU_FORM_HOME_TEXT` before `VYSU_MOBILE_READY_TEXT`.
