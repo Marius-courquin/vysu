@@ -67,8 +67,9 @@ config_load() {
 # Where a value came from, for `vysu doctor`.
 config_origin() { # KEY
   case "$VYSU_ENV_KEYS" in *" VYSU_$1 "*) printf 'env'; return;; esac
-  [ -z "$VYSU_CONFIG_FILE" ] || grep -qE "^[[:space:]]*(export[[:space:]]+)?VYSU_$1=" "$VYSU_CONFIG_FILE" 2>/dev/null && { printf 'config'; return; }
-  [ ! -f "$HOME/.vysu/devices.env" ] || grep -qE "^[[:space:]]*(export[[:space:]]+)?VYSU_$1=" "$HOME/.vysu/devices.env" 2>/dev/null && { printf 'devices.env'; return; }
+  local set_in="^[[:space:]]*(export[[:space:]]+)?VYSU_$1="
+  if [ -n "$VYSU_CONFIG_FILE" ] && grep -qE "$set_in" "$VYSU_CONFIG_FILE" 2>/dev/null; then printf 'config'; return; fi
+  if [ -f "$HOME/.vysu/devices.env" ] && grep -qE "$set_in" "$HOME/.vysu/devices.env" 2>/dev/null; then printf 'devices.env'; return; fi
   printf 'default'
 }
 # The one reader a connector, a driver and every lib use: the value in force, or the default given.
