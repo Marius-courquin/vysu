@@ -135,11 +135,13 @@ vysu_setup() {
 
 init_ask() { # variable prompt default — interactive with a default, or the default under --yes
   local __var="$1" prompt="$2" default="$3" answer=""
-  if [ "$INIT_YES" = 1 ] || [ ! -t 0 ]; then
+  if [ "$INIT_YES" = 1 ]; then
     printf -v "$__var" '%s' "$default"; return
   fi
   printf '%s [%s]: ' "$prompt" "$default" >&2
-  IFS= read -r answer
+  # The answers may also be piped in (an agent, a test): an empty line or a closed stdin is the
+  # default, exactly as under --yes.
+  IFS= read -r answer || answer=""
   printf -v "$__var" '%s' "${answer:-$default}"
 }
 vysu_init() {
@@ -159,19 +161,29 @@ vysu_init() {
   [ -f "$template" ] || die "init: $template missing"
   [ ! -f "$root/.vysu/config" ] || die "init: $root/.vysu/config already exists (edit it, or delete it first)"
 
-  local project origin login_path baseline auth mobile bundle ios_app mobile_dir push webhook
+  local project origin login_path baseline auth mobile kind bundle ios_app mobile_dir push webhook
+  local ios_app_path android_apk
   init_ask project "project name" "$(basename "$root")"
   init_ask origin "web origin" "http://localhost:3000"
   init_ask login_path "login path" "/login"
   init_ask baseline "baseline origin (the deployed main, empty for none)" ""
   init_ask auth "auth connector (auth0 | form | none | custom)" "none"
-  init_ask mobile "is there a mobile app? (y/n)" "n"
-  bundle=""; ios_app=""; mobile_dir=""
+  init_ask mobile "mobile app: none / expo (Metro dev-client) / native (Swift, Kotlin, Flutter…)" "none"
+  kind=""; bundle=""; ios_app=""; mobile_dir=""; ios_app_path=""; android_apk=""
   case "$mobile" in
-    [yY]*)
+    [eE]*|[yY]*)
+      kind="expo"
       init_ask bundle "mobile bundle id" ""
       init_ask ios_app "app name on the iOS simulator" ""
       init_ask mobile_dir "Expo app folder, relative to the project" "apps/mobile";;
+    [nN][aA]*)
+      kind="native"
+      init_ask bundle "mobile bundle id" ""
+      init_ask ios_app "app name on the iOS simulator" ""
+      # Both may be left empty: a device that already has the app needs neither, and the build
+      # commands (VYSU_MOBILE_BUILD_IOS / _ANDROID) are documented in the config they are written to.
+      init_ask ios_app_path "the .app built for iphonesimulator, relative to the project (empty: none)" ""
+      init_ask android_apk "the debug .apk, relative to the project (empty: none)" "";;
   esac
   init_ask push "push drivers (apns-sim,webhook,fcm — empty for none)" ""
   webhook=""
@@ -182,6 +194,7 @@ vysu_init() {
   # every key a project may ever want is in front of whoever opens the file next.
   PROJECT="$project" ORIGIN="$origin" LOGIN_PATH="$login_path" BASELINE="$baseline" AUTH="$auth" \
   BUNDLE="$bundle" IOS_APP="$ios_app" MOBILE_DIR="$mobile_dir" PUSH="$push" WEBHOOK="$webhook" \
+  MOBILE_KIND="$kind" IOS_APP_PATH="$ios_app_path" ANDROID_APK="$android_apk" \
   python3 - "$template" "$root/.vysu/config" <<'PY'
 import os, re, sys
 
@@ -194,6 +207,9 @@ answers = {
     "VYSU_MOBILE_BUNDLE": os.environ["BUNDLE"],
     "VYSU_IOS_APP": os.environ["IOS_APP"],
     "VYSU_MOBILE_DIR": os.environ["MOBILE_DIR"],
+    "VYSU_MOBILE_KIND": os.environ["MOBILE_KIND"],
+    "VYSU_IOS_APP_PATH": os.environ["IOS_APP_PATH"],
+    "VYSU_ANDROID_APK": os.environ["ANDROID_APK"],
     "VYSU_PUSH": os.environ["PUSH"],
     "VYSU_PUSH_WEBHOOK_URL": os.environ["WEBHOOK"],
 }
@@ -240,7 +256,10 @@ PY
   echo "## what only you can do now"
   echo "vysu persona add <name>             credentials, mode 600"
   echo "vysu login <name>                   the browser session, once"
-  case "$mobile" in [yY]*) echo "vysu up ios --build                 the native dev-client (5-20 min)";; esac
+  case "$kind" in
+    expo) echo "vysu up ios --build                 the native dev-client (5-20 min)";;
+    native) echo "VYSU_IOS_APP_PATH / VYSU_ANDROID_APK  the built app, or VYSU_MOBILE_BUILD_IOS / _ANDROID";;
+  esac
   case ",$push," in *,fcm,*) echo "VYSU_FCM_SA                         the service account, under $STATE";; esac
 }
 
@@ -257,8 +276,9 @@ vysu_doctor() {
   # The values in force, and where each comes from: a surprise in a report is nearly always a key
   # set in an environment nobody remembers exporting.
   for key in STATE ORIGIN LOGIN_PATH BASELINE_ORIGIN SIZES LANGS LANG LANG_STORAGE_KEY LOCALES \
-             WEB_REPO API_PATTERN API_HOSTS AUTH MOBILE_BUNDLE IOS_APP MOBILE_DIR MOBILE_ENV \
-             MOBILE_SCHEME ANDROID_LOCALE SERVICES PUSH THEME MIN_VERSION; do
+             WEB_REPO API_PATTERN API_HOSTS AUTH MOBILE_KIND MOBILE_BUNDLE IOS_APP MOBILE_DIR \
+             MOBILE_ENV MOBILE_SCHEME MOBILE_READY_TEXT IOS_APP_PATH ANDROID_APK MOBILE_BUILD_IOS \
+             MOBILE_BUILD_ANDROID ANDROID_LOCALE SERVICES PUSH THEME MIN_VERSION; do
     local value; value="$(cfg "$key")"
     [ -n "$value" ] || continue
     echo "  VYSU_$key = $value ($(config_origin "$key"))"
