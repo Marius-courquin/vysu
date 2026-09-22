@@ -337,7 +337,7 @@ mobile_load_bundle() {
     local i; for i in $(seq 1 30); do
       sleep 3
       if [ "$1" = android ]; then adb shell dumpsys window 2>/dev/null | grep -q "MainActivity" && break
-      elif [ -n "$ready" ]; then ad ios snapshot -i 2>/dev/null | grep -q "$ready" && break
+      elif [ -n "$ready" ]; then ad ios snapshot -i 2>/dev/null | grep -qE "$ready" && break
       else break; fi
     done
     sleep 5
@@ -500,7 +500,7 @@ vysu_mrelaunch() {
   if [ -n "$ready" ] && mobile_session_open "$platform"; then
     # shellcheck disable=SC2034  # the counter only bounds the loop
     for j in $(seq 1 15); do
-      ad "$platform" snapshot -i 2>/dev/null | grep -q "$ready" && { booted=1; break; }
+      ad "$platform" snapshot -i 2>/dev/null | grep -qE "$ready" && { booted=1; break; }
       sleep 1
     done
   fi
