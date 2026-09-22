@@ -92,7 +92,7 @@ vysu_up() {
 }
 
 vysu_down() {
-  local what="${1:-}"; [ -n "$what" ] || die "usage: vysu down <service> | all | metro"
+  local what="${1:-}"; [ -n "$what" ] || die "usage: vysu down <service> | all | metro | applog [ios|android]"
   case "$what" in
     all)
       need_project
@@ -101,6 +101,8 @@ vysu_down() {
       for s in $(cfg SERVICES | tr ' ' '\n' | sed -n '1!G;h;$p'); do vysu_down "$s"; done
       return;;
     metro) kill_port 8081; echo "metro: stopped"; return;;
+    # The native app-log tails `vysu up` started. No platform named: both, whichever are running.
+    applog) shift; [ $# -gt 0 ] || set -- ios android; applog_stop "$@"; return;;
   esac
   need_project
   service_known "$what" || die "vysu down: unknown service '$what' (VYSU_SERVICES = $(cfg SERVICES))"
@@ -120,26 +122,61 @@ vysu_down() {
 
 # --- the two mobile targets --------------------------------------------------------------------
 
+# What `up <platform> --build` runs. A native project names it (`xcodebuild …`, `./gradlew …`); an
+# Expo one gets the `expo run:` line it always had, so the two kinds share one code path.
+mobile_build_cmd() { # platform
+  local key=MOBILE_BUILD_IOS dev="$IOS_DEVICE"
+  [ "$1" = ios ] || { key=MOBILE_BUILD_ANDROID; dev="$ANDROID_AVD"; }
+  local cmd; cmd="$(cfg "$key")"
+  [ -n "$cmd" ] || [ "$(mobile_kind)" != expo ] || cmd="npx expo run:$1 --device \"$dev\" --no-bundler"
+  printf '%s' "$cmd"
+}
+# Where the app to install comes from when the device has none: the path the project names in
+# native mode, the last dev-client build in expo mode (Xcode's DerivedData, gradle's debug apk).
+mobile_app_artifact() { # platform mobile-dir
+  if [ "$(mobile_kind)" = native ]; then
+    if [ "$1" = ios ]; then project_path "$(cfg IOS_APP_PATH)"; else project_path "$(cfg ANDROID_APK)"; fi
+    return
+  fi
+  [ "$1" = ios ] || { printf '%s' "$2/android/app/build/outputs/apk/debug/app-debug.apk"; return; }
+  # shellcheck disable=SC2012  # the newest build is what is wanted, and `find -printf` is not on macOS
+  ls -dt ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Debug-iphonesimulator/*.app 2>/dev/null | head -1
+}
+
 mobile_up() {
   local what="$1"; shift
-  local mdir; mdir="$MOBILE_DIR"
-  [ -n "$mdir" ] && [ -d "$mdir" ] || die "vysu up $what: VYSU_MOBILE_DIR does not point at the Expo app"
+  local kind; kind="$(mobile_kind)"
+  local build=0 reinstall=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --avd) ANDROID_AVD="$2"; device_remember android-avd "$2"; shift 2;;
+      --device) IOS_DEVICE="$2"; device_remember ios-device "$2"; shift 2;;
+      --build) build=1; shift;;
+      --reinstall) reinstall=1; shift;;
+      *) die "vysu up $what: unknown option $1";;
+    esac
+  done
   local bundle; bundle="$(need_cfg MOBILE_BUNDLE "the app id on both platforms")"
-  # The env the dev-clients were built for: Metro's manifest (the app config → scheme, api url…)
-  # must be generated for the same env, or the login callback scheme does not match.
+  # Where a build runs: the mobile app's folder when the project names one, the project itself
+  # otherwise — a native app often has no folder of its own to point at.
+  local mdir="${MOBILE_DIR:-${VYSU_PROJECT_DIR:-$PWD}}"
+  [ "$kind" != expo ] || [ -d "$mdir" ] || die "vysu up $what: VYSU_MOBILE_DIR does not point at the Expo app"
+  # The env the app was built for: Metro's manifest (the app config → scheme, api url…) must be
+  # generated for the same env, or the login callback scheme does not match.
   local menv=(); local pair
   for pair in $(cfg MOBILE_ENV); do menv+=("$pair"); done
-  if [ "${1:-}" = "--avd" ]; then ANDROID_AVD="$2"; device_remember android-avd "$2"; shift 2; fi
-  if [ "${1:-}" = "--device" ]; then IOS_DEVICE="$2"; device_remember ios-device "$2"; shift 2; fi
-  if [ "${1:-}" = "--build" ]; then
-    local dev="$IOS_DEVICE"; [ "$what" = android ] && dev="$ANDROID_AVD"
-    (cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup npx expo run:"$what" --device "$dev" --no-bundler >"$LOGS/$what-build.log" 2>&1 </dev/null &)
-    echo "$what: native build started (5-10 min the first time) — tail -f $LOGS/$what-build.log"; return
+  if [ "$build" = 1 ]; then
+    local cmd; cmd="$(mobile_build_cmd "$what")"
+    local key=MOBILE_BUILD_IOS; [ "$what" = ios ] || key=MOBILE_BUILD_ANDROID
+    [ -n "$cmd" ] || die "vysu up $what --build: VYSU_$key is not set (the command that builds the app)"
+    ( cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup sh -c "$cmd" >"$LOGS/$what-build.log" 2>&1 </dev/null & )
+    echo "$what: build started in $mdir (5-10 min the first time) — tail -f $LOGS/$what-build.log"; return
   fi
-  if ! listening 8081; then
-    (cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup npx expo start >"$LOGS/metro.log" 2>&1 </dev/null &)
+  if [ "$kind" = expo ] && ! listening 8081; then
+    ( cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup npx expo start >"$LOGS/metro.log" 2>&1 </dev/null & )
     wait_http http://localhost:8081/status 60 metro
   fi
+  local artifact; artifact="$(mobile_app_artifact "$what" "$mdir")"
   if [ "$what" = android ]; then
     android_lock
     # Emulators run side by side, each addressed by its serial (4 GB of RAM each, so two at most
@@ -157,13 +194,25 @@ mobile_up() {
       adb root >/dev/null 2>&1 && adb shell "setprop persist.sys.locale $locale; setprop ctl.restart zygote" >/dev/null 2>&1
       sleep 20; wait_android_boot
     fi
-    adb reverse tcp:8081 tcp:8081 >/dev/null   # Metro reachable as localhost from the emulator (adbd restarts drop it)
-    # A new AVD has no app yet: install the last dev-client built by --build.
-    if ! adb shell pm list packages 2>/dev/null | grep -q "$bundle"; then
-      local apk="$mdir/android/app/build/outputs/apk/debug/app-debug.apk"
-      [ -f "$apk" ] && adb install -r "$apk" >/dev/null 2>&1 && echo "android: dev-client installed on $ANDROID_AVD" || echo "android: no dev-client on $ANDROID_AVD (vysu up android --build)"
+    # Metro reachable as localhost from the emulator (adbd restarts drop it) — expo only.
+    [ "$kind" != expo ] || adb reverse tcp:8081 tcp:8081 >/dev/null
+    if [ "$reinstall" = 1 ] || ! mobile_installed android "$bundle"; then
+      if [ -n "$artifact" ] && [ -f "$artifact" ] && adb install -r "$artifact" >/dev/null 2>&1; then
+        echo "android: $bundle installed on $ANDROID_AVD (from $artifact)"
+      elif [ "$kind" = native ]; then
+        echo "android: no $bundle on $ANDROID_AVD — set VYSU_ANDROID_APK, or vysu up android --build"
+      else
+        echo "android: no dev-client on $ANDROID_AVD (vysu up android --build)"
+      fi
+    elif [ "$kind" = native ]; then
+      echo "android: $bundle already installed on $ANDROID_AVD"
     fi
-    echo "android: Metro on 8081, $ANDROID_AVD booted on $ANDROID_SERIAL → vysu android open $bundle --foreground"
+    if [ "$kind" = expo ]; then
+      echo "android: Metro on 8081, $ANDROID_AVD booted on $ANDROID_SERIAL → vysu android open $bundle --foreground"
+    else
+      applog_start android
+      echo "android: $ANDROID_AVD booted on $ANDROID_SERIAL → vysu android open $bundle --foreground"
+    fi
   else
     ios_lock
     # Start of a mobile session: the one place where looking the UDID up again is worth it.
@@ -172,15 +221,22 @@ mobile_up() {
     xcrun simctl boot "$udid" >/dev/null 2>&1 || true
     open -a Simulator >/dev/null 2>&1 || true
     ios_freeze_status_bar
-    # A new simulator has no app yet: install the last dev-client built by --build. Xcode writes it
-    # under DerivedData, named after the Xcode project the Expo prebuild generated.
-    if ! xcrun simctl listapps "$udid" 2>/dev/null | grep -q "$bundle"; then
-      # shellcheck disable=SC2012  # the newest build is what is wanted, and `find -printf` is not on macOS
-      local app
-      # shellcheck disable=SC2012  # the newest build is what is wanted; `find -printf` is not on macOS
-      app="$(ls -dt ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Debug-iphonesimulator/*.app 2>/dev/null | head -1)"
-      [ -n "$app" ] && xcrun simctl install "$udid" "$app" >/dev/null 2>&1 && echo "ios: dev-client installed on $IOS_DEVICE" || echo "ios: no dev-client on $IOS_DEVICE (vysu up ios --build)"
+    if [ "$reinstall" = 1 ] || ! mobile_installed ios "$bundle"; then
+      if [ -n "$artifact" ] && [ -d "$artifact" ] && xcrun simctl install "$udid" "$artifact" >/dev/null 2>&1; then
+        echo "ios: $bundle installed on $IOS_DEVICE (from $artifact)"
+      elif [ "$kind" = native ]; then
+        echo "ios: no $bundle on $IOS_DEVICE — set VYSU_IOS_APP_PATH (a .app built for iphonesimulator), or vysu up ios --build"
+      else
+        echo "ios: no dev-client on $IOS_DEVICE (vysu up ios --build)"
+      fi
+    elif [ "$kind" = native ]; then
+      echo "ios: $bundle already installed on $IOS_DEVICE"
     fi
-    echo "ios: Metro on 8081, $IOS_DEVICE booted → vysu ios open \"$(cfg IOS_APP)\" --foreground"
+    if [ "$kind" = expo ]; then
+      echo "ios: Metro on 8081, $IOS_DEVICE booted → vysu ios open \"$(cfg IOS_APP)\" --foreground"
+    else
+      applog_start ios
+      echo "ios: $IOS_DEVICE booted → vysu ios open \"$(cfg IOS_APP)\" --foreground"
+    fi
   fi
 }
