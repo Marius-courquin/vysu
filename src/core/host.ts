@@ -35,6 +35,14 @@ export function procName(raw: string): string {
   return n.replaceAll(' ', '-');
 }
 
+// Linux names a process by its main thread, and Node 24 renames that thread « MainThread »: what the
+// process runs is then its command line's first word (node, or the title a CLI gave itself).
+function linuxName(pid: number | string, comm: string): string {
+  if (comm.trim() !== 'MainThread') return procName(comm);
+  const argv0 = safeRead(`/proc/${pid}/cmdline`).split('\0')[0] ?? '';
+  return procName(argv0.split(' ')[0] || comm);
+}
+
 let table: Map<number, Proc> | undefined;
 
 // The whole table in one read: walking up the tree one `ps` at a time cost a process per level.
@@ -49,7 +57,7 @@ export function processTable(): Map<number, Proc> {
       if (close < 0) continue;
       const name = stat.slice(stat.indexOf('(') + 1, close);
       const ppid = Number(stat.slice(close + 2).split(' ')[1]);
-      table.set(Number(d), { ppid, name: procName(name) });
+      table.set(Number(d), { ppid, name: linuxName(d, name) });
     }
   } else if (isWindows) {
     for (const p of parseProcessLines(windowsProcessLines())) table.set(p.pid, { ppid: p.ppid, name: procName(p.name) });
@@ -76,7 +84,7 @@ export function processEntry(pid: number): Proc | undefined {
   if (isLinux) {
     const stat = safeRead(`/proc/${pid}/stat`);
     const close = stat.lastIndexOf(')');
-    if (close >= 0) found = { ppid: Number(stat.slice(close + 2).split(' ')[1]), name: procName(stat.slice(stat.indexOf('(') + 1, close)) };
+    if (close >= 0) found = { ppid: Number(stat.slice(close + 2).split(' ')[1]), name: linuxName(pid, stat.slice(stat.indexOf('(') + 1, close)) };
   } else {
     const r = spawnSync('ps', ['-o', 'ppid=,comm=', '-p', String(pid)], { encoding: 'utf8' });
     const m = /^\s*(\d+)\s(.*)$/.exec((r.stdout ?? '').split('\n')[0] ?? '');
@@ -92,7 +100,7 @@ export function processName(pid: number): string {
   if (!(pid > 0)) return '';
   if (isLinux) {
     const comm = safeRead(`/proc/${pid}/comm`);
-    return comm ? procName(comm) : '';
+    return comm ? linuxName(pid, comm) : '';
   }
   if (isWindows) {
     const hit = parseProcessLines(windowsProcessLines()).find((p) => p.pid === pid);
