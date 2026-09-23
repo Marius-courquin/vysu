@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { ENGINE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
 import { die, exit } from '../core/errors.ts';
-import { owner } from '../core/hold.ts';
+import { owner, releaseOnExit } from '../core/hold.ts';
 import { which } from '../core/host.ts';
 import type { RunResult } from '../core/proc.ts';
 import { shellQuote } from '../core/shellenv.ts';
@@ -62,7 +62,7 @@ export function bridgeEnv(file: string): NodeJS.ProcessEnv {
     VYSU_ENGINE: ENGINE,
     VYSU_PROJECT_DIR: c.projectDir,
     VYSU_DIR: c.vysuDir,
-    VYSU_LOCK_HOLDER: String(process.pid),
+    ...releaseOnExit(),
     VYSU_OWNER: owner(),
     VYSU__CONNECTOR: file,
     VYSU__STEPS: stepsAreOn() ? '1' : '0',

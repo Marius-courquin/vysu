@@ -251,6 +251,15 @@ function releaseAll(): void {
     if (lockPid(d) === process.pid) rmSync(d, { recursive: true, force: true });
   }
 }
+// For a process whose children take locks in its name: it may take none itself and still has theirs
+// to give back. What their locks say is running is its command, not the child's internal one.
+export function releaseOnExit(): { VYSU_LOCK_HOLDER: string; VYSU_LOCK_CMD: string } {
+  if (!releaseRegistered) {
+    releaseRegistered = true;
+    onCleanup(releaseAll, true);
+  }
+  return { VYSU_LOCK_HOLDER: String(process.pid), VYSU_LOCK_CMD: commandLine() };
+}
 
 // Waits for a foreign lock or claim, then holds the resource until this process exits.
 export async function lockTake(r: string): Promise<void> {
@@ -277,7 +286,7 @@ export async function lockTake(r: string): Promise<void> {
         writeFileSync(join(dir, 'owner'), owner());
         writeFileSync(join(dir, 'pid'), String(holder()));
         writeFileSync(join(dir, 'since'), `${nowSeconds()}\n`);
-        writeFileSync(join(dir, 'cmd'), commandLine());
+        writeFileSync(join(dir, 'cmd'), holder() === process.pid ? commandLine() : (process.env.VYSU_LOCK_CMD ?? commandLine()));
         held.add(r);
         claimRenew(r);
         if (i > 0) process.stderr.write(`vysu: ${r} taken after ${Math.floor(i / 2)}s\n`);
