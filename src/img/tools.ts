@@ -33,6 +33,7 @@ const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {
   compare: () => import('./compare.ts'),
   diff: () => import('./diff.ts'),
   fields: () => import('./fields.ts'),
+  frame: () => import('./frame.ts'),
   mark: () => import('./mark.ts'),
   motion: () => import('./motion.ts'),
   screen: () => import('./screen.ts'),

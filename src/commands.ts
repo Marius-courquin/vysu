@@ -4,6 +4,7 @@ export interface CommandModule {
 }
 
 export const commands: Record<string, () => Promise<CommandModule>> = {
+  frame: () => import('./cmd/frame.ts'),
   help: () => import('./cmd/help.ts'),
   '-h': () => import('./cmd/help.ts'),
   '--help': () => import('./cmd/help.ts'),
