@@ -1,7 +1,7 @@
 #!/bin/sh
 # vysu — the launcher. It finds the engine through however many symlinks a PATH entry went, then
-# runs it on Node (or on the runtime VYSU_RUNTIME names: bun). The engine is TypeScript run as it
-# is: Node strips the types, so there is nothing to build.
+# runs it on Node (or on the runtime VYSU_RUNTIME names: bun). bin/vysu.mjs checks the Node version and
+# the engine's dependencies, then loads the TypeScript engine as it is: there is nothing to build.
 src="$0"
 while [ -L "$src" ]; do
   dir="$(cd -P "$(dirname "$src")" && pwd)"
@@ -9,7 +9,9 @@ while [ -L "$src" ]; do
   case "$src" in /*) ;; *) src="$dir/$src";; esac
 done
 engine="$(cd -P "$(dirname "$src")/.." && pwd)"
+# Node's fetch (push drivers) reads the proxy variables only when asked to.
+[ -z "${HTTPS_PROXY:-}${https_proxy:-}${HTTP_PROXY:-}${http_proxy:-}" ] || export NODE_USE_ENV_PROXY=1
 case "${VYSU_RUNTIME:-node}" in
-  bun) exec bun "$engine/src/cli.ts" "$@";;
-  *) exec node --experimental-strip-types --disable-warning=ExperimentalWarning "$engine/src/cli.ts" "$@";;
+  bun) exec bun "$engine/bin/vysu.mjs" "$@";;
+  *) exec node "$engine/bin/vysu.mjs" "$@";;
 esac

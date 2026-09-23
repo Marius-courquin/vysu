@@ -4,3 +4,4 @@ remotion/public/takes/
 .DS_Store
 node_modules/
 .bench/
+.install-lock/
