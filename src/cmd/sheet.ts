@@ -7,7 +7,7 @@ import { config } from '../core/ctx.ts';
 import { SHEET_EDGE } from '../core/config.ts';
 import { die, exit } from '../core/errors.ts';
 import { openForHuman } from '../core/host.ts';
-import { legacy } from '../core/legacy.ts';
+import { compare as compareShots, CompareError } from '../img/compare.ts';
 import { sheet } from '../img/sheet.ts';
 
 const USAGE = 'usage: vysu sheet <name> [--cols N] [--max N] [--only "<glob>,…"] [--strip] [--open] [--compare [--against <name>]]';
@@ -21,6 +21,7 @@ export async function run(args: string[]): Promise<void> {
   let strip = false;
   let wantOpen = false;
   let compare = false;
+  let against = '';
   for (let i = 1; i < args.length; i++) {
     const a = args[i];
     const value = (): string => args[++i] ?? '';
@@ -44,7 +45,7 @@ export async function run(args: string[]): Promise<void> {
         compare = true;
         break;
       case '--against':
-        value();
+        against = value();
         break;
       default:
         die(`vysu sheet: unknown option ${a}`);
@@ -52,8 +53,28 @@ export async function run(args: string[]): Promise<void> {
   }
   const dir = join(config().shots, name);
   if (!existsSync(dir) || !statSync(dir).isDirectory()) die(`no shots folder ${dir}`);
-  // A grid answers « what do these screens look like »; a comparison answers « what moved ».
-  if (compare) exit(await legacy(['sheet', ...args]));
+  // A grid answers « what do these screens look like »; a comparison answers « what moved ». compare
+  // owns both of its outputs: the triptych an agent reads, the slider page a human drags.
+  if (compare) {
+    let againstDir: string | null = null;
+    if (against) {
+      againstDir = join(config().shots, against);
+      if (!existsSync(againstDir) || !statSync(againstDir).isDirectory()) die(`no shots folder ${againstDir}`);
+    }
+    const lines: string[] = [];
+    try {
+      await compareShots(dir, { against: againstDir, edge: SHEET_EDGE }, (l) => lines.push(l));
+    } catch (e) {
+      if (!(e instanceof CompareError)) throw e;
+      // What it printed before failing stays unsaid, as under the bash engine's `set -e`.
+      process.stderr.write(`${e.message}\n`);
+      exit(1);
+    }
+    process.stdout.write(`${lines.join('\n')}\n`);
+    const html = lines.find((l) => l.endsWith('.html'));
+    if (wantOpen && html) openForHuman(html);
+    return;
+  }
   const out = await sheet(dir, { name, cols, max, only, strip, edge: SHEET_EDGE });
   process.stdout.write(`${out.join('\n')}\n`);
   if (wantOpen) openForHuman(out[0]!);
