@@ -393,6 +393,104 @@ try:
 except Exception:
     pass
 
+if meta.get("kind") == "mobile":
+    # A mobile folder: what the device was set to, then one line per capture with the verdict its
+    # last mshot recorded (vs previous, vs a baseline), then the one image worth opening.
+    name = os.path.basename(directory.rstrip("/"))
+    verdicts = dict(meta.get("verdicts") or {})
+    # A folder an older vysu diffed against a baseline has diff.txt only: its statuses stand in.
+    legacy = os.path.join(directory, "diff.txt")
+    label = None
+    for raw in open(legacy).read().splitlines() if os.path.exists(legacy) else []:
+        if raw.strip() and not raw.startswith(" "):
+            label, _, rest = raw.partition(": ")
+            if label not in (meta.get("verdicts") or {}):
+                verdicts[label] = {"vs": "baseline", "verdict": rest}
+        elif raw.strip().startswith("marked:") and label in verdicts and label not in (meta.get("verdicts") or {}):
+            verdicts[label]["marked"] = raw.split("marked:", 1)[1].strip()
+    head = ["mobile", meta.get("platform"), meta.get("device")]
+    for key in ("textsize", "lang", "appearance"):
+        if meta.get(key):
+            head.append("%s %s" % (key, meta[key]))
+    if meta.get("mobile_sha"):
+        head.append("sha " + meta["mobile_sha"])
+    if meta.get("date"):
+        head.append(meta["date"][:16].replace("T", " "))
+    lines.append(" · ".join(str(h) for h in head if h))
+
+    def is_capture(f):
+        return (f.endswith(".png") and not f.startswith((".", "sheet", "compare"))
+                and not f.endswith((".prev.png", "-changed.png", "-base.png")))
+    shots = sorted((f for f in os.listdir(directory) if is_capture(f)),
+                   key=lambda f: os.path.getmtime(os.path.join(directory, f)))
+
+    def line_of(f):
+        label, v = f[:-4], verdicts.get(f[:-4])
+        if not v:
+            return "%s: not compared" % label
+        where = " [%s]" % v["device"] if v.get("device") and v["device"] != meta.get("device") else ""
+        if not v.get("vs"):
+            return "%s%s: %s" % (label, where, v.get("verdict"))
+        text = v.get("verdict") or "?"
+        if v.get("zones"):
+            text += " (%s%s)" % (" · ".join(v["zones"]), " · +%d" % v["more"] if v.get("more") else "")
+        if v.get("size"):
+            text = "size %s, %s" % (v["size"], text)
+        return "%s%s: vs %s · %s" % (label, where, v["vs"], text)
+
+    changed = [f for f in shots if (verdicts.get(f[:-4]) or {}).get("marked")
+               and os.path.exists(verdicts[f[:-4]]["marked"])]
+    closing = []
+    if changed:
+        latest = max(changed, key=lambda f: verdicts[f[:-4]].get("at") or "")
+        closing.append("read: " + verdicts[latest[:-4]]["marked"])
+        if len(changed) > 1:
+            closing.append("changed: %d captures, all marked in one image: vysu sheet %s --only '*-changed.png'" % (len(changed), name))
+    elif len(shots) == 1:
+        closing.append("read: " + os.path.join(directory, shots[0]))
+    elif shots:
+        sheets = sorted(f for f in os.listdir(directory) if f.startswith("sheet") and f.endswith(".png") and f != "sheet-strip.png")
+        newest = max(os.path.getmtime(os.path.join(directory, f)) for f in shots)
+        if sheets and min(os.path.getmtime(os.path.join(directory, f)) for f in sheets) >= newest:
+            closing.extend("read: " + os.path.join(directory, f) for f in sheets[:5])
+            if len(sheets) > 5:
+                closing.append("… %d more sheet page(s), all in %s" % (len(sheets) - 5, os.path.join(directory, "index.html")))
+        else:
+            closing.append("sheet: vysu sheet %s" % name)
+    else:
+        closing.append("no capture in %s" % directory)
+
+    if shots and not any(f[:-4] in verdicts for f in shots):
+        # Nothing was ever compared here (captured before verdicts existed, or by hand): one line
+        # naming them beats a screenful of « not compared ».
+        names = ", ".join(f[:-4] for f in shots)
+        lines.append("%d capture(s), none compared: %s" % (len(shots), names if len(names) <= 200 else names[:199] + "…"))
+    else:
+        # 25 lines at most: the header and the closing lines are kept, a changed capture is never
+        # the one folded away, and what is folded is counted by verdict.
+        room = 25 - 1 - len(closing)
+        shown = shots
+        if len(shots) > room:
+            keep = set(changed[-(room - 1):])
+            for f in reversed(shots):
+                if len(keep) >= room - 1:
+                    break
+                keep.add(f)
+            shown = [f for f in shots if f in keep]
+        lines.extend(line_of(f) for f in shown)
+        folded = [f for f in shots if f not in shown]
+        if folded:
+            counts = {}
+            for f in folded:
+                key = (verdicts.get(f[:-4]) or {}).get("verdict") or "not compared"
+                counts[key] = counts.get(key, 0) + 1
+            lines.append("… %d earlier capture(s): %s" % (len(folded), ", ".join("%d %s" % (n, k) for k, n in counts.items())))
+    lines.extend(closing)
+    if flag == "--md":
+        lines = ["```"] + lines + ["```"]
+    print("\n".join(lines))
+    sys.exit(0)
+
 head = [meta.get("kind", "shots"), meta.get("persona"), meta.get("url") or meta.get("device")]
 if meta.get("lang"):
     head.append("lang " + meta["lang"])

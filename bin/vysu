@@ -60,6 +60,8 @@
 #                                               for the same path on VYSU_BASELINE_ORIGIN (log the persona in there once)
 #                                             --ignore <css selector> repeatable, those boxes are left out of the diff
 #   vysu report <name> [--md]               a shots folder read back in ≤ 25 lines: what changed, what to open
+#                                           (mobile: the device's text size, language, appearance and sha, then each
+#                                           capture's last verdict, vs previous or vs a baseline)
 #   vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH]   scripted web steps (go · click · fill · press ·
 #                                           shot [--full] · check)
 #   vysu rec <persona> <name> [--fps 30] [--viewport 1440x900] [--mp4] [--cursor] [--flow <file>] -- "<step>" …
