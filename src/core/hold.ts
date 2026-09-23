@@ -10,7 +10,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, wri
 import { join } from 'node:path';
 import { config, commandLine } from './ctx.ts';
 import { die, log, onCleanup } from './errors.ts';
-import { pidAlive, processName, processTable } from './host.ts';
+import { pidAlive, processEntry, processName } from './host.ts';
 import { ANDROID_DEFAULT_AVD, IOS_DEFAULT_DEVICE } from './config.ts';
 import { hhmm, nowSeconds, sleep, slug } from './text.ts';
 
@@ -31,13 +31,13 @@ let ownerId = '';
 export function owner(): string {
   if (ownerId) return ownerId;
   if (process.env.VYSU_OWNER) return (ownerId = process.env.VYSU_OWNER);
-  const table = processTable();
   let pid = process.pid;
   for (let i = 0; i < 20; i++) {
-    const me = table.get(pid);
-    if (!me || !(me.ppid > 1)) break;
-    pid = me.ppid;
-    const name = table.get(pid)?.name ?? '';
+    // This process's own parent needs no question.
+    const ppid = pid === process.pid ? process.ppid : (processEntry(pid)?.ppid ?? 0);
+    if (!(ppid > 1)) break;
+    pid = ppid;
+    const name = processEntry(pid)?.name ?? '';
     if (!name || PLUMBING.has(name)) continue;
     ownerId = `${name}:${pid}`;
     break;

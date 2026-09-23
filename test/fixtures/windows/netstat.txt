@@ -1,0 +1,14 @@
+
+Active Connections
+
+  Proto  Local Address          Foreign Address        State           PID
+  TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       1060
+  TCP    0.0.0.0:18081          0.0.0.0:0              LISTENING       4444
+  TCP    127.0.0.1:8081         0.0.0.0:0              LISTENING       7001
+  TCP    127.0.0.1:8081         127.0.0.1:52011        ESTABLISHED     7001
+  TCP    127.0.0.1:52011        127.0.0.1:8081         ESTABLISHED     9100
+  TCP    192.168.1.20:52100     140.82.121.4:443       TIME_WAIT       0
+  TCP    [::]:8100              [::]:0                 ABHÖREN         7002
+  TCP    [::1]:8081             [::]:0                 LISTENING       7001
+  UDP    0.0.0.0:8081           *:*                                    6000
+  UDP    [::]:5353              *:*                                    2780

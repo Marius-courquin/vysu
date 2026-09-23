@@ -9,13 +9,19 @@ video. It works the same for Claude Code, Codex, or a human in a terminal.
 
 ## Install
 
-One line, on a Mac or Linux box with `git`:
+One line on a Mac or a Linux box with `git` and Node ≥ 22.18:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.sh | bash
 ```
 
-**While the repository is private**, that raw URL is not reachable and a plain `git clone` asks
+One line on Windows, in PowerShell (Windows PowerShell 5.1 or PowerShell 7), with `git` and Node:
+
+```powershell
+irm https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.ps1 | iex
+```
+
+**While the repository is private**, those raw URLs are not reachable and a plain `git clone` asks
 for a login it cannot get: log in once with the GitHub CLI, then clone with it and run the
 installer from the clone.
 
@@ -24,11 +30,19 @@ brew install gh && gh auth login          # once; pick GitHub.com, HTTPS, login 
 gh repo clone Marius-courquin/vysu ~/vysu && ~/vysu/install.sh
 ```
 
-It clones the engine into `~/vysu` (or updates it), makes `vysu` reachable — a link into a
+```powershell
+winget install GitHub.cli; gh auth login
+gh repo clone Marius-courquin/vysu $HOME\vysu
+powershell -ExecutionPolicy Bypass -File $HOME\vysu\install.ps1
+```
+
+It clones the engine into `~/vysu` (or updates it), checks Node, installs the engine's own
+dependencies in that folder (`npm ci --omit=dev`: sharp, which draws the contact sheets and the
+diffs), makes `vysu` reachable and prints `vysu version`. On macOS and Linux that is a link into a
 directory already on your PATH when one is writable, else a PATH line in your shell's startup file
-(zsh, bash or fish) — and prints `vysu version`. **Open a new terminal** afterwards if it says so.
-No tool is installed at that point: that is `vysu setup`'s job, and it asks before creating any
-simulator or emulator.
+(zsh, bash or fish); on Windows it is `<engine>\bin` added to your user PATH, where `vysu` is
+`bin\vysu.cmd`. **Open a new terminal** afterwards if it says so. No tool is installed at that
+point: that is `vysu setup`'s job, and it asks before creating any simulator or emulator.
 
 ```bash
 vysu setup                     # node tools, the browser, simulators, emulators
@@ -37,8 +51,10 @@ vysu setup                     # node tools, the browser, simulators, emulators
 Every line of the installer and of `vysu setup` says exactly one of three things — `✓` it is fine,
 with the version; `!` it is missing and optional, with what it unlocks and the command; `✗` it is
 missing and required, with the command — and `setup` ends on the counts, the exact commands to run
-and the two next steps. It exits 1 when something required is missing (node, `agent-browser`,
-`agent-device`, python3 with numpy and Pillow), 0 otherwise, so a script can branch on it.
+and the two next steps. It exits 1 when something required is missing (Node ≥ 22.18, the engine's
+dependencies, `agent-browser`, `agent-device`, and python3 with numpy and Pillow for as long as a
+helper still runs from `py/`), 0 otherwise, so a script can branch on it. Every command it prints
+is the one for your machine: Homebrew on macOS, apt or dnf on Linux, winget on Windows.
 
 ```
 ## summary
@@ -60,13 +76,15 @@ By hand, the same thing is:
 
 ```bash
 git clone https://github.com/Marius-courquin/vysu ~/vysu
+cd ~/vysu && npm ci --omit=dev  # the engine's own dependencies
 ~/vysu/bin/vysu version        # works right away, from its path
 export PATH="$HOME/vysu/bin:$PATH"   # then add that line to ~/.zshrc, ~/.bash_profile or your fish config
 ```
 
 `vysu: command not found` after the install means the shell has not read the PATH line yet: open
 a new terminal, or check which shell you run (`echo $SHELL`) and that the line went into its
-startup file. `~/vysu/bin/vysu version` proves the engine itself is fine.
+startup file. `~/vysu/bin/vysu version` proves the engine itself is fine (`$HOME\vysu\bin\vysu.cmd
+version` on Windows).
 
 Then, in your project:
 
@@ -168,9 +186,9 @@ vysu setup --browser "/Applications/Brave Browser.app/Contents/MacOS/Brave Brows
 vysu setup --browser default          # back to Chrome for Testing
 ```
 
-`vysu setup` lists the Chromium-based browsers it finds in `/Applications` (Brave, Chrome, Edge,
-Chromium — not Safari, not Firefox: agent-browser drives Chromium) and, with a terminal to answer,
-offers to use one. The choice is written into `~/.vysu/machine.env`; a project can override it in
+`vysu setup` lists the Chromium-based browsers it finds (Brave, Chrome, Edge, Chromium — in
+`/Applications` on a Mac, on the PATH on Linux, under Program Files on Windows; not Safari, not
+Firefox: agent-browser drives Chromium) and, with a terminal to answer, offers to use one. The choice is written into `~/.vysu/machine.env`; a project can override it in
 `.vysu/config` and a single command through the environment:
 
 ```bash
@@ -239,7 +257,8 @@ vysu update                    # the engine, the node tools, and what changed
 ```
 
 `vysu update` fast-forwards the engine checkout (moving it off a tag onto the default branch when
-it was pinned), prints the CHANGELOG entries since the version you were on, then checks
+it was pinned), prints the CHANGELOG entries since the version you were on, runs `npm ci
+--omit=dev` in the engine when the pull changed its `package-lock.json`, then checks
 `agent-browser` and `agent-device` against `tools.env` — the versions this engine is known to work
 with — and installs `<tool>@latest` when either is below. Run inside a project, it also says when
 that project's copies of the skills are older than the engine:
@@ -279,20 +298,36 @@ project that has its own definition of done writes a thin overlay skill on top.
 
 ## Requirements
 
-- **macOS** for the mobile side (agent-device drives the iOS simulator through Xcode). The web side
-  should work anywhere bash and node do.
-- **bash >= 3.2** (the macOS default), **node >= 22** for `agent-browser` and `agent-device`.
-- **python3** with **Pillow** and **numpy** (`pip3 install --user numpy pillow`) for the diffs,
-  contact sheets, stitching and exports.
+- **Node ≥ 22.18**: the engine is TypeScript that Node runs as it is (type stripping, no build
+  step), and `agent-browser` and `agent-device` run on it too. The engine's own dependencies
+  (`npm ci --omit=dev` in its folder, which the installers and `vysu update` run) are sharp and
+  nothing else. `VYSU_RUNTIME=bun` runs the engine on Bun instead (`bin/vysu` and `bin\vysu.cmd`
+  read it); the drivers and the video render still need Node.
+- **macOS, Linux or Windows** for the web side and the engine. The iOS simulator needs a Mac
+  (agent-device drives it through Xcode); the Android emulator runs wherever its SDK does.
+- **python3** with **Pillow** and **numpy** for the helpers still under `py/` while they move to
+  TypeScript; `vysu setup` says whether this engine needs it, and stops asking once none does.
 - **ffmpeg** for `rec`, `mrec` and `video`.
 - **Xcode** (iOS simulators, plus an older iOS runtime for the old phone) and the **Android SDK**
   with `cmdline-tools` — both optional, and only for the platform you actually check.
 - Remotion is installed on the first `vysu video`, not before. There is no npm package for vysu
-  itself: the install is `git clone` plus PATH.
+  itself: the install is `git clone`, `npm ci` and PATH.
 
 `vysu setup` checks all of it and installs what it can; `vysu doctor` says what is still missing.
 The versions of `agent-browser` and `agent-device` the engine is known to work with live in
 [`tools.env`](tools.env); `setup` and `update` upgrade a machine that is below them.
+
+## The engine
+
+Up to 0.5 the engine was bash; it is now TypeScript, with the same commands, the same lines on stdout and
+stderr, the same exit codes and the same files (shots folders, `meta.json`, `events.json`, locks,
+claims, state files), so both engines can run side by side on one machine and wait on each other's
+locks. What changed is underneath: no fork per step, no Python start-up, `ps` and `lsof` only when
+needed — and it runs on Windows. `bin/vysu` (a POSIX `sh` launcher) and `bin\vysu.cmd` start
+`src/cli.ts`; each command is a module loaded only when it is the one asked for; everything that
+differs from one system to the next (the process table, which process listens on a port, how a
+command line from the config is run, how a file is opened for a human) is in `src/core/host.ts`.
+The design note has the layout ([docs/design.md](docs/design.md), § 15).
 
 ## Status
 
