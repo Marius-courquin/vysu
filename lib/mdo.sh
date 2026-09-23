@@ -56,7 +56,8 @@ mdo_reason() { # err-file [out-file]
   local line
   line="$(grep -v '^next: ' "$1" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1 || true)"
   [ -n "$line" ] || line="$(grep -v '^[[:space:]]*$' "${2:-/dev/null}" 2>/dev/null | tail -1 || true)"
-  line="${line#vysu: }"; line="${line#ios: }"; line="${line#android: }"
+  # Twice: a `die` adds its own « vysu: » in front of a message that may already carry one.
+  line="${line#vysu: }"; line="${line#vysu: }"; line="${line#ios: }"; line="${line#android: }"
   line="${line% (vysu *)}"
   printf '%s' "${line:-failed}"
 }
@@ -162,7 +163,7 @@ vysu_mdo() {
   done
   [ "$given" = 0 ] || [ -z "$file" ] || die "vysu mdo: steps after -- or a file, not both"
   if [ -n "$file" ]; then
-    [ "$file" = - ] || [ -f "$file" ] || die "no step file $file"
+    [ "$file" = - ] || [ -f "$file" ] || die "no step file « $file » (steps go after --: vysu mdo $platform -- \"<step>\" …)"
     while IFS= read -r line || [ -n "$line" ]; do steps+=("$line"); done < <(read_lines "$file")
   fi
   # Blank lines and comments are not steps: the numbers an agent reads are the ones it wrote.

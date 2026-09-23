@@ -890,11 +890,21 @@ mkey() { # platform key
     *) echo "vysu: $p: key takes return, dismiss or back (not « ${2:-} »)" >&2; return 1;;
   esac
 }
-# A step's words, quoted the way a flow file quotes them. `eval` is the reader flows already went
-# through (`tap "…"`), and a step whose quotes do not close is said to be one, not run half-read.
+# A step's words, quoted the way a shell quotes them but never expanded: `fill "Mot de passe"
+# "pa$$word"` types what it says. A step whose quotes do not close is said to be one, not run
+# half-read. The words come back joined by the unit separator, which no label holds.
 mstep_words() { # "<rest of the step>" → MSTEP_W
   MSTEP_W=()
-  eval "MSTEP_W=($1)" 2>/dev/null || { echo "vysu: cannot read « $1 » (unbalanced quotes?)" >&2; return 1; }
+  local raw
+  raw="$(python3 -c '
+import shlex, sys
+try:
+    words = shlex.split(sys.argv[1])
+except ValueError as e:
+    sys.exit("vysu: cannot read « %s » (%s)" % (sys.argv[1], e))
+sys.stdout.write("".join(w + "\x1f" for w in words))
+' "$1")" || return 1
+  [ -z "$raw" ] || IFS=$'\x1f' read -r -a MSTEP_W <<<"$raw"
 }
 # `wait` keeps agent-device's own forms (`wait 500` in ms, `wait text …`, `wait absent …`,
 # `wait stable`, `wait @e3`, a selector) and adds the three a flow needs most.
