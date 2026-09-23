@@ -562,8 +562,9 @@ mobile_step() {
       vysu_mtap "$platform" "$EV_LABEL" ${MSTEP_W[@]+"${MSTEP_W[@]:1}"};;
     tap\ *) eval "vysu_mtap \"\$platform\" ${step#tap }";;
     # A bare press / longpress is agent-device's own verb, and its answer holds the point it hit:
-    # worth the same --json round-trip as a `tap`, so a recording gets a ripple out of it too.
-    press\ *|longpress\ *) eval "ad_press \"\$platform\" $step";;
+    # worth the same --json round-trip as a `tap`, so a recording gets a ripple out of it too, and
+    # a refusal says why (« Android system dialog is blocking press »).
+    press\ *|longpress\ *) eval "ad_json \"\$platform\" $step";;
     wait\ *) mstep_wait "$platform" "${step#wait }";;
     fill\ *) mstep_words "${step#fill }" && mfill "$platform" ${MSTEP_W[@]+"${MSTEP_W[@]}"};;
     type\ *)
@@ -702,7 +703,7 @@ msnap() { # platform
   local try
   for try in 1 2; do
     # An error comes back as JSON too, with no « nodes » in it.
-    ad "$1" snapshot -i --json --timeout 20000 >"$f" 2>/dev/null && grep -q '"nodes"' "$f" && return 0
+    ad "$1" snapshot -i --json --timeout 10000 >"$f" 2>/dev/null && grep -q '"nodes"' "$f" && return 0
   done
   : >"$f"; return 1
 }
@@ -729,13 +730,14 @@ sys.exit(0 if d.get("visible") or d.get("keyboardVisible") or d.get("shown") els
 mscreen() { # platform [fresh]
   local p="$1" f; f="$(msnap_file "$p")"
   [ "${2:-}" = fresh ] && [ -s "$f" ] || msnap "$p" || true
-  local kb=auto
-  # The keyboard is only worth a question when there is something on screen to type into.
+  local kb=auto scale=1
+  # The keyboard is only worth a question when there is something on screen to type into. An
+  # Android snapshot measures in pixels: the icon size is judged in dp, like on iOS in points.
   if [ "$p" = android ]; then
-    kb=no
+    kb=no; scale="$(mobile_scale android)"
     if mscreen_py editable "$f" && mkeyboard_up android; then kb=yes; fi
   fi
-  mscreen_py line "$f" --prev "$f.keys" --save "$f.keys" --keyboard "$kb" || true
+  mscreen_py line "$f" --prev "$f.keys" --save "$f.keys" --keyboard "$kb" --scale "$scale" || true
 }
 mscreen_reset() { # platform — the baseline the next line's delta is counted from
   local f; f="$(msnap_file "$1")"

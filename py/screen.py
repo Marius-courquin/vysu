@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What a mobile screen says, read from agent-device's `snapshot -i --json`.
 
-Usage: screen.py line <snap.json> [--prev <keys>] [--save <keys>] [--keyboard auto|yes|no]
+Usage: screen.py line <snap.json> [--prev <keys>] [--save <keys>] [--keyboard auto|yes|no] [--scale <n>]
        screen.py has <snap.json> <text> [--visible]
        screen.py sig <snap.json> [--geometry]
        screen.py field <snap.json> <label>
@@ -9,7 +9,8 @@ Usage: screen.py line <snap.json> [--prev <keys>] [--save <keys>] [--keyboard au
 
 `line` is the one line an agent reads after each step: up to six labels in reading order, then the
 node count, what changed since the previous snapshot (its keys saved by --save, read by --prev), the
-keyboard and the focused field when the platform says so. `has` answers « is that text on screen »
+keyboard and the focused field when the platform says so (`--scale`: the pixels per point of an
+Android snapshot, whose boxes are in pixels where iOS gives points). `has` answers « is that text on screen »
 the way `agent-device wait text` does (case-insensitive, contained in a label or a value), `--visible`
 asking for its centre inside the viewport and nothing drawn over it (what `scroll-to` waits for).
 `sig` prints the labels on screen as one string: two equal in a row is a screen at rest
@@ -30,13 +31,16 @@ MAX_LABEL_CHARS = 40
 ICON_EDGE = 56  # pt / dp: a control this small is an icon, and its label is nothing anyone reads
 
 
-def load(path):
+def load_data(path):
     try:
         with open(path) as f:
-            data = (json.load(f) or {}).get("data") or {}
+            return (json.load(f) or {}).get("data") or {}
     except (OSError, ValueError):
-        return None
-    nodes = data.get("nodes")
+        return {}
+
+
+def load(path):
+    nodes = load_data(path).get("nodes")
     return nodes if isinstance(nodes, list) else None
 
 
@@ -62,21 +66,25 @@ def kind(node):
 
 
 def viewport(nodes):
-    # The root is the app's window: everything outside it is laid out but not on screen.
-    for n in nodes:
-        if n.get("depth", 0) == 0 and rect(n):
-            return rect(n)
-    boxes = [rect(n) for n in nodes if rect(n)]
+    # The roots are the windows: everything outside them is laid out but not on screen. iOS has
+    # one (the app, full screen); Android has one per window, and a system dialog's buttons are
+    # roots of their own.
+    boxes = [rect(n) for n in nodes if n.get("depth", 0) == 0 and rect(n)] or [rect(n) for n in nodes if rect(n)]
     if not boxes:
         return None
-    return 0.0, 0.0, max(b[0] + b[2] for b in boxes), max(b[1] + b[3] for b in boxes)
+    x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    return x0, y0, max(b[0] + b[2] for b in boxes) - x0, max(b[1] + b[3] for b in boxes) - y0
 
 
 def is_root(node, nodes):
-    return node is nodes[0] and node.get("depth", 0) == 0
+    # iOS puts the app itself at the top of the tree: it is not something on screen.
+    return node.get("depth", 0) == 0 and (node.get("type") or "") == "Application"
 
 
 def on_screen(node, vp, centre=False):
+    # Android says it outright; iOS is judged by the box alone.
+    if node.get("visibleToUser") is False:
+        return False
     r = rect(node)
     if not r or not vp:
         return True
@@ -143,7 +151,7 @@ def keyboard_up(nodes, vp):
     return any(kind(n) == "keyboard" and on_screen(n, vp) for n in nodes)
 
 
-def summary_labels(nodes, vp):
+def summary_labels(nodes, vp, scale):
     area = (vp[2] * vp[3]) if vp else 0
     picked = []
     for n in screen_nodes(nodes):
@@ -151,6 +159,9 @@ def summary_labels(nodes, vp):
         if not label or not re.search(r"[^\W\d_]", label) or scroll_indicator(n):
             continue
         k = kind(n)
+        # Two letters are an avatar's initials or a badge, unless something can be pressed there (OK).
+        if len(label) < 3 and k in ("text", "other") and "button" not in (n.get("type") or "").lower():
+            continue
         if k == "image" or not on_screen(n, vp):
             continue
         # A bar names itself (« Barre d'onglets », « Tab Bar »): its tabs say more, and come later.
@@ -161,9 +172,9 @@ def summary_labels(nodes, vp):
             # A wrapper the size of the screen names the screen's container, not something read.
             if area and r[2] * r[3] >= 0.8 * area:
                 continue
-            if k not in ("text", "field") and max(r[2], r[3]) <= ICON_EDGE:
+            if k not in ("text", "field") and max(r[2], r[3]) <= ICON_EDGE * scale:
                 continue
-        picked.append((round((r[1] if r else 0) / 4), r[0] if r else 0, label))
+        picked.append((round((r[1] if r else 0) / (4 * scale)), r[0] if r else 0, label))
     picked.sort(key=lambda p: (p[0], p[1]))
     out = []
     for _, _, label in picked:
@@ -191,19 +202,23 @@ def delta(prev, cur):
 
 
 def focused(nodes):
+    # Android names the focused field; its label is then what it holds (the hint only while it is
+    # empty), and a password field is named as one rather than read out.
     for n in screen_nodes(nodes):
         if n.get("focused") and kind(n) == "field":
-            return clean(n.get("label")) or clean(n.get("identifier")) or "field"
+            if n.get("password"):
+                return "password"
+            return clean(n.get("label"))[:MAX_LABEL_CHARS] or clean(n.get("identifier")) or "field"
     return ""
 
 
-def cmd_line(path, prev, save, keyboard):
+def cmd_line(path, prev, save, keyboard, scale):
     nodes = load(path)
     if nodes is None:
         print("screen: (nothing readable)")
         return 2
     vp = viewport(nodes)
-    labels = summary_labels(nodes, vp)
+    labels = summary_labels(nodes, vp, scale)
     cur = keys(nodes)
     facts = ["%d nodes" % len(cur)]
     if prev:
@@ -222,6 +237,10 @@ def cmd_line(path, prev, save, keyboard):
     field = focused(nodes)
     if field:
         facts.append('focus "%s"' % field)
+    # A notification shade, a permission prompt, an « app not responding » dialog: what the tree
+    # shows is not the app, and the step that follows has to deal with that first.
+    if (load_data(path).get("androidSnapshot") or {}).get("systemSurfaceOnly"):
+        facts.append("system dialog over the app")
     print("screen: %s (%s)" % (" · ".join(labels) or "(no label)", ", ".join(facts)))
     return 0
 
@@ -321,14 +340,18 @@ def main(argv):
         return 2
     cmd, path, rest = argv[1], argv[2], argv[3:]
     if cmd == "line":
-        opts = {"--prev": "", "--save": "", "--keyboard": "auto"}
+        opts = {"--prev": "", "--save": "", "--keyboard": "auto", "--scale": "1"}
         while rest:
             if rest[0] not in opts or len(rest) < 2:
                 sys.stderr.write("screen.py line: unknown option %s\n" % rest[0])
                 return 2
             opts[rest[0]] = rest[1]
             rest = rest[2:]
-        return cmd_line(path, opts["--prev"], opts["--save"], opts["--keyboard"])
+        try:
+            scale = float(opts["--scale"]) or 1.0
+        except ValueError:
+            scale = 1.0
+        return cmd_line(path, opts["--prev"], opts["--save"], opts["--keyboard"], scale)
     if cmd == "has" and rest:
         return cmd_has(path, rest[0], "--visible" in rest[1:])
     if cmd == "sig":
