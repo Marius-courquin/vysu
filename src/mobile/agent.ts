@@ -8,6 +8,7 @@
 // calls — a `vysu mdo`, a relaunch waiting on the screen, a `--full` capture — no longer pays a Node
 // start-up (~150 ms) for each. A library that cannot be loaded, or is older than tools.env asks, falls
 // back to the CLI with the same arguments; VYSU_AGENT_DEVICE=cli forces that.
+import { spawn } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -42,7 +43,18 @@ function cliArgv(args: string[]): [string, string[]] {
 }
 function runCli(args: string[], o: { inherit?: boolean } = {}): Promise<RunResult> {
   const [cmd, argv] = cliArgv(args);
-  return run(cmd, argv, { env: childEnv(), inherit: o.inherit });
+  if (o.inherit) return interactive(cmd, argv, childEnv());
+  return run(cmd, argv, { env: childEnv() });
+}
+
+// A tool handed the terminal whole, stdin included: a passthrough may read a steps file from `-` or
+// open a shell.
+export function interactive(cmd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<RunResult> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: 'inherit', env });
+    child.on('error', (e) => resolve({ code: 127, stdout: '', stderr: e.message }));
+    child.on('close', (code, signal) => resolve({ code: code ?? (signal ? 128 + 9 : 1), stdout: '', stderr: '' }));
+  });
 }
 
 export function sessionName(p: Platform, device = devices.of(p)): string {

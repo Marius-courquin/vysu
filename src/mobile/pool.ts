@@ -27,13 +27,13 @@ import {
 import { isMac, pidAlive } from '../core/host.ts';
 import { run, spawnDetached } from '../core/proc.ts';
 import { hhmm, slug, sleep } from '../core/text.ts';
-import { sessionClose, sessionName, sessionNames } from './agent.ts';
-import { adb, adbRaw, adbShell, androidAvdOf, androidSelect, androidSerial, emulatorSerials, forgetSerial, iosFreezeStatusBar, iosUdid, serial } from './device.ts';
+import { interactive, sessionClose, sessionName, sessionNames } from './agent.ts';
+import { adb, adbShell, androidAvdOf, androidSelect, androidSerial, emulatorSerials, forgetSerial, iosFreezeStatusBar, iosUdid, serial } from './device.ts';
 import { say, tell } from './io.ts';
 import { mobileKind } from './launch.ts';
 import { metroPort } from './metro.ts';
 import { mstateFile, mstateLine } from './state.ts';
-import { emulatorPath, xcrun } from './tools.ts';
+import { adbPath, emulatorPath, needMac, xcrun } from './tools.ts';
 
 // What this machine has, read once per command: `simctl list` and one console round trip per
 // emulator are cheap, but not four times per device line.
@@ -484,8 +484,7 @@ export async function adbCommand(args: string[]): Promise<void> {
     break; // the adb command: what follows is its own arguments
   }
   await androidSelect();
-  const r = await adbRaw(['-s', serial.value, ...args], { inherit: true });
-  exit(r.code);
+  exit((await interactive(adbPath(), ['-s', serial.value, ...args], config().childEnv({ ANDROID_SERIAL: serial.value }))).code);
 }
 
 // `vysu simctl <verb> …`: the owner's simulator UDID after the verb, under its lock. Run as it is:
@@ -495,14 +494,15 @@ export async function adbCommand(args: string[]): Promise<void> {
 export async function simctlCommand(args: string[]): Promise<void> {
   const verb = args[0] ?? '';
   if (!verb) die(`usage: vysu simctl <verb> [args…]  (on « ${devices.ios} », the owner's simulator)`);
+  needMac('vysu simctl');
   // The verbs that take no device, or several: as they are.
   if (['list', 'create', 'clone', 'runtime', 'help', 'pair', 'unpair', 'pair_activate', 'diagnose'].includes(verb) || verb.startsWith('-')) {
-    exit((await xcrun(['simctl', ...args], { inherit: true })).code);
+    exit((await interactive('xcrun', ['simctl', ...args])).code);
   }
   await iosLock();
   let udid = await iosUdid();
   if (!existsSync(join(homedir(), 'Library', 'Developer', 'CoreSimulator', 'Devices', udid))) udid = await iosUdid(true);
   if (udid === 'booted') die(`ios: no simulator named « ${devices.ios} »`, 'vysu devices');
-  exit((await xcrun(['simctl', verb, udid, ...args.slice(1)], { inherit: true })).code);
+  exit((await interactive('xcrun', ['simctl', verb, udid, ...args.slice(1)])).code);
 }
 
