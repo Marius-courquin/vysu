@@ -3,12 +3,13 @@
 // answers. The endpoint holds the credentials and the device tokens; vysu holds neither.
 import { existsSync } from 'node:fs';
 import type { PushDriver } from '../../push/push.ts';
+import { fetchFailure, shownUrl, withoutCredentials } from '../../push/http.ts';
 import { pyJson, pyPrint } from '../../push/pyjson.ts';
 
 const head = (s: string, n: number): string => Buffer.from(s, 'utf8').subarray(0, n).toString('utf8');
 
 export const driver: PushDriver = {
-  describe: (v) => `POST to ${v.cfg('PUSH_WEBHOOK_URL') || '(VYSU_PUSH_WEBHOOK_URL is not set)'}`,
+  describe: (v) => `POST to ${shownUrl(v.cfg('PUSH_WEBHOOK_URL')) || '(VYSU_PUSH_WEBHOOK_URL is not set)'}`,
   async send(v, s) {
     const url = v.cfg('PUSH_WEBHOOK_URL');
     if (!url) v.die('webhook: VYSU_PUSH_WEBHOOK_URL is not set');
@@ -25,12 +26,15 @@ export const driver: PushDriver = {
     const body = `{"email":"${email}","preset":"${s.preset}"${s.platform ? `,"platform":"${s.platform}"` : ''},"fields":${pyJson(fields)}}`;
     let code = 0;
     let out = '';
+    let why = '';
+    const target = withoutCredentials(url, { 'Content-Type': 'application/json' });
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(30000) });
+      const r = await fetch(target.url, { method: 'POST', headers: target.headers, body, signal: AbortSignal.timeout(30000) });
       code = r.status;
       out = await r.text();
-    } catch {
+    } catch (e) {
       code = 0;
+      why = fetchFailure(e);
     }
     if (code === 200) {
       let d: unknown;
@@ -47,8 +51,8 @@ export const driver: PushDriver = {
       for (const r of results as Array<Record<string, unknown>>) {
         v.say([pyPrint(r.platform), pyPrint(r.deviceModel), r.ok ? 'OK' : 'FAILED', pyPrint(r.messageName || r.error)].join(' '));
       }
-    } else if (code === 404) v.say(`webhook: no ${s.platform} device registered for ${email}, or the endpoint does not serve ${url}`);
-    else if (code === 0) v.die(`webhook unreachable at ${url} (VPN up?)`);
+    } else if (code === 404) v.say(`webhook: no ${s.platform} device registered for ${email}, or the endpoint does not serve ${shownUrl(url)}`);
+    else if (code === 0) v.die(`webhook unreachable at ${shownUrl(url)}: ${why} (VPN up?)`);
     else v.say(`webhook: HTTP ${code} — ${head(out, 200)}`);
   },
 };
