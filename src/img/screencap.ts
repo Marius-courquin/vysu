@@ -39,8 +39,8 @@ export async function screencap(data: Buffer, scale: number, out: string): Promi
 }
 
 const SPEC: ParserSpec = {
-  prog: 'screencap.py',
-  usage: 'usage: screencap.py [-h] --scale SCALE --out OUT [raw]',
+  prog: 'screencap',
+  usage: 'usage: screencap [-h] --scale SCALE --out OUT [raw]',
   pos: [{ name: 'raw', nargs: '?' }],
   opts: {
     '--scale': { kind: 'float', required: true },

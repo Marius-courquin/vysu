@@ -162,7 +162,7 @@ async function mshotFull(p: Platform, dir: string, shot: string, stepIn: string,
   const sargs = [...(top ? ['--top', top] : []), ...(bottom ? ['--bottom', bottom] : [])];
   const r = await tool('stitch', [frames, '--out', shot, ...sargs]);
   const said = `${r.stdout}${r.stderr}`.replace(/\n+$/, '');
-  if (r.code !== 0) die(`stitch.py: ${said}`);
+  if (r.code !== 0) die(`stitch: ${said}`);
   // Back to where the screen was found, so the next command does not start halfway down it.
   if (!(await adCall(p, calls.scroll('top', { settle: true }))).ok) {
     for (let i = 0; i < n; i++) await adCall(p, calls.scroll('up', { pixels: step, settle: true }));
@@ -285,7 +285,7 @@ export async function mshot(p: string, args: string[]): Promise<boolean> {
   const diff = async (a: string): Promise<string> => {
     const r = await tool('diff', [a, shot, '--mark', marked, ...ign]);
     const out = `${r.stdout}${r.stderr}`.replace(/\n+$/, '');
-    if (r.code > 1) die(`diff.py: ${out}`);
+    if (r.code > 1) die(`diff: ${out}`);
     return out;
   };
   const label2 = `${p}-${label}`;

@@ -113,9 +113,9 @@ export function verdict(a: VerdictArgs): string | null | Error {
 }
 
 const SPEC: ParserSpec = {
-  prog: 'verdict.py',
-  usage: `usage: verdict.py [-h] [--diff DIFF] [--device DEVICE] [--quiet]
-                  shots capture vs`,
+  prog: 'verdict',
+  usage: `usage: verdict [-h] [--diff DIFF] [--device DEVICE] [--quiet]
+               shots capture vs`,
   pos: [{ name: 'shots' }, { name: 'capture' }, { name: 'vs' }],
   opts: {
     '--diff': { kind: 'str' },

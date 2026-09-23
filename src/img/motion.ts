@@ -400,11 +400,11 @@ export async function motion(source: string, o: MotionOptions, emit: (s: string)
 }
 
 const SPEC: ParserSpec = {
-  prog: 'motion.py',
-  usage: `usage: motion.py [-h] [--fps FPS] [--scale SCALE] [--crop w:h:x:y]
-                 [--flash-min FLASH_MIN] [--flash-max FLASH_MAX]
-                 [--min-change MIN_CHANGE] [--dump DUMP]
-                 source`,
+  prog: 'motion',
+  usage: `usage: motion [-h] [--fps FPS] [--scale SCALE] [--crop w:h:x:y]
+              [--flash-min FLASH_MIN] [--flash-max FLASH_MAX]
+              [--min-change MIN_CHANGE] [--dump DUMP]
+              source`,
   pos: [{ name: 'source' }],
   opts: {
     '--fps': { kind: 'float', def: 60 },

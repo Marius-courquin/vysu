@@ -304,10 +304,10 @@ export async function compare(shots: string, o: CompareOptions, emit: (line: str
 }
 
 const SPEC: ParserSpec = {
-  prog: 'compare.py',
-  usage: `usage: compare.py [-h] [--against AGAINST] [--out OUT] [--edge EDGE]
-                  [--rows ROWS]
-                  shots`,
+  prog: 'compare',
+  usage: `usage: compare [-h] [--against AGAINST] [--out OUT] [--edge EDGE]
+               [--rows ROWS]
+               shots`,
   pos: [{ name: 'shots' }],
   opts: {
     '--against': { kind: 'str' },

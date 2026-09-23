@@ -118,14 +118,14 @@ export const connector: AuthConnector = {
       // Identifier-first means one field at a time: the first box is the e-mail, and after the
       // submit the same probe, run again on the password page, gives the password.
       let point = await firstField(v, 'ios');
-      if (!point) return v.die('ios: no text field found on the sheet (py/fields.py saw none)');
+      if (!point) return v.die('ios: no text field found on the sheet (fields saw none)');
       await v.mob('ios', 'press', ...point);
       await v.sleep(1);
       await v.mob('ios', 'type', email);
       await v.mob('ios', 'keyboard', 'return');
       await v.sleep(4);
       point = await firstField(v, 'ios');
-      if (!point) return v.die('ios: no password field found after the e-mail (py/fields.py saw none)');
+      if (!point) return v.die('ios: no password field found after the e-mail (fields saw none)');
       await v.mob('ios', 'press', ...point);
       await v.sleep(1);
       await v.mob('ios', 'type', password);

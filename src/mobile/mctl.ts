@@ -663,7 +663,7 @@ export async function mburst(p: string, args: string[]): Promise<boolean> {
   await loop;
   const r = await tool('burst', [raw, '--out-dir', dir, '--platform', p, '--scale', scale]);
   const out = `${r.stdout}${r.stderr}`.replace(/\n+$/, '');
-  if (r.code !== 0) return mctlWhy(`burst.py: ${lines(out).pop() ?? ''}`);
+  if (r.code !== 0) return mctlWhy(`burst: ${lines(out).pop() ?? ''}`);
   rmSync(raw, { recursive: true, force: true });
   writeFileSync(join(dir, `${p}-burst.txt`), `${out.split('\n')[0] ?? ''}\n`);
   say(out);

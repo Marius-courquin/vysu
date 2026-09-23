@@ -454,12 +454,12 @@ export async function frame(source: string, out: string | null, o: FrameOptions,
 }
 
 const SPEC: ParserSpec = {
-  prog: 'frame.py',
-  usage: `usage: frame.py [-h] [--out OUT]
-                [--device {auto,phone,phone-home,tablet,browser,none}]
-                [--preset {framed,pitch}] [--bg BG] [--title TITLE]
-                [--caption CAPTION] [--size SIZE] [--fps FPS]
-                source`,
+  prog: 'frame',
+  usage: `usage: frame [-h] [--out OUT]
+             [--device {auto,phone,phone-home,tablet,browser,none}]
+             [--preset {framed,pitch}] [--bg BG] [--title TITLE]
+             [--caption CAPTION] [--size SIZE] [--fps FPS]
+             source`,
   pos: [{ name: 'source' }],
   opts: {
     '--out': { kind: 'str' },

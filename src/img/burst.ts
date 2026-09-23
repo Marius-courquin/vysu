@@ -216,11 +216,11 @@ export async function burst(raw: string, o: BurstOptions): Promise<[string, stri
 }
 
 const SPEC: ParserSpec = {
-  prog: 'burst.py',
-  usage: `usage: burst.py [-h] --out-dir OUT_DIR --platform PLATFORM [--scale SCALE]
-                [--threshold THRESHOLD] [--min-area MIN_AREA] [--band BAND]
-                [--edge EDGE] [--max-thumbs MAX_THUMBS]
-                raw`,
+  prog: 'burst',
+  usage: `usage: burst [-h] --out-dir OUT_DIR --platform PLATFORM [--scale SCALE]
+             [--threshold THRESHOLD] [--min-area MIN_AREA] [--band BAND]
+             [--edge EDGE] [--max-thumbs MAX_THUMBS]
+             raw`,
   pos: [{ name: 'raw' }],
   opts: {
     '--out-dir': { kind: 'str', required: true },

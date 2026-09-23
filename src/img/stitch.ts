@@ -279,9 +279,9 @@ export function stitchJson(r: StitchResult): string {
 }
 
 const SPEC: ParserSpec = {
-  prog: 'stitch.py',
-  usage: `usage: stitch.py [-h] --out OUT [--top TOP] [--bottom BOTTOM] [--json]
-                 frames [frames ...]`,
+  prog: 'stitch',
+  usage: `usage: stitch [-h] --out OUT [--top TOP] [--bottom BOTTOM] [--json]
+              frames [frames ...]`,
   pos: [{ name: 'frames', nargs: '+' }],
   opts: {
     '--out': { kind: 'str', required: true },

@@ -30,11 +30,11 @@ const ICON_EDGE = 56; // pt / dp: a control this small is an icon, and its label
 
 const DOC = `What a mobile screen says, read from agent-device's \`snapshot -i --json\`.
 
-Usage: screen.py line <snap.json> [--prev <keys>] [--save <keys>] [--keyboard auto|yes|no] [--scale <n>]
-       screen.py has <snap.json> <text> [--visible]
-       screen.py sig <snap.json> [--geometry]
-       screen.py field <snap.json> <label>
-       screen.py editable <snap.json>
+Usage: screen line <snap.json> [--prev <keys>] [--save <keys>] [--keyboard auto|yes|no] [--scale <n>]
+       screen has <snap.json> <text> [--visible]
+       screen sig <snap.json> [--geometry]
+       screen field <snap.json> <label>
+       screen editable <snap.json>
 
 \`line\` is the one line an agent reads after each step: up to six labels in reading order, then the
 node count, what changed since the previous snapshot (its keys saved by --save, read by --prev), the
@@ -387,7 +387,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
     const opts: Record<string, string> = { '--prev': '', '--save': '', '--keyboard': 'auto', '--scale': '1' };
     for (let i = 0; i < rest.length; i += 2) {
       if (!(rest[i]! in opts) || i + 1 >= rest.length) {
-        io.err(`screen.py line: unknown option ${rest[i]}\n`);
+        io.err(`screen line: unknown option ${rest[i]}\n`);
         return 2;
       }
       opts[rest[i]!] = rest[i + 1]!;

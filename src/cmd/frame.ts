@@ -9,7 +9,7 @@ import { toolPassthrough } from '../img/tools.ts';
 
 export function run(args: string[]): Promise<number> {
   const given = args[0];
-  if (!given) die('usage: vysu frame <name|file> [frame.py options…]');
+  if (!given) die('usage: vysu frame <name|file> [frame options…]');
   let target = given;
   if (!existsSync(target)) target = join(config().shots, given);
   if (!existsSync(target)) die(`no shots folder nor file « ${given} »`);
