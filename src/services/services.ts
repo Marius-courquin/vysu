@@ -42,7 +42,7 @@ async function serviceWait(name: string, timeout: number): Promise<void> {
   }
   const env = config().childEnv();
   for (let i = 0; i < timeout; i++) {
-    if ((await runShell(health, { env })).code === 0) return;
+    if ((await runShell(health, { env, discard: true })).code === 0) return;
     await sleep(1000);
   }
   die(`${name}: « ${health} » never succeeded in ${timeout}s`);
@@ -149,7 +149,7 @@ export async function down(args: string[]): Promise<void> {
   const port = serviceKey(what, 'PORT');
   if (stop) {
     const dir = serviceDir(what);
-    if (isDir(dir)) await runShell(stop, { cwd: dir, env: c.childEnv() });
+    if (isDir(dir)) await runShell(stop, { cwd: dir, env: c.childEnv(), discard: true });
   } else if (port) {
     await killPort(Number(port));
   } else {

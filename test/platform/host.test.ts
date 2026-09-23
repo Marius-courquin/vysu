@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseNetstatListeners, parseProcessLines } from '../../src/core/winps.ts';
-import { cmdQuote, isWindows, processEntry, processName, processTable, which } from '../../src/core/host.ts';
+import { cmdQuote, isWindows, processEntry, processName, processTable, which, windowsBash } from '../../src/core/host.ts';
 
 const fixture = (name: string): string => readFileSync(join(import.meta.dirname, '..', 'fixtures', 'windows', name), 'utf8');
 
@@ -71,4 +71,22 @@ test('the Windows helper is built and answers fast', { skip: !isWindows }, async
   const ms = performance.now() - t0;
   assert.ok(rows.some((r) => r.pid === process.pid));
   assert.ok(ms < 1000, `the table took ${ms.toFixed(0)} ms`);
+});
+
+// System32's bash.exe is WSL's launcher, and it comes first on a Windows PATH: a script run there
+// never sees a C:\ path or vysu's environment.
+test('the bash of Git for Windows, never the WSL launcher', () => {
+  const env = {
+    SystemRoot: 'C:\\WINDOWS',
+    ProgramFiles: 'C:\\Program Files',
+    LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local',
+    PATH: 'C:\\WINDOWS\\system32;C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps;"C:\\msys64\\usr\\bin";D:\\tools\\Git\\usr\\bin\\',
+  };
+  const on = (...files: string[]) => (p: string) => files.includes(p);
+  const wsl = ['C:\\WINDOWS\\system32\\bash.exe', 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe'];
+  assert.equal(windowsBash(env, on(...wsl, 'C:\\Program Files\\Git\\bin\\bash.exe', 'D:\\tools\\Git\\usr\\bin\\bash.exe')), 'C:\\Program Files\\Git\\bin\\bash.exe');
+  assert.equal(windowsBash(env, on(...wsl, 'C:\\msys64\\usr\\bin\\bash.exe', 'D:\\tools\\Git\\usr\\bin\\bash.exe')), 'D:\\tools\\Git\\usr\\bin\\bash.exe');
+  assert.equal(windowsBash(env, on(...wsl, 'C:\\msys64\\usr\\bin\\bash.exe')), 'C:\\msys64\\usr\\bin\\bash.exe');
+  assert.equal(windowsBash(env, on(...wsl)), '');
+  assert.equal(windowsBash({ ...env, PATH: '' }, on('C:\\Users\\me\\AppData\\Local\\Programs\\Git\\bin\\bash.exe')), 'C:\\Users\\me\\AppData\\Local\\Programs\\Git\\bin\\bash.exe');
 });

@@ -1,10 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { versionBelow } from '../../src/setup/engine.ts';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { installStaged, versionBelow } from '../../src/setup/engine.ts';
 import { stampText } from '../../src/setup/skills.ts';
 import { checkerAgentText } from '../../src/setup/checker.ts';
 import { avdSpecs, ios18Runtime } from '../../src/setup/devices.ts';
 import { fillTemplate } from '../../src/cmd/init.ts';
+import { machineEnvText } from '../../src/cmd/setup.ts';
+import { parseShellEnv } from '../../src/core/shellenv.ts';
 
 test('versions are compared on their numbers', () => {
   assert.equal(versionBelow('0.38.0', '0.38.1'), true);
@@ -74,4 +79,49 @@ test('a size the way du -h writes it', async () => {
   assert.equal(humanSize(4096), '4.0K');
   assert.equal(humanSize(12 * 1024 * 1024), '12M');
   assert.equal(humanSize(1.84 * 1024 ** 3), '1.8G');
+});
+
+// A value holding a quote once left the file's quote open: every command on that machine died reading it.
+test('machine.env reads back what setup wrote, quotes included', () => {
+  const values = { VYSU_IOS_DEVICE: 'iPhone 16', VYSU_ANDROID_AVDS: 'a:36:pixel_8:', VYSU_BROWSER_PATH: "C:\\Users\\O'Brien\\Chrome $HOME\\chrome.exe" };
+  const text = machineEnvText(values);
+  assert.equal(text.split('\n')[3], `VYSU_BROWSER_PATH='C:\\Users\\O'"'"'Brien\\Chrome $HOME\\chrome.exe'`);
+  const read = Object.fromEntries(parseShellEnv(text, () => undefined, '/home/me').map((a) => [a.key, a.value]));
+  assert.deepEqual(read, values);
+});
+
+// `npm ci` in the engine deleted node_modules while other agents' vysu ran from it: the install now
+// happens beside it, under the bootstrap's lock, and the live folder is only ever renamed.
+test('the engine dependencies are installed beside the live ones and swapped in', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'vysu-install-'));
+  writeFileSync(join(root, 'package.json'), '{"name":"e"}');
+  writeFileSync(join(root, 'package-lock.json'), '{"lockfileVersion":3}');
+  const sharp = (dir: string, v: string): void => {
+    mkdirSync(join(dir, 'node_modules', 'sharp'), { recursive: true });
+    writeFileSync(join(dir, 'node_modules', 'sharp', 'package.json'), `{"version":"${v}"}`);
+  };
+  sharp(root, '1.0.0');
+  const version = (): string => readFileSync(join(root, 'node_modules', 'sharp', 'package.json'), 'utf8');
+  let during = '';
+  const ok = await installStaged(root, async (cwd) => {
+    // While the new one installs, the live one is untouched and the lock is held.
+    during = `${version()} ${existsSync(join(root, '.install-lock'))} ${readFileSync(join(cwd, 'package-lock.json'), 'utf8')}`;
+    sharp(cwd, '2.0.0');
+    return true;
+  });
+  assert.equal(ok, '');
+  assert.equal(during, '{"version":"1.0.0"} true {"lockfileVersion":3}');
+  assert.equal(version(), '{"version":"2.0.0"}');
+  assert.deepEqual(readdirSync(root).sort(), ['node_modules', 'package-lock.json', 'package.json']);
+  // A failed install leaves the live folder as it was.
+  assert.equal(await installStaged(root, async () => false), 'npm ci --omit=dev failed');
+  assert.equal(version(), '{"version":"2.0.0"}');
+  assert.deepEqual(readdirSync(root).sort(), ['node_modules', 'package-lock.json', 'package.json']);
+  // The bootstrap installing: update waits for its lock.
+  mkdirSync(join(root, '.install-lock'));
+  setTimeout(() => rmSync(join(root, '.install-lock'), { recursive: true }), 700);
+  const t0 = performance.now();
+  assert.equal(await installStaged(root, async (cwd) => (sharp(cwd, '3.0.0'), true)), '');
+  assert.ok(performance.now() - t0 >= 600);
+  assert.equal(version(), '{"version":"3.0.0"}');
 });

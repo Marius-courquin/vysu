@@ -2,8 +2,8 @@
 import { rmSync } from 'node:fs';
 import { config } from '../core/ctx.ts';
 import { die, onCleanup } from '../core/errors.ts';
-import type { Platform } from '../core/hold.ts';
-import { abRaw, lastLine, restoreFile, sessionRunning, setAuthTestSession } from '../web/ab.ts';
+import { lockTake, type Platform } from '../core/hold.ts';
+import { abRaw, lastLine, restoreFile, sessionRunning, setAuthTestSession, webLockOf } from '../web/ab.ts';
 import { sleep } from '../core/text.ts';
 import { context, stepsOn } from './context.ts';
 import { authLoad } from './load.ts';
@@ -54,6 +54,10 @@ export async function test(persona: string, platform: string): Promise<void> {
   const url = origin.replace(/\/$/, '') + config().get('LOGIN_PATH');
   const session = `${config().get('PROJECT')}-authtest`;
   setAuthTestSession(session);
+  // One test session for the project: held before anything below drops its restore file or closes it,
+  // or a second agent's test would end the first one's login half way. Its closing is registered only
+  // once it is this test's to close.
+  await lockTake(webLockOf(persona));
   const disarm = onCleanup(() => closeTestSession(session));
   // A throwaway session that a killed run left behind still holds its restore file: drop it before
   // the test rather than after, so « no cookies » is true even then.

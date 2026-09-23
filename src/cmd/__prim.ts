@@ -33,15 +33,17 @@ export async function run(args: string[]): Promise<number> {
       return status(await mobile.mobPressIf(platform(a), rest[0] ?? ''));
     case 'mob_press_any':
       return status(await mobile.mobPressAny(platform(a), rest[0] ?? ''));
+    // 1 when none of them was there, as 0.5.1 answered: a connector may branch on it.
     case 'mob_press_all':
-      await mobile.mobPressAll(platform(a), rest[0] ?? '');
-      return 0;
+      return status(await mobile.mobPressAll(platform(a), rest[0] ?? ''));
     case 'mob_wait_text':
       return status(await mobile.mobWaitText(platform(a), rest[0] ?? '', Number(rest[1] || 8000)));
+    // No field is `[]` and 1, still JSON for a connector that parses before it tests the status.
     case 'mob_fields': {
       const json = await mobile.mobFields(platform(a));
-      out(`${json.replace(/\n$/, '')}\n`);
-      return status(parseBoxes(json).length > 0);
+      const found = parseBoxes(json).length > 0;
+      out(`${found ? json.replace(/\n$/, '') : '[]'}\n`);
+      return status(found);
     }
     case 'mobile_app':
       out(mobile.mobileApp(platform(a)));

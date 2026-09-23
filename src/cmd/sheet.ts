@@ -8,9 +8,19 @@ import { SHEET_EDGE } from '../core/config.ts';
 import { die, exit } from '../core/errors.ts';
 import { openForHuman } from '../core/host.ts';
 import { compare as compareShots, CompareError } from '../img/compare.ts';
+import { pyInt, pyStrRepr } from '../img/fmt.ts';
 import { sheet } from '../img/sheet.ts';
 
 const USAGE = 'usage: vysu sheet <name> [--cols N] [--max N] [--only "<glob>,…"] [--strip] [--open] [--compare [--against <name>]]';
+
+// A whole number, or a die naming the option in argparse's words, as sheet.py answered: through
+// Number() a missing --max became 0 (one capture per page) and « abc » died on something unrelated.
+export function intOption(flag: string, raw: string | undefined): number {
+  if (raw === undefined || /^-\D/.test(raw) || raw === '-') die(`vysu sheet: argument ${flag}: expected one argument`);
+  const n = pyInt(raw);
+  if (n === null) die(`vysu sheet: argument ${flag}: invalid int value: ${pyStrRepr(raw)}`);
+  return n;
+}
 
 export async function run(args: string[]): Promise<void> {
   const name = args[0];
@@ -27,10 +37,10 @@ export async function run(args: string[]): Promise<void> {
     const value = (): string => args[++i] ?? '';
     switch (a) {
       case '--cols':
-        cols = Number(value());
+        cols = intOption(a, args[++i]);
         break;
       case '--max':
-        max = Number(value());
+        max = intOption(a, args[++i]);
         break;
       case '--only':
         only = value();

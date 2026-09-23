@@ -4,10 +4,10 @@
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, join, posix, win32 } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
-import { isExecutable, isWindows, nativeTarget, which } from '../core/host.ts';
+import { isExecutable, isWindows, nativeTarget, toolArgv, which } from '../core/host.ts';
 import { lockTake } from '../core/hold.ts';
 import type { RunResult } from '../core/proc.ts';
 import { slug } from '../core/text.ts';
@@ -22,20 +22,27 @@ export function abBinary(): string {
   if (binary) return binary;
   const onPath = which('agent-browser');
   if (!onPath) return (binary = 'agent-browser');
-  const want = `agent-browser-${nativeTarget()}`;
   let real = onPath;
   try {
     real = realpathSync(onPath);
   } catch {
     // a dangling link: the PATH command it is
   }
-  const candidates = [basename(real).startsWith('agent-browser-') && !real.endsWith('.js') ? real : '', join(dirname(real), want)];
-  // npm on Windows: <prefix>\agent-browser.cmd, the package under <prefix>\node_modules.
-  if (isWindows) candidates.push(join(dirname(onPath), 'node_modules', 'agent-browser', 'bin', want));
-  // A source-built arm64 Windows binary is rare: the x64 one runs under emulation, as the wrapper does.
-  if (isWindows && want.includes('arm64')) candidates.push(join(dirname(real), want.replace('arm64', 'x64')));
-  binary = candidates.find((c) => c && isExecutable(c)) ?? onPath;
+  binary = abCandidates(onPath, real, `agent-browser-${nativeTarget()}`).find((c) => isExecutable(c)) ?? onPath;
   return binary;
+}
+
+// Where the native binary may be, in order. npm on Windows puts a `.cmd` shim in <prefix> and the
+// package's binaries in <prefix>\node_modules\agent-browser\bin. No arm64 Windows build is published:
+// the x64 one runs there under emulation, which is what the package's own shim runs.
+export function abCandidates(onPath: string, real: string, want: string, windows = isWindows): string[] {
+  const p = windows ? win32 : posix;
+  const dirs = [p.dirname(real)];
+  if (windows) dirs.push(p.join(p.dirname(onPath), 'node_modules', 'agent-browser', 'bin'));
+  const names = windows && want.includes('arm64') ? [want, want.replace('arm64', 'x64')] : [want];
+  const out = p.basename(real).startsWith('agent-browser-') && !real.endsWith('.js') ? [real] : [];
+  for (const name of names) for (const d of dirs) out.push(p.join(d, name));
+  return out;
 }
 
 // `vysu auth test` drives a session of its own — its own profile, no cookies, dropped at the end —
@@ -107,10 +114,14 @@ export interface AbOptions {
 }
 
 export async function abRaw(args: string[], o: AbOptions = {}): Promise<RunResult> {
-  const child = spawn(abBinary(), args, {
+  // With no native binary found on Windows, the command is npm's `.cmd` shim: through cmd.exe, which
+  // Node requires of a batch file since the April 2024 fix (CVE-2024-27980).
+  const t = toolArgv(abBinary(), args);
+  const child = spawn(t.file, t.args, {
     env: config().childEnv(),
     stdio: [o.input === undefined ? (o.inherit ? 'inherit' : 'ignore') : 'pipe', o.inherit ? 'inherit' : 'pipe', 'pipe'],
     windowsHide: true,
+    windowsVerbatimArguments: t.verbatim,
   });
   const out: Buffer[] = [];
   const err: Buffer[] = [];
@@ -127,6 +138,9 @@ export async function abRaw(args: string[], o: AbOptions = {}): Promise<RunResul
     partial = text.slice(cut + 1);
     if (cut >= 0) process.stderr.write(quiet(text.slice(0, cut + 1)));
   });
+  // A batch agent-browser left unread (it exited on a bad option, or crashed) must not take vysu down
+  // with EPIPE: its exit code says what happened.
+  child.stdin?.on('error', () => undefined);
   if (o.input !== undefined) child.stdin?.end(o.input);
   const code = await new Promise<number>((resolve) => {
     child.on('error', (e) => {

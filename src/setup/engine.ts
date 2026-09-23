@@ -1,12 +1,14 @@
 // The engine itself and the two node tools it drives: which version this is, which versions of
 // agent-browser and agent-device it was checked against, and whether the machine has them.
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ENGINE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
+import { onCleanup } from '../core/errors.ts';
 import { which } from '../core/host.ts';
 import { run, runTool } from '../core/proc.ts';
 import { parseShellEnv } from '../core/shellenv.ts';
+import { sleep } from '../core/text.ts';
 import { info, miss, ok, warn } from '../core/ui.ts';
 import { installHint } from './hints.ts';
 
@@ -198,9 +200,81 @@ export function engineDepsCheck(): void {
   else miss('engine: dependencies missing — no sheet, no report, no diff without sharp', `cd ${ENGINE} && npm ci --omit=dev`);
 }
 
-export async function npmCiEngine(): Promise<boolean> {
-  const r = await runTool('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], { cwd: ENGINE });
-  return r.code === 0;
+// '' once installed, else what went wrong.
+export async function npmCiEngine(): Promise<string> {
+  return installStaged(ENGINE, async (cwd) => (await runTool('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], { cwd })).code === 0);
+}
+
+// Installed beside the live node_modules, then swapped in with two renames. Other agents' vysu run from
+// this folder meanwhile: `npm ci` in place deleted node_modules first (a lazy import('sharp') then
+// failed), and on Windows a sharp.node another vysu had loaded stopped it half way. The bootstrap
+// (bin/vysu.mjs) installs under the same lock directory when sharp is missing, so the two never
+// install at once, and a command started between the two renames waits for the second.
+export async function installStaged(root: string, install: (cwd: string) => Promise<boolean>): Promise<string> {
+  const lock = join(root, '.install-lock');
+  const taken = await installLock(lock);
+  if (taken) return taken;
+  const release = (): void => rmSync(lock, { recursive: true, force: true });
+  const disarm = onCleanup(release, true);
+  const stage = join(root, '.install-stage');
+  const live = join(root, 'node_modules');
+  const old = join(root, '.node_modules.old');
+  try {
+    rmSync(stage, { recursive: true, force: true });
+    mkdirSync(stage);
+    for (const f of ['package.json', 'package-lock.json']) copyFileSync(join(root, f), join(stage, f));
+    if (!(await install(stage))) return 'npm ci --omit=dev failed';
+    // What a previous update could not remove (Windows, a sharp.node still loaded then).
+    rmSync(old, { recursive: true, force: true });
+    try {
+      renameSync(live, old);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return `node_modules could not be moved aside (${(e as NodeJS.ErrnoException).code ?? 'error'}: another vysu has it open?)`;
+    }
+    try {
+      renameSync(join(stage, 'node_modules'), live);
+    } catch (e) {
+      if (existsSync(old)) renameSync(old, live);
+      return `the new node_modules could not be moved in (${(e as NodeJS.ErrnoException).code ?? 'error'})`;
+    }
+    try {
+      rmSync(old, { recursive: true, force: true });
+    } catch {
+      // Windows: a sharp.node another vysu still has loaded; the next update removes it.
+    }
+    return '';
+  } catch (e) {
+    return `the install stopped: ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    try {
+      rmSync(stage, { recursive: true, force: true });
+    } catch {
+      // left for the next update, which starts by removing it
+    }
+    disarm();
+    release();
+  }
+}
+
+// The bootstrap's lock: a directory, taken by whoever creates it; one older than ten minutes is an
+// install that died. '' once held, else why not.
+async function installLock(lock: string): Promise<string> {
+  for (let i = 0; i < 600; i++) {
+    try {
+      mkdirSync(lock);
+      return '';
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return `cannot create ${lock} (${(e as NodeJS.ErrnoException).code ?? 'error'})`;
+    }
+    try {
+      if (Date.now() - statSync(lock).mtimeMs > 600_000) rmSync(lock, { recursive: true, force: true });
+    } catch {
+      // gone meanwhile: the next mkdir takes it
+    }
+    if (i === 0) process.stderr.write(`vysu: another vysu is installing the engine's dependencies (${lock}) — waiting\n`);
+    await sleep(500);
+  }
+  return `${lock} was held for five minutes`;
 }
 
 export async function ffmpegVersion(): Promise<string> {

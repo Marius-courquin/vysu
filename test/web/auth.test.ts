@@ -3,7 +3,7 @@
 // persona_require) on a stub connector.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AuthContext, Box } from '../../src/auth/types.ts';
@@ -243,4 +243,22 @@ test('the bash bridge: cfg, step, die and the credentials of a stub connector', 
   // The login writes to this process's own stdout; its exit code is what is checked here.
   await c.webLogin({} as AuthContext, 'alice', 'http://o.example/login');
   await assert.rejects(c.webToken({} as AuthContext, 'alice'), (e: unknown) => (e as { code?: number }).code === 1);
+});
+
+// The values in force (a persona's password among them) once went to bash as its `-c` argument, which
+// any user of the machine reads in the process list.
+test('the bash bridge keeps the values off the command line, in a file only this user reads', { skip: process.platform === 'win32' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vysu-bridge-'));
+  mkdirSync(join(dir, '.vysu'));
+  writeFileSync(join(dir, '.vysu', 'config'), `VYSU_PROJECT='bridge'\nVYSU_STATE='${join(dir, 'state')}'\nVYSU_ORIGIN='http://secret.example'\n`);
+  const file = join(dir, '.vysu', 'auth.sh');
+  writeFileSync(file, 'auth_describe() { printf \'%s\\n%s\\n%s\' "$0" "$(ps -o args= -p $$)" "$(ls -l "$0" | cut -c1-10)"; }\n');
+  const { Config } = await import('../../src/core/config.ts');
+  const { setConfig } = await import('../../src/core/ctx.ts');
+  setConfig(Config.load({ ...process.env, VYSU_OWNER: 'test:1', VYSU_PROJECT_DIR: dir }, dir));
+  const { bashConnector } = await import('../../src/auth/bridge.ts');
+  const [script, argv, mode] = (await bashConnector(file).describe({} as AuthContext)).split('\n');
+  assert.ok(argv!.includes('auth_describe') && !argv!.includes('secret.example'), argv);
+  assert.equal(mode, '-rw-------');
+  assert.equal(existsSync(script!), false);
 });

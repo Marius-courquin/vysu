@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseShellEnv, shellQuote, ShellUnsupported } from '../src/core/shellenv.ts';
 import { slug } from '../src/core/text.ts';
 import { fnmatch, htmlEscape, pyRound } from '../src/core/py.ts';
+import { intOption } from '../src/cmd/sheet.ts';
 
 const parse = (text: string, env: Record<string, string> = {}): Record<string, string> =>
   Object.fromEntries(parseShellEnv(text, (n) => env[n], '/home/me').map((a) => [a.key, a.value]));
@@ -66,4 +67,16 @@ test('python behaviours', () => {
   assert.ok(fnmatch('a1.png', 'a[0-9].png'));
   assert.ok(!fnmatch('ab.png', 'a[!b].png'));
   assert.equal(htmlEscape(`<a href="x">'&'</a>`), '&lt;a href=&quot;x&quot;&gt;&#x27;&amp;&#x27;&lt;/a&gt;');
+});
+
+// Through Number(), `--max` with no value was 0 (one capture per page) and `--max abc` died on
+// something unrelated; sheet.py's argparse named the option.
+test('a sheet option takes a whole number, or dies naming itself', () => {
+  assert.equal(intOption('--max', '8'), 8);
+  assert.equal(intOption('--cols', '-2'), -2);
+  assert.throws(() => intOption('--max', undefined), { message: 'vysu sheet: argument --max: expected one argument' });
+  assert.throws(() => intOption('--max', '--strip'), { message: 'vysu sheet: argument --max: expected one argument' });
+  assert.throws(() => intOption('--max', 'abc'), { message: "vysu sheet: argument --max: invalid int value: 'abc'" });
+  assert.throws(() => intOption('--cols', '1.5'), { message: "vysu sheet: argument --cols: invalid int value: '1.5'" });
+  assert.throws(() => intOption('--cols', ''), { message: "vysu sheet: argument --cols: invalid int value: ''" });
 });

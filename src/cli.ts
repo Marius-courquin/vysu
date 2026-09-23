@@ -4,7 +4,7 @@
 import module from 'node:module';
 import { Config } from './core/config.ts';
 import { setCommandLine, setConfig } from './core/ctx.ts';
-import { Exit, printError, runCleanups, VysuError } from './core/errors.ts';
+import { Exit, printError, runCleanups, signalForwarded, VysuError } from './core/errors.ts';
 import { noColor } from './core/ui.ts';
 import { commands } from './commands.ts';
 import { execProjectCommand, projectCommandPath } from './core/project.ts';
@@ -73,9 +73,11 @@ for (const stream of [process.stdout, process.stderr]) {
   });
 }
 
-// A signal ends the command the way a die does: locks given back, a recorder stopped.
+// A signal ends the command the way a die does: locks given back, a recorder stopped. A project
+// command running in vysu's place gets the signal instead, and its end is the command's end.
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
   process.on(sig, () => {
+    if (signalForwarded(sig)) return;
     void runCleanups().finally(() => process.exit(sig === 'SIGINT' ? 130 : 143));
   });
 }

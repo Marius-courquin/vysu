@@ -15,6 +15,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import type { PushContext, PushDriver } from '../../push/push.ts';
+import { fetchFailure, shownUrl, withoutCredentials } from '../../push/http.ts';
 import { pyJson } from '../../push/pyjson.ts';
 
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -71,22 +72,26 @@ async function accessToken(v: PushContext, sa: string): Promise<string> {
   }
   let code = 0;
   let out = '';
+  let why = '';
+  const target = withoutCredentials(audience, { 'Content-Type': 'application/x-www-form-urlencoded' });
   try {
-    const r = await fetch(audience, {
+    const r = await fetch(target.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: target.headers,
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }).toString(),
       signal: AbortSignal.timeout(30000),
     });
     code = r.status;
     out = await r.text();
-  } catch {
+  } catch (e) {
     code = 0;
+    why = fetchFailure(e);
   }
-  if (code === 0) v.die(`fcm: ${audience} unreachable`);
+  const shown = shownUrl(audience);
+  if (code === 0) v.die(`fcm: ${shown} unreachable: ${why}`);
   // The usual causes, in the order they happen: a key that is not the account's, and a machine whose
   // clock drifted past the hour the assertion claims.
-  if (code === 400 || code === 401) v.die(`fcm: ${audience} refused the assertion (HTTP ${code}) — wrong key, or a clock off by more than 5 min: ${head(out, 200)}`);
+  if (code === 400 || code === 401) v.die(`fcm: ${shown} refused the assertion (HTTP ${code}) — wrong key, or a clock off by more than 5 min: ${head(out, 200)}`);
   if (code !== 200) v.die(`fcm: token exchange failed (HTTP ${code}): ${head(out, 200)}`);
   let token: unknown;
   try {
@@ -110,18 +115,23 @@ async function post(v: PushContext, endpoint: string, bearer: string, message: s
   m.token = token;
   let code = 0;
   let out = '';
+  let why = '';
+  // The bearer is the authorization here: credentials in a test endpoint's url are only taken out of it.
+  const target = withoutCredentials(endpoint, { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' });
   try {
-    const r = await fetch(endpoint, {
+    const r = await fetch(target.url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
+      headers: target.headers,
       body: pyJson({ message: m }),
       signal: AbortSignal.timeout(30000),
     });
     code = r.status;
     out = await r.text();
-  } catch {
+  } catch (e) {
     code = 0;
+    why = fetchFailure(e);
   }
+  const shown = shownUrl(endpoint);
   const upper = platform.toUpperCase();
   if (code === 200) {
     let name = '(no answer)';
@@ -132,8 +142,8 @@ async function post(v: PushContext, endpoint: string, bearer: string, message: s
       name = '(no answer)';
     }
     v.say(`${platform}: sent — ${name}`);
-  } else if (code === 0) v.die(`fcm: ${endpoint} unreachable`);
-  else if (code === 401 || code === 403) v.die(`fcm: ${endpoint} refused the token (HTTP ${code}) — the account has no rights on this project`);
+  } else if (code === 0) v.die(`fcm: ${shown} unreachable: ${why}`);
+  else if (code === 401 || code === 403) v.die(`fcm: ${shown} refused the token (HTTP ${code}) — the account has no rights on this project`);
   else if (code === 404) v.say(`${platform}: the device token is not registered any more (the app was reinstalled: vysu persona set ${persona} FCM_TOKEN_${upper} <token>)`);
   else v.say(`${platform}: HTTP ${code} — ${head(out, 300)}`);
 }
