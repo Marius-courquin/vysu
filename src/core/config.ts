@@ -173,7 +173,10 @@ export class Config {
     return join(this.state, 'claims');
   }
   get lockWait(): number {
-    return Number(this.get('LOCK_WAIT', '90')) || 90;
+    // 0 is an answer (fail at once on a busy session), not a missing value.
+    const v = this.values.get('VYSU_LOCK_WAIT') ?? '';
+    const n = Number(v);
+    return v.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : 90;
   }
   get remotion(): string {
     return join(ENGINE, 'remotion');

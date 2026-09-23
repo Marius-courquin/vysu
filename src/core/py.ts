@@ -29,7 +29,27 @@ export function fnmatch(name: string, pattern: string): boolean {
       }
     } else re += c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
   }
-  return new RegExp(`^${re}$`, 's').test(name);
+  try {
+    return new RegExp(`^${re}$`, 's').test(name);
+  } catch {
+    // A range written backwards (`[z-a]`) matches nothing in Python; a RegExp refuses to build it.
+    return false;
+  }
+}
+
+// `'%.<d>f' % x`: correctly rounded, an exact tie to the even digit (3.25 → « 3.2 »), where toFixed
+// rounds a tie up. The digits of toFixed(d + 30) are the double's exact decimal expansion, so a tie is
+// only taken for one.
+export function pyFixed(x: number, digits: number): string {
+  const plain = x.toFixed(digits);
+  const long = Math.abs(x).toFixed(digits + 30);
+  const cut = long.length - 30;
+  if (!/^50*$/.test(long.slice(cut))) return plain;
+  const kept = long.slice(0, cut).replace(/\.$/, '');
+  const last = Number(kept.at(-1));
+  if (last % 2 === 1) return plain;
+  const down = (x < 0 ? '-' : '') + kept;
+  return /^-0(\.0*)?$/.test(down) ? down.slice(1) : down;
 }
 
 // html.escape(s, quote=True).

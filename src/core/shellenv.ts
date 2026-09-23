@@ -27,7 +27,9 @@ type Lookup = (name: string) => string | undefined;
 const NAME_START = /[A-Za-z_]/;
 const NAME_CHAR = /[A-Za-z0-9_]/;
 
-export function parseShellEnv(text: string, lookup: Lookup, home: string): Assignment[] {
+export function parseShellEnv(source: string, lookup: Lookup, home: string): Assignment[] {
+  // A file checked out with Windows line endings reads like the same file with Unix ones.
+  const text = source.replace(/\r\n?/g, '\n');
   const vars = new Map<string, string>();
   const get = (name: string): string => vars.get(name) ?? lookup(name) ?? '';
   const out: Assignment[] = [];

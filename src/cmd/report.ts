@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
 import { metaRead, type Meta } from '../core/meta.ts';
+import { pyFixed } from '../core/py.ts';
 
 type Verdict = Record<string, unknown>;
 
@@ -171,7 +172,7 @@ function webReport(dir: string, meta: Meta): string[] {
     try {
       const ev = JSON.parse(readFileSync(join(dir, 'events.json'), 'utf8'));
       const steps = Array.isArray(ev.steps) ? ev.steps.length : 0;
-      lines.push(`clip: ${'clip' in ev ? py(ev.clip) : ''} · ${Number(ev.duration || 0).toFixed(1)} s · ${steps} steps (events.json)`);
+      lines.push(`clip: ${'clip' in ev ? py(ev.clip) : ''} · ${pyFixed(Number(ev.duration || 0), 1)} s · ${steps} steps (events.json)`);
     } catch {
       // a take without events.json reads like a capture
     }

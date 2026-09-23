@@ -54,10 +54,22 @@ async function main(argv: string[]): Promise<number> {
 
 // A reader that stops early (`vysu doctor | head`) closes the pipe: the rest of the output has
 // nowhere to go, which is an end, not an error. The locks go with the exit hook.
+// The recorder a `rec … | head` started is still stopped: the cleanups run before the exit, with
+// every further write dropped. 141 is what a shell reports for a command SIGPIPE ended.
+let piped = false;
 for (const stream of [process.stdout, process.stderr]) {
   stream.on('error', (e: NodeJS.ErrnoException) => {
-    if (e.code === 'EPIPE') process.exit(0);
-    throw e;
+    if (e.code !== 'EPIPE') throw e;
+    if (piped) return;
+    piped = true;
+    const drop = ((_: unknown, _enc?: unknown, cb?: unknown) => {
+      if (typeof cb === 'function') cb();
+      else if (typeof _enc === 'function') _enc();
+      return true;
+    }) as typeof process.stdout.write;
+    process.stdout.write = drop;
+    process.stderr.write = drop;
+    void runCleanups().finally(() => process.exit(141));
   });
 }
 

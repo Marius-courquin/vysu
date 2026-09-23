@@ -48,11 +48,18 @@ export function deprecated(old: string, now: string): void {
 // What has to happen whichever way vysu ends. Async cleanups run at the end of the command and on a
 // signal; the sync ones (a lock directory to remove) also run from process.on('exit'), which is the
 // only hook left when something calls process.exit directly.
-type Cleanup = { run: () => void | Promise<void>; sync: boolean; done: boolean };
+// `last` is for the locks: whatever was registered before the first lock was taken (a throwaway
+// browser session to close) must still run while the lock keeps the next agent out.
+type Cleanup = { run: () => void | Promise<void>; sync: boolean; last: boolean; done: boolean };
 const cleanups: Cleanup[] = [];
 
-export function onCleanup(run: () => void | Promise<void>, sync = false): () => void {
-  const c: Cleanup = { run, sync, done: false };
+const order = (): Cleanup[] => {
+  const rev = [...cleanups].reverse();
+  return [...rev.filter((c) => !c.last), ...rev.filter((c) => c.last)];
+};
+
+export function onCleanup(run: () => void | Promise<void>, sync = false, last = false): () => void {
+  const c: Cleanup = { run, sync, last, done: false };
   cleanups.push(c);
   return () => {
     c.done = true;
@@ -61,7 +68,7 @@ export function onCleanup(run: () => void | Promise<void>, sync = false): () => 
 
 export async function runCleanups(): Promise<void> {
   // Last registered, first run: a recorder started after a lock is stopped before the lock goes.
-  for (const c of [...cleanups].reverse()) {
+  for (const c of order()) {
     if (c.done) continue;
     c.done = true;
     try {
@@ -73,7 +80,7 @@ export async function runCleanups(): Promise<void> {
 }
 
 process.on('exit', () => {
-  for (const c of [...cleanups].reverse()) {
+  for (const c of order()) {
     if (c.done || !c.sync) continue;
     c.done = true;
     try {

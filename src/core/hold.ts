@@ -10,7 +10,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, wri
 import { join } from 'node:path';
 import { config, commandLine } from './ctx.ts';
 import { die, log, onCleanup } from './errors.ts';
-import { pidAlive, processEntry, processName } from './host.ts';
+import { isWindows, pidAlive, processEntry, processName } from './host.ts';
 import { ANDROID_DEFAULT_AVD, IOS_DEFAULT_DEVICE } from './config.ts';
 import { hhmm, nowSeconds, sleep, slug } from './text.ts';
 
@@ -222,7 +222,23 @@ function listDir(dir: string): string[] {
 }
 
 const lockPid = (dir: string): number => Number(readTrim(join(dir, 'pid')).trim() || 0);
-export const lockAlive = (dir: string): boolean => pidAlive(lockPid(dir));
+// A lock is alive while its process is. One with no pid yet is being taken this very moment — its
+// holder made the directory and writes the pid next — so it counts as alive for a few seconds: two
+// agents starting within a few milliseconds of each other otherwise both deleted it as a dead one and
+// both drove the same session. On Windows a pid comes back quickly after a vysu is killed without its
+// cleanups, so the process must also still be a vysu (node or bun).
+export function lockAlive(dir: string): boolean {
+  const pid = lockPid(dir);
+  if (!pid) {
+    try {
+      return Date.now() - statSync(dir).mtimeMs < 5000;
+    } catch {
+      return false;
+    }
+  }
+  if (!pidAlive(pid)) return false;
+  return !isWindows || ['node', 'bun'].includes(processName(pid).toLowerCase());
+}
 
 // Who holds it, doing what, for how long. The holder writes its identity just after the mkdir that
 // publishes the lock, and a waiter that started at the same moment lands in between: one beat is all
@@ -261,7 +277,7 @@ function releaseAll(): void {
 export function releaseOnExit(): { VYSU_LOCK_HOLDER: string; VYSU_LOCK_CMD: string } {
   if (!releaseRegistered) {
     releaseRegistered = true;
-    onCleanup(releaseAll, true);
+    onCleanup(releaseAll, true, true);
   }
   return { VYSU_LOCK_HOLDER: String(process.pid), VYSU_LOCK_CMD: commandLine() };
 }
@@ -274,13 +290,18 @@ export async function lockTake(r: string): Promise<void> {
   mkdirSync(c.locks, { recursive: true });
   if (!releaseRegistered) {
     releaseRegistered = true;
-    onCleanup(releaseAll, true);
+    onCleanup(releaseAll, true, true);
   }
   if (lockPid(dir) === holder()) {
     held.add(r);
     return;
   }
   const wait = c.lockWait;
+  // Everything the lock will say is known before the mkdir that publishes it: finding the owner walks
+  // the process tree, and a lock left without its pid meanwhile looked dead to a waiter.
+  const me = owner();
+  const pid = String(holder());
+  const cmd = holder() === process.pid ? commandLine() : (process.env.VYSU_LOCK_CMD ?? commandLine());
   let i = 0;
   for (;;) {
     let why = claimWhy(r);
@@ -288,10 +309,10 @@ export async function lockTake(r: string): Promise<void> {
       // A lock whose process is gone is an agent that crashed: it must not hold the device for good.
       if (isDir(dir) && !lockAlive(dir)) rmSync(dir, { recursive: true, force: true });
       if (mkdirOnce(dir)) {
-        writeFileSync(join(dir, 'owner'), owner());
-        writeFileSync(join(dir, 'pid'), String(holder()));
+        writeFileSync(join(dir, 'pid'), pid);
+        writeFileSync(join(dir, 'owner'), me);
         writeFileSync(join(dir, 'since'), `${nowSeconds()}\n`);
-        writeFileSync(join(dir, 'cmd'), holder() === process.pid ? commandLine() : (process.env.VYSU_LOCK_CMD ?? commandLine()));
+        writeFileSync(join(dir, 'cmd'), cmd);
         held.add(r);
         claimRenew(r);
         if (i > 0) process.stderr.write(`vysu: ${r} taken after ${Math.floor(i / 2)}s\n`);
