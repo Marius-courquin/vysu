@@ -28,7 +28,8 @@ async function main(argv: string[]): Promise<number> {
       process.stdout.write(usage());
       return 1;
     }
-    const load = commands[name];
+    // Own keys only: `vysu toString` is a persona, not Object.prototype's method.
+    const load = Object.hasOwn(commands, name) ? commands[name] : undefined;
     if (load) {
       const code = await (await load()).run(args.slice(1));
       return typeof code === 'number' ? code : 0;
