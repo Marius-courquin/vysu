@@ -16,6 +16,8 @@ import {
   deviceRemember,
   devices,
   iosLock,
+  lockDrop,
+  lockTake,
   owner,
   ownerDevices,
   resourceOf,
@@ -94,11 +96,24 @@ export async function claim(args: string[]): Promise<void> {
     dev = devices.of(what);
   }
   const r = resourceOf(what);
-  const held = claimWhy(r);
-  if (held) die(`${r} ${held}`);
-  claimWrite(r, Number(minutes), note, dev);
+  await claimSeal(r, Number(minutes), note, dev);
   if (device) deviceRemember(what === 'ios' ? 'ios-device' : 'android-avd', device);
   await claimReport(what, r, '');
+}
+
+// The check and the write under the pool lock `--any` takes: two owners claiming the same device at
+// the same moment both found it free, both were told « claimed », and the second file replaced the
+// first. Beyond 0.5.1, which had the same gap.
+export async function claimSeal(r: string, minutes: number, note: string, device: string): Promise<void> {
+  const pool = `pool-${r.slice(0, r.indexOf('-'))}`;
+  await lockTake(pool);
+  try {
+    const held = claimWhy(r);
+    if (held) die(`${r} ${held}`);
+    claimWrite(r, minutes, note, device);
+  } finally {
+    lockDrop(pool);
+  }
 }
 
 // What a claim prints: the claim itself, then what the last agent left on the device. The lines a

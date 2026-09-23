@@ -39,3 +39,15 @@ test('two isolated Metros started together get two ports, each on record', async
     assert.deepEqual(records, [`${pa} 0`, `${pb} 0`].sort());
   }
 });
+
+// The first owner is between its check and its write (a clone takes seconds under the same lock):
+// the second one's named claim waits for it, then finds the device claimed.
+test('a named claim waits on the pool lock, then sees the claim made under it', async () => {
+  const state = mkdtempSync(join(tmpdir(), 'vysu-claim-race-'));
+  const a = contender(state, 'owner-a', ['slow-claim', 'android-fake-avd']);
+  await new Promise((r) => setTimeout(r, 300));
+  const [sa, sb] = await Promise.all([a, contender(state, 'owner-b', ['claim', 'android-fake-avd'])]);
+  assert.equal(sa, 'claimed');
+  assert.match(sb, /^died: android-fake-avd claimed by owner-a until /);
+  assert.match(readFileSync(join(state, 'claims', 'android-fake-avd'), 'utf8'), /^owner=owner-a$/m);
+});
