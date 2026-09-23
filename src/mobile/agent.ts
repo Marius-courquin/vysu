@@ -29,6 +29,22 @@ export function agentDeviceBin(): string {
   return bin;
 }
 
+// How to start the CLI. On Windows npm installs a `.cmd` shim, which Node no longer spawns without a
+// shell: the package's own script is run by node instead, the same file the shim would have run.
+function cliArgv(args: string[]): [string, string[]] {
+  const bin = agentDeviceBin();
+  if (isWindows && /\.(cmd|bat)$/i.test(bin)) {
+    const root = packageRoot();
+    const node = which('node');
+    if (root && node) return [node, [join(root, 'bin', 'agent-device.mjs'), ...args]];
+  }
+  return [bin, args];
+}
+function runCli(args: string[], o: { inherit?: boolean } = {}): Promise<RunResult> {
+  const [cmd, argv] = cliArgv(args);
+  return run(cmd, argv, { env: childEnv(), inherit: o.inherit });
+}
+
 export function sessionName(p: Platform, device = devices.of(p)): string {
   return `${config().get('PROJECT')}-${p}-${slug(device)}`;
 }
@@ -57,12 +73,12 @@ function childEnv(): NodeJS.ProcessEnv {
 // `ad <platform> <args…>`: the CLI on the chosen device, its output handed back.
 export async function ad(p: Platform, args: string[], o: { inherit?: boolean } = {}): Promise<RunResult> {
   await select(p);
-  return run(agentDeviceBin(), [...args, ...targetFlags(p)], { env: childEnv(), inherit: o.inherit });
+  return runCli([...args, ...targetFlags(p)], o);
 }
 
 // The CLI with no device (session list, close).
 export function adPlain(args: string[]): Promise<RunResult> {
-  return run(agentDeviceBin(), args, { env: childEnv() });
+  return runCli(args);
 }
 
 // --- the library -----------------------------------------------------------------------------
@@ -188,7 +204,7 @@ export async function adCall(p: Platform, call: Call): Promise<Answer> {
       }
     }
   }
-  const r = await run(agentDeviceBin(), [...call.cli, '--json', ...targetFlags(p)], { env: childEnv() });
+  const r = await runCli([...call.cli, '--json', ...targetFlags(p)]);
   return parseAnswer(r.stdout, r.code);
 }
 
