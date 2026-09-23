@@ -193,6 +193,8 @@ These are not written to `.vysu/config`; they are exported for one command or on
 | `VYSU_ENGINE` | the engine directory, exported to project commands and to the render script | resolved from `bin/vysu` |
 | `VYSU_UI_GLOBS` | read by the Stop hook only (`templates/hooks/stop-reminder.sh`, or `stop-reminder.mjs` where there is no bash): which changed files count as UI | `**/*.tsx,**/*.vue,**/*.svelte,**/*.css` |
 | `VYSU_RUNTIME` | what `bin/vysu` and `bin\vysu.cmd` run the engine on: `node`, or `bun` | `node` |
+| `VYSU_AGENT_DEVICE` | `cli` makes every device call a run of the `agent-device` command instead of a call to its library (loaded from the package that command runs, when it is at least `AGENT_DEVICE_MIN` of `tools.env`): the same requests, one Node start-up each | empty: the library |
+| `VYSU_DEBUG` | `mobile` prints, on stderr, when a relaunch handed the bundle over, what each look at Metro's log and at the screen found, and when it decided the app was on the launcher | empty |
 
 Personas themselves are not config: they live in `personas.env` under the state folder, mode 600,
 written by `vysu persona add|set|import` and read as `VYSU_PERSONA_<NAME>_<KEY>`.

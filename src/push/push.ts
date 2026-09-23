@@ -100,7 +100,7 @@ const BUILTIN: Record<string, () => Promise<PushDriver>> = {
 function projectDriver(name: string): string {
   const dir = config().vysuDir;
   if (!dir) return '';
-  for (const ext of ['.mjs', '.js', '.sh']) {
+  for (const ext of ['.mjs', '.js', '.ts', '.sh']) {
     const f = join(dir, 'push-drivers', `${name}${ext}`);
     if (existsSync(f)) return f;
   }
