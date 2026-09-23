@@ -20,13 +20,17 @@
 #                                           AVDs: the specs of VYSU_ANDROID_AVDS, created by `vysu setup`
 #   vysu ios|android <agent-device args…>   passthrough on the chosen simulator / emulator
 #   vysu mlogin ios|android <persona>       log the persona in inside the app (one install = one session)
-#   vysu mshot ios|android <name> [label] [--baseline <name>]
+#   vysu mshot ios|android <name> [label] [--baseline <name>] [--no-prev]
 #              [--full [--step 150] [--max 12] [--top <pt>] [--bottom <pt>]]
 #                                           screenshot (1x, steady status bar) into the shots folder; --full scrolls
 #                                           and stitches, mobile has no full-page capture (--step: the scroll between
 #                                           two captures, 150 pt by default — a flick asking for more lands no further;
 #                                           --top / --bottom: the height of a bar drawn over the scroller, which
-#                                           stitch.py cannot find on its own)
+#                                           stitch.py cannot find on its own). Android captures the whole display,
+#                                           keyboard and system dialogs included. The same label again: the earlier
+#                                           capture becomes <platform>-<label>.prev.png and one line follows the
+#                                           path, « vs previous: unchanged » or the zones that moved and the marked
+#                                           png (--no-prev: overwrite, compare nothing; --baseline: that folder instead)
 #   vysu mtap ios|android "<label>"         press by accessible label (then visible text), settled
 #   vysu mrelaunch ios|android [--textsize normal|large|xl] [--appearance light|dark] [--lang <l>]   kill + relaunch,
 #                                           wait for the screen

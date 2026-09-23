@@ -4,9 +4,11 @@
     compare.py <shots-dir> [--against <baseline-dir>] [--out <dir>] [--edge 1568] [--rows 2]
 
 A capture `<label>.png` is paired with `<label>-base.png` when `vysu shots --baseline-url` left one
-beside it, else with `<against>/<label>.png`; a capture with no baseline is named and skipped. The
+beside it, else with `<against>/<label>.png`, else with `<label>.prev.png`, the capture a `vysu
+mshot` under the same label replaced; a capture with no baseline is named and skipped. The
 third column is the marked image `<label>-changed.png` diff.py wrote, or the « après » again when
-nothing changed. Statuses come from `diff.txt` when it is there.
+nothing changed. Statuses come from `diff.txt` when it is there, and from the verdicts an mshot
+kept in meta.json.
 
 `compare.png` (`compare-1.png`, `compare-2.png`… past `--rows` pairs) is the one to read: three
 columns « avant » / « après » / « zones », one row per pair, the page fitted inside `--edge` px on
@@ -19,6 +21,7 @@ folder is copied in as `<label>-base.png` first, so the page works from relative
 """
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -41,23 +44,29 @@ SAME = "zones — identique"
 
 def captures(directory):
     for path in sorted(directory.glob("*.png")):
-        if path.name.startswith(("sheet", "compare")) or path.name.endswith(("-changed.png", "-base.png")):
+        if path.name.startswith(("sheet", "compare")) or path.name.endswith(("-changed.png", "-base.png", ".prev.png")):
             continue
         yield path
 
 
 def statuses(directory):
-    """`<label>: <status>` per unindented diff.txt line; the indented ones are the zone detail."""
+    """`<label>: <status>` per unindented diff.txt line (the indented ones are the zone detail), then
+    the latest verdict an mshot kept in meta.json, which wins: it is the newer of the two."""
     found = {}
     path = directory / "diff.txt"
-    if not path.exists():
-        return found
-    for line in path.read_text().splitlines():
+    for line in path.read_text().splitlines() if path.exists() else []:
         if not line or line[0].isspace() or ": " not in line:
             continue
         label, status = line.split(": ", 1)
         # The pixel count is already in the zone lines: a row caption only needs the headline.
         found[label] = re.sub(r" \(\d+ px\)", "", status.strip())
+    try:
+        verdicts = json.loads((directory / "meta.json").read_text()).get("verdicts") or {}
+    except (OSError, ValueError):
+        verdicts = {}
+    for label, v in verdicts.items():
+        if v.get("vs"):
+            found[label] = "vs %s · %s" % (v["vs"], v.get("verdict"))
     return found
 
 
@@ -69,6 +78,8 @@ def pairs(shots, against):
         if not base.exists():
             base = against / f"{label}.png" if against else None
             if base is None or not base.exists():
+                base = shots / f"{label}.prev.png"
+            if not base.exists():
                 skipped.append(label)
                 continue
         marked = shots / f"{label}-changed.png"

@@ -314,13 +314,14 @@ def render_image(src, out, device, preset, bg, title, caption, size):
 
 
 def is_capture(path):
-    """A file worth framing: a capture or a clip, not a sheet, a baseline, a diff or a compare page."""
+    """A file worth framing: a capture or a clip, not a sheet, a baseline, a diff, a compare page or
+    the capture an mshot replaced."""
     name = path.name
     if path.suffix.lower() in VIDEO_SUFFIXES:
         return True
     if path.suffix.lower() != ".png" or not path.is_file():
         return False
-    return not (name.startswith(("sheet", "compare")) or name.endswith(("-changed.png", "-base.png")))
+    return not (name.startswith(("sheet", "compare", ".")) or name.endswith(("-changed.png", "-base.png", ".prev.png")))
 
 
 def main():
