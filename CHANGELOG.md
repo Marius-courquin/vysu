@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.5.0 — 2026-09-23
+
+From an audit of 62 agent sessions on one project (21-23/09): a third of their requests went to
+driving devices, one press, one sleep, one snapshot at a time, inside contexts of 300-900k tokens;
+agents wrote 63 helper scripts for what the engine lacked, ran 300 raw `adb` / `simctl` commands
+outside its locks, and four of them at once fought over the same devices and the same Metro.
+
+- **Delegate first.** The `visual-check` skill becomes the entry point of every look at the app,
+  web or mobile, and starts with delegation to a short-context checker sub-agent:
+  `references/delegate.md` holds the brief template and the report contract. `vysu checker` names
+  the model to spawn it on for the agent tool that asks (`VYSU_CHECKER_MODELS='claude=…,codex=…'`,
+  keyed by the caller vysu detects), and `vysu init [--agents-dir]` installs a Claude Code
+  `visual-checker` definition built from it.
+- **`vysu mdo`**: a screen driven in one call, one ✓ / ✗ line per step and the screen after it
+  (labels, node delta, keyboard, focus). New steps, also in `mflow` and `mrec`: `wait`, `wait gone`,
+  `wait idle`, `tap … --wait`, `fill`, `type`, `key`, `scroll-to`, `expect [no]`, `screen`, `open`,
+  `net`, `perm`. `--devices` × `--textsize` runs the matrix and makes one sheet. `vysu mwait` and
+  `vysu mtap --wait` replace sleeps.
+- **A device pool.** `vysu claim ios|android --any` takes a free device (booted, then shut down,
+  then an iOS clone), `--device` / `--avd` a named one; either becomes the owner's device, above the
+  config. Claims last 20 minutes, are renewed by every use and dropped when their agent's process
+  is gone. `vysu devices` lists who holds what; `vysu adb` / `vysu simctl` run the raw tools on your
+  device under its lock; `release ios --delete-clone`, `devices --prune-clones`.
+- **State as verbs.** `vysu mopen` (deep links, cold apps launched first, the open-in alert handled),
+  `vysu mnet android offline|online`, `vysu mperm` (grant / deny / reset, iOS notifications
+  included), `vysu mburst` (a transition as distinct 1x frames and a strip).
+- **Relaunch, reload, logs.** `vysu mreload` reloads one device's JS in place; `mrelaunch` reopens a
+  lost session, clears Expo's dev menu and intro, prints its time, and stops in seconds on a bundle
+  that fails to build. `vysu mlog --errors` collapses repeats, `--device` reads this device's JS log,
+  `VYSU_MLOG_IGNORE` drops known noise, and a bundling failure since the mark is printed first.
+- **One Metro, or your own.** `VYSU_METRO_PORT` replaces every hard-coded 8081; `vysu up <platform>
+  --isolated` gives an owner its own Metro from its own worktree; `vysu down metro` stops only the
+  owner's.
+- **Captures.** A capture under the same label is diffed against the one it replaces
+  (`vs previous: unchanged` / zones changed); Android captures show the keyboard and system dialogs
+  at 1x; `vysu report` reads mobile folders; `vysu sheet` is drawn with Pillow (no blank page),
+  with `--only` and `--strip`.
+- `bin/vysu` is parsed in one go: an engine edited while a command runs no longer runs a stray
+  fragment (the old `r: unbound variable`).
+- New keys: `VYSU_CHECKER_MODELS`, `VYSU_IOS_DEVICES`, `VYSU_IOS_MAX_CLONES`,
+  `VYSU_ANDROID_MAX_RUNNING`, `VYSU_MOBILE_DEEPLINK`, `VYSU_METRO_PORT`,
+  `VYSU_MOBILE_DISMISS_LABELS`, `VYSU_MLOG_IGNORE`.
+
 ## 0.4.1 — 2026-09-23
 
 - **A persona name may hold `_`.** `vysu persona add tb_non_verifie` always wrote
