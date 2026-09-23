@@ -1,8 +1,9 @@
-// Parity of the auth connectors (test/parity/web.ts runs them): a login form served on 127.0.0.1,
-// scratch projects around it, and each connector form — built-in `none` and `form`, a project's
-// bash `.vysu/auth.sh` (run natively by the bash engine, through the bridge by this one), and a
-// project's `.vysu/auth.mjs` (this engine) against the same connector written in bash (the bash
-// engine). Personas and sessions are the scratch project's own (`lotweb-<persona>`).
+// Parity of the auth connectors (test/parity/web.ts runs them against VYSU_REF): a login form served
+// on 127.0.0.1, scratch projects around it, and each connector form — built-in `none` and `form`, a
+// project's bash `.vysu/auth.sh` (sourced by the reference, run through the bridge by this engine),
+// and a project's `.vysu/auth.mjs` (this engine) against the same connector written in bash (the
+// reference, which reads only that one). Personas and sessions are the scratch project's own
+// (`lotweb-<persona>`).
 //
 //   node test/parity/auth-cases.ts [--only <case,…>]
 import { spawn } from 'node:child_process';
