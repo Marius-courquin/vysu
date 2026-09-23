@@ -48,6 +48,12 @@ lock, claim, device-choice and state files are unchanged, so both versions can r
   - `vysu adb shell` is interactive; `cache clear` skips a directory instead of dying on it; a
     missing option value is named instead of « unbound variable »; `vysu doctor | head` ends quietly;
     a helper that fails prints one line instead of a Python traceback.
+  - Wrong in 0.5.1 too: `mrec --crop` of an odd size in pixels (on a 3x iPhone) read a still screen
+    as moving; an `--ignore` selector whose box starts left of the page ended `shots` on « expected
+    one argument »; a diff that failed half way was recorded by `mshot` as « unchanged » (`diff`,
+    `screen` and `fields` now exit 2 on such a failure); two `mshot`s into one folder lost a
+    verdict; `sheet` ended on a trace for an empty or cut capture, which it now leaves out with one
+    line on stderr.
 - **Expo's floating tools button is hidden** on the devices vysu launches, with the dev menu's intro
   and its opening at launch: it sat in every capture over the app's top-right corner and took the
   taps meant for what lay under it (`tap Notifications` opened the dev menu). A shake still opens
