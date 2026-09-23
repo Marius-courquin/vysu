@@ -22,9 +22,14 @@ export type Platform = 'ios' | 'android';
 // process that drives them — an agent CLI, or the terminal a human typed in. It is the first ancestor
 // that is not plumbing: a shell, an interpreter, a wrapper. Hence « claude:41234 », « codex:5120 »,
 // « Terminal:882 ». A CLI shipped as a node script is named after its own binary, so only a bare
-// « node » counts as plumbing.
+// « node » counts as plumbing. A wrapper that times or detaches a command (`/usr/bin/time vysu …`,
+// `nice`, `caffeinate`) owns nothing either: it would otherwise be an owner of its own, with no device
+// remembered, and the command would drive the config's device instead of the one just claimed.
 const PLUMBING = new Set(
-  'bash zsh sh dash fish vysu nv rtk python3 python node env xargs timeout script tmux login cmd conhost powershell pwsh wsl'.split(' '),
+  (
+    'bash zsh sh dash fish vysu nv rtk python3 python node env xargs timeout script tmux login cmd conhost powershell pwsh wsl ' +
+    'time nice nohup caffeinate stdbuf unbuffer sudo'
+  ).split(' '),
 );
 let ownerId = '';
 
