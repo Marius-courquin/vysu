@@ -24,7 +24,8 @@ import { pyRound } from '../core/py.ts';
 import { parseArgs, type ParserSpec } from './args.ts';
 import { changedMask, zonesOf } from './diff.ts';
 import { pyFixed, pyFloat, pyPath, pySplitlines } from './fmt.ts';
-import { readRgb, resize, resizeFast, sharpOf, writeImage, type Raster } from './raster.ts';
+import { resizeAsync } from './pool.ts';
+import { readRgb, resizeFast, sharpOf, writeImage, type Raster } from './raster.ts';
 import { measure, svgText } from './text.ts';
 import type { Io } from './tools.ts';
 
@@ -50,8 +51,11 @@ function readTimes(raw: string): Map<number, number> {
   return times;
 }
 
-const to1x = (im: Raster, scale: number): Raster =>
-  scale <= 1 ? im : resize(im, Math.max(1, pyRound(im.width / scale)), Math.max(1, pyRound(im.height / scale)));
+const sameRaster = (a: Raster, b: Raster): boolean =>
+  a.width === b.width && a.height === b.height && a.channels === b.channels && Buffer.from(a.data.buffer, a.data.byteOffset, a.data.length).equals(b.data);
+
+const to1x = (im: Raster, scale: number): Promise<Raster> =>
+  scale <= 1 ? Promise.resolve(im) : resizeAsync(im, Math.max(1, pyRound(im.width / scale)), Math.max(1, pyRound(im.height / scale)));
 
 // (distinct?, changed share of the picture) under diff's rule, the status band left out.
 export function changed(before: Raster, after: Raster, threshold: number, minArea: number, band: number): [boolean, number] {
@@ -124,21 +128,36 @@ export async function burst(raw: string, o: BurstOptions): Promise<[string, stri
   type Kept = { index: number; seconds: number | null; pct: number | null; im: Raster };
   const kept: Kept[] = [];
   let last: Raster | null = null;
-  // Decoding runs ahead on libuv's threads while this one resamples and compares.
-  const ahead = new Map<number, Promise<Raster | null>>();
-  const decode = (i: number): Promise<Raster | null> | undefined => {
+  let lastRaw: Raster | null = null;
+  // Frames are decoded (libuv's threads) and resampled (the pool's) a few ahead, while this thread
+  // compares them in order with the last one kept.
+  const ahead = new Map<number, Promise<[Raster, Raster | null] | null>>();
+  const load = (i: number): Promise<[Raster, Raster | null] | null> | undefined => {
     if (i >= names.length) return undefined;
-    if (!ahead.has(i)) ahead.set(i, readRgb(join(raw, names[i]!)).catch(() => null));
+    if (!ahead.has(i)) {
+      ahead.set(
+        i,
+        readRgb(join(raw, names[i]!)).then(
+          // The same bytes as the last frame kept make the same 1x picture: not distinct, and not
+          // worth resampling (a still screen is most of a burst).
+          async (d) => [d, lastRaw && sameRaster(d, lastRaw) ? null : await to1x(d, scale)] as [Raster, Raster | null],
+          () => null,
+        ),
+      );
+    }
     return ahead.get(i);
   };
   for (let i = 0; i < names.length; i++) {
-    for (let k = 1; k <= 3; k++) decode(i + k);
-    const decoded = await decode(i)!;
+    for (let k = 1; k <= 4; k++) void load(i + k);
+    const got = await load(i)!;
     ahead.delete(i);
     // A capture cut short when the burst stopped: nothing to read in it.
-    if (!decoded) continue;
+    if (!got) continue;
+    const decoded = got[0];
+    if (lastRaw && sameRaster(decoded, lastRaw)) continue;
+    // Skipped ahead against a frame kept since: resampled now.
+    const im = got[1] ?? (await to1x(decoded, scale));
     const index = indexOf(names[i]!);
-    const im = to1x(decoded, scale);
     let band = o.band ?? -1;
     // 44 pt under a notch or a punch-hole, 20 on a home-button phone: mshot's own rule.
     if (band < 0) band = im.height > 2 * im.width ? 44 : 20;
@@ -147,12 +166,14 @@ export async function burst(raw: string, o: BurstOptions): Promise<[string, stri
     if (last === null) {
       kept.push({ index, seconds, pct: null, im });
       last = im;
+      lastRaw = decoded;
       continue;
     }
     const [distinct, share] = changed(last, im, threshold, minArea, band);
     if (distinct) {
       kept.push({ index, seconds, pct: share * 100, im });
       last = im;
+      lastRaw = decoded;
     }
   }
   const total = names.length;
