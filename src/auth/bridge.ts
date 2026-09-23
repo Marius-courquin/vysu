@@ -5,10 +5,12 @@
 // process's name (VYSU_LOCK_HOLDER): a session or a device the connector touches stays held between
 // two of its calls, and is given back when this command ends, whichever way it ends.
 import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ENGINE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
-import { die, exit } from '../core/errors.ts';
+import { die, exit, onCleanup } from '../core/errors.ts';
 import { owner, releaseOnExit } from '../core/hold.ts';
 import { which } from '../core/host.ts';
 import type { RunResult } from '../core/proc.ts';
@@ -72,19 +74,37 @@ export function bridgeEnv(file: string): NodeJS.ProcessEnv {
   return env;
 }
 
-function call(file: string, fn: string, args: string[], capture: boolean): Promise<RunResult> {
+// The script holds every value in force, a persona's password or token among them: as a `bash -c`
+// argument it was in the process list for any user of the machine to read. It goes to a file only
+// this user can read, in a folder of its own, removed once bash is done, or by the cleanups when
+// vysu ends first.
+async function call(file: string, fn: string, args: string[], capture: boolean): Promise<RunResult> {
   const bash = which('bash');
   if (!bash) die(`${file} is a bash connector, and this machine has no bash`, 'write it as .vysu/auth.mjs (connectors/auth/example.mjs)');
-  return new Promise((resolve) => {
-    const child = spawn(bash, ['-c', bridgeScript(), 'vysu-auth', fn, ...args], {
-      env: bridgeEnv(file),
-      stdio: ['inherit', capture ? 'pipe' : 'inherit', 'inherit'],
+  const dir = mkdtempSync(join(tmpdir(), 'vysu-auth-'));
+  const drop = (): void => rmSync(dir, { recursive: true, force: true });
+  const disarm = onCleanup(drop, true);
+  try {
+    const script = join(dir, 'bridge.sh');
+    writeFileSync(script, bridgeScript(), { mode: 0o600 });
+    return await new Promise((resolve) => {
+      const child = spawn(bash, [script.replaceAll('\\', '/'), fn, ...args], {
+        env: bridgeEnv(file),
+        stdio: ['inherit', capture ? 'pipe' : 'inherit', 'inherit'],
+      });
+      const out: Buffer[] = [];
+      child.stdout?.on('data', (b: Buffer) => out.push(b));
+      child.on('error', () => resolve({ code: 127, stdout: '', stderr: '' }));
+      child.on('close', (code, signal) => resolve({ code: code ?? (signal ? 1 : 0), stdout: Buffer.concat(out).toString('utf8'), stderr: '' }));
     });
-    const out: Buffer[] = [];
-    child.stdout?.on('data', (b: Buffer) => out.push(b));
-    child.on('error', () => resolve({ code: 127, stdout: '', stderr: '' }));
-    child.on('close', (code, signal) => resolve({ code: code ?? (signal ? 1 : 0), stdout: Buffer.concat(out).toString('utf8'), stderr: '' }));
-  });
+  } finally {
+    disarm();
+    try {
+      drop();
+    } catch {
+      // Windows: still open for a moment after bash went; the temp folder is the user's own.
+    }
+  }
 }
 
 export function bashConnector(file: string): AuthConnector {
