@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.1 — 2026-09-23
+
+Two checker sub-agents of one session, one on a Pixel 4a and one on a Pixel 8: the 4a's commands
+landed on the Pixel 8, a restart and an ANR dialog included, and the other checker nearly took them
+for a regression.
+
+- **One owner, two devices of a platform: every command names its device.** The owner is the agent
+  process, and a session's sub-agents run under that same process, with the same environment:
+  nothing tells them apart. Each claim became the owner's remembered device, so the last one any of
+  them made was everybody's, and a claim, transparent to its own owner, kept no sibling out. While
+  an owner holds two claims on a platform, a command that names no device (`VYSU_IOS_DEVICE` /
+  `VYSU_ANDROID_AVD`, `--device` / `--avd`, `claim --any`, `mdo --devices`) is now refused, with
+  the devices held and the prefix to add, instead of being sent to whichever was claimed last.
+  `release` and `claim` without a name are refused the same way: they would have handed back or
+  renewed a sibling's device.
+- The claim of the second device says it on a `name it:` line, and its release hint carries the
+  prefix. A claim records its device by name (`device=`), which is what a refusal lists.
+- A project command (`vysu <name>`) passes on only the devices its call named: one resolved from
+  memory used to travel in the environment as if named, and past the check.
+- `visual-check` (SKILL, `references/mobile.md`, `references/delegate.md`) and the `visual-checker`
+  agent say so: parallel checkers each get their own device in the brief and name it.
+
 ## 0.5.0 — 2026-09-23
 
 From an audit of 62 agent sessions on one project (21-23/09): a third of their requests went to
