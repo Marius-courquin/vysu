@@ -477,14 +477,14 @@ if meta.get("kind") == "mobile":
                     break
                 keep.add(f)
             shown = [f for f in shots if f in keep]
-        lines.extend(line_of(f) for f in shown)
         folded = [f for f in shots if f not in shown]
         if folded:
             counts = {}
             for f in folded:
                 key = (verdicts.get(f[:-4]) or {}).get("verdict") or "not compared"
                 counts[key] = counts.get(key, 0) + 1
-            lines.append("… %d earlier capture(s): %s" % (len(folded), ", ".join("%d %s" % (n, k) for k, n in counts.items())))
+            lines.append("%d earlier capture(s) not listed: %s" % (len(folded), ", ".join("%d %s" % (n, k) for k, n in counts.items())))
+        lines.extend(line_of(f) for f in shown)
     lines.extend(closing)
     if flag == "--md":
         lines = ["```"] + lines + ["```"]
