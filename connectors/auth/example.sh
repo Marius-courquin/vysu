@@ -44,7 +44,7 @@ auth_web_login() { # persona url
     || die "login: no sign-in button on $url (VYSU_MYAPP_SIGNIN_LABELS)"
   step "submit"
   # Proof, not a delay: something only the logged-in app shows.
-  web "$persona" wait "text=$(myapp_opt HOME_TEXT 'Bienvenue')" 15000 >/dev/null \
+  web "$persona" wait --text "$(myapp_opt HOME_TEXT 'Bienvenue')" >/dev/null \
     || die "login: never reached the home screen (VYSU_MYAPP_HOME_TEXT)"
   step "reach the home screen"
   echo "logged in: $persona ($PERSONA_EMAIL) → $(web "$persona" get url | tail -1)"

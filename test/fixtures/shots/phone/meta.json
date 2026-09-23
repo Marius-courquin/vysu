@@ -1,0 +1,24 @@
+{
+ "kind": "mobile",
+ "platform": "ios",
+ "device": "iPhone 17 Pro",
+ "textsize": "normal",
+ "appearance": "light",
+ "lang": "en",
+ "mobile_sha": "1a2b3c4d",
+ "date": "2026-09-23T10:20:00+02:00",
+ "verdicts": {
+  "ios-home": {
+   "device": "iPhone 17 Pro",
+   "vs": null,
+   "verdict": "new",
+   "at": "2026-09-23T10:19:00+02:00"
+  },
+  "ios-detail": {
+   "device": "iPhone 17 Pro",
+   "vs": "previous",
+   "verdict": "unchanged",
+   "at": "2026-09-23T10:20:00+02:00"
+  }
+ }
+}

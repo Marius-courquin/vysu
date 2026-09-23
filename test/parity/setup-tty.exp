@@ -1,0 +1,17 @@
+# The questions `vysu setup` asks on a terminal, answered as a human would: keep the devices? no,
+# then a recent iPhone, the default old one, one AVD spec. Reporting only (--dry-run): nothing is
+# created. Used by platform.sh when `expect` is on the machine.
+#
+#   expect test/parity/setup-tty.exp <vysu command…>
+set timeout 60
+set cmd [lrange $argv 0 end]
+eval spawn -noecho $cmd --no-color setup --dry-run
+expect "Keep these?"
+send "n\r"
+expect "recent iPhone"
+send "My iPhone\r"
+expect "old iPhone"
+send "\r"
+expect "AVD specs"
+send "x:34:pixel:\r"
+expect eof

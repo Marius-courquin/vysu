@@ -40,6 +40,12 @@ export function mobileApp(platform: Platform): string {
 export async function mobileLoadBundle(platform: Platform): Promise<void> {
   return notYet(`mobile_load_bundle ${platform}`);
 }
+// Asked by the web lot for the auth connectors: what auth0.sh / form.sh did before opening the app —
+// `ios_lock` on iOS, `android_select` then `adb reverse tcp:<metro_port> tcp:<metro_port>` on
+// Android — so a connector never reaches for adb or the Metro port itself.
+export async function mobilePrepare(platform: Platform): Promise<void> {
+  return notYet(`mobile_prepare ${platform}`);
+}
 // What was done to the device (persona, textsize, appearance, lang, net), read back by `vysu claim`.
 export function mstateSet(platform: Platform, key: string, value: string): void {
   return notYet(`mstate_set ${platform} ${key} ${value}`);
@@ -58,4 +64,9 @@ export async function mobileDown(what: string, args: string[]): Promise<void> {
 // For `vysu doctor`: one line per simulator / emulator and what the machine offers.
 export async function mobileDoctorLines(): Promise<string[]> {
   return notYet('doctor mobile');
+}
+// For `vysu doctor`: « push: <driver> — <what it does> », one line per driver VYSU_PUSH enables (the
+// drivers live in src/push/). Added by the platform lot, which prints « push: (none — …) » itself.
+export async function pushDescribeLines(): Promise<string[]> {
+  return notYet('doctor push');
 }

@@ -13,7 +13,7 @@ simulator: the primitives are not the same.
 - Android: the AVDs of `VYSU_ANDROID_AVDS`, the default being `VYSU_ANDROID_AVD`, picked with
   `vysu up android --avd <name>`. A Google APIs image is what makes real FCM possible.
 - **A screen is validated on the recent device AND on the old one of each platform.**
-- **Several agents on one Mac: take a device, do not pick one by hand.** `vysu claim ios|android
+- **Several agents on one machine: take a device, do not pick one by hand.** `vysu claim ios|android
   --any` takes a free device of the pool (`VYSU_IOS_DEVICES`, the AVDs of `VYSU_ANDROID_AVDS`):
   a booted one first, then a shut-down one it boots, then on iOS a clone of a pool device
   (`<base> (vysu N)`, up to `VYSU_IOS_MAX_CLONES`). `--device "<simulator>"` / `--avd <name>` claims

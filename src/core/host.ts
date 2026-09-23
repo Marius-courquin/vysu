@@ -3,8 +3,9 @@
 // Everything above this file is the same code on macOS, Linux and Windows.
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { connect } from 'node:net';
+import { parseNetstatListeners, parseProcessLines, windowsProcessLines } from './winps.ts';
 
 export const isWindows = process.platform === 'win32';
 export const isMac = process.platform === 'darwin';
@@ -51,16 +52,7 @@ export function processTable(): Map<number, Proc> {
       table.set(Number(d), { ppid, name: procName(name) });
     }
   } else if (isWindows) {
-    // wmic is gone from recent Windows; CIM through PowerShell is the one table every Windows has.
-    const r = spawnSync(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)`t$($_.ParentProcessId)`t$($_.Name)" }'],
-      { encoding: 'utf8', windowsHide: true },
-    );
-    for (const line of (r.stdout ?? '').split(/\r?\n/)) {
-      const [pid, ppid, name] = line.split('\t');
-      if (pid && ppid && name) table.set(Number(pid), { ppid: Number(ppid), name: procName(name) });
-    }
+    for (const p of parseProcessLines(windowsProcessLines())) table.set(p.pid, { ppid: p.ppid, name: procName(p.name) });
   } else {
     const r = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,comm='], { encoding: 'utf8' });
     for (const line of (r.stdout ?? '').split('\n')) {
@@ -69,6 +61,29 @@ export function processTable(): Map<number, Proc> {
     }
   }
   return table;
+}
+
+// One process of the table: its parent and its name. Where the system answers for one process, it is
+// asked for that one alone — on a Mac running 1 400 processes, `ps -A` takes 160 ms and `ps -p` 9, and
+// the owner walk needs two or three of them; on Windows the whole table is one call anyway.
+const entries = new Map<number, Proc | null>();
+export function processEntry(pid: number): Proc | undefined {
+  if (!(pid > 0)) return undefined;
+  if (table || isWindows) return processTable().get(pid);
+  const hit = entries.get(pid);
+  if (hit !== undefined) return hit ?? undefined;
+  let found: Proc | null = null;
+  if (isLinux) {
+    const stat = safeRead(`/proc/${pid}/stat`);
+    const close = stat.lastIndexOf(')');
+    if (close >= 0) found = { ppid: Number(stat.slice(close + 2).split(' ')[1]), name: procName(stat.slice(stat.indexOf('(') + 1, close)) };
+  } else {
+    const r = spawnSync('ps', ['-o', 'ppid=,comm=', '-p', String(pid)], { encoding: 'utf8' });
+    const m = /^\s*(\d+)\s(.*)$/.exec((r.stdout ?? '').split('\n')[0] ?? '');
+    if (r.status === 0 && m) found = { ppid: Number(m[1]), name: procName(m[2]!) };
+  }
+  entries.set(pid, found);
+  return found ?? undefined;
 }
 
 // One process, fresh: whether it still exists and what it runs now (a pid handed to another program
@@ -80,9 +95,8 @@ export function processName(pid: number): string {
     return comm ? procName(comm) : '';
   }
   if (isWindows) {
-    const r = spawnSync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
-    const m = /^"([^"]+)","(\d+)"/m.exec(r.stdout ?? '');
-    return m && Number(m[2]) === pid ? procName(m[1]!) : '';
+    const hit = parseProcessLines(windowsProcessLines()).find((p) => p.pid === pid);
+    return hit ? procName(hit.name) : '';
   }
   const r = spawnSync('ps', ['-o', 'comm=', '-p', String(pid)], { encoding: 'utf8' });
   return r.status === 0 ? procName(r.stdout) : '';
@@ -98,13 +112,14 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
-// A tool on the PATH, found without starting a shell.
+// A tool on the PATH, found without starting a shell. `fresh` looks again past the cache: what was
+// missing before an install may be there after it.
 const whichCache = new Map<string, string>();
-export function which(cmd: string): string {
-  const hit = whichCache.get(cmd);
+export function which(cmd: string, fresh = false): string {
+  const hit = fresh ? undefined : whichCache.get(cmd);
   if (hit !== undefined) return hit;
   let found = '';
-  const exts = isWindows ? ['', ...(process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';').map((e) => e.toLowerCase())] : [''];
+  const exts = isWindows ? windowsExtensions(cmd) : [''];
   outer: for (const dir of (process.env.PATH ?? '').split(delimiter)) {
     if (!dir) continue;
     for (const ext of exts) {
@@ -121,6 +136,35 @@ export function which(cmd: string): string {
   }
   whichCache.set(cmd, found);
   return found;
+}
+
+export function isExecutable(p: string): boolean {
+  try {
+    if (!statSync(p).isFile()) return false;
+    if (!isWindows) accessSync(p, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The suffix an npm package shipping one native binary per platform names its files with
+// (« darwin-arm64 », « linux-musl-x64 », « win32-x64.exe »): agent-browser's own naming, which its
+// node wrapper computes the same way on every call.
+export function nativeTarget(): string {
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  if (isWindows) return `win32-${arch}.exe`;
+  if (isLinux) {
+    const musl = ['/lib/ld-musl-x86_64.so.1', '/lib/ld-musl-aarch64.so.1'].some((f) => {
+      try {
+        return statSync(f).isFile();
+      } catch {
+        return false;
+      }
+    });
+    return `${musl ? 'linux-musl' : 'linux'}-${arch}`;
+  }
+  return `darwin-${arch}`;
 }
 
 // Is something accepting connections on this port of this machine? A connection is a millisecond,
@@ -144,13 +188,8 @@ export async function isListening(port: number, timeoutMs = 400): Promise<boolea
 // another owner's.
 export function listenerPids(port: number): number[] {
   if (isWindows) {
-    const r = spawnSync('netstat.exe', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true });
-    const pids = new Set<number>();
-    for (const line of (r.stdout ?? '').split(/\r?\n/)) {
-      const f = line.trim().split(/\s+/);
-      if (f[0] === 'TCP' && f[3] === 'LISTENING' && f[1]?.endsWith(`:${port}`)) pids.add(Number(f[4]));
-    }
-    return [...pids];
+    const r = spawnSync('netstat.exe', ['-ano'], { encoding: 'utf8', windowsHide: true });
+    return parseNetstatListeners(r.stdout ?? '', port);
   }
   if (which('lsof')) {
     const r = spawnSync('lsof', ['-nP', `-tiTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
@@ -165,14 +204,51 @@ export function listenerPids(port: number): number[] {
 
 // A page or an image handed to a human: the system's own viewer.
 export function openForHuman(target: string): void {
-  if (isMac) spawnSync('open', [target], { stdio: 'ignore' });
-  else if (isWindows) spawnSync('cmd.exe', ['/d', '/s', '/c', 'start', '""', target], { stdio: 'ignore', windowsHide: true });
-  else if (isWsl && which('wslview')) spawnSync('wslview', [target], { stdio: 'ignore' });
-  else if (which('xdg-open')) spawnSync('xdg-open', [target], { stdio: 'ignore' });
+  if (isMac) {
+    spawnSync('open', [target], { stdio: 'ignore' });
+  } else if (isWindows) {
+    // `start` takes its first quoted argument as a window title: the empty one is that title.
+    spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"start "" ${cmdQuote(target)}"`], {
+      stdio: 'ignore',
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+    });
+  } else if (isWsl && which('wslview')) {
+    spawnSync('wslview', [target], { stdio: 'ignore' });
+  } else if (which('xdg-open')) {
+    spawnSync('xdg-open', [target], { stdio: 'ignore' });
+  }
 }
 
-// How a command line written in a config (`pnpm --filter web dev`, `make -s dev-up`) is run.
+// How a command line written in a config (`pnpm --filter web dev`, `make -s dev-up`) is run. On
+// Windows it goes to cmd.exe as it was written, the way Node's own `shell: true` passes it: quoted
+// whole after /s /c and handed over verbatim (the caller spawns with windowsVerbatimArguments), since
+// Node's default quoting escapes inner quotes with backslashes, which cmd.exe does not read.
 export function shellArgv(command: string): [string, string[]] {
-  if (isWindows) return [process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', command]];
+  if (isWindows) return [process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${command}"`]];
   return ['/bin/sh', ['-c', command]];
+}
+
+// The extensions a bare name may take on Windows, in PATHEXT order. A name without one is never
+// spawnable as it is: npm's folder holds an extensionless `npm` for Git Bash beside `npm.cmd`.
+function windowsExtensions(cmd: string): string[] {
+  const exts = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map((e) => e.toLowerCase());
+  return exts.includes(extname(cmd).toLowerCase()) ? [''] : exts;
+}
+
+// One argument for a cmd.exe command line: bare when it holds nothing cmd reads, quoted otherwise.
+export function cmdQuote(arg: string): string {
+  if (arg && /^[A-Za-z0-9_\-.,:/\\=@+]+$/.test(arg)) return arg;
+  return `"${arg.replaceAll('"', '""')}"`;
+}
+
+// A tool found on the PATH, as argv to spawn. npm, npx and every npm-installed CLI are `.cmd` shims
+// on Windows, which Node refuses to spawn without a shell since the batch-file fix of April 2024
+// (CVE-2024-27980): those go through cmd.exe, verbatim, with each argument quoted for it.
+export function toolArgv(cmd: string, args: string[]): { file: string; args: string[]; verbatim: boolean } {
+  if (!isWindows) return { file: cmd, args, verbatim: false };
+  const path = isAbsolute(cmd) ? cmd : which(cmd) || cmd;
+  if (!/\.(cmd|bat)$/i.test(path)) return { file: path, args, verbatim: false };
+  const line = [path, ...args].map(cmdQuote).join(' ');
+  return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', `"${line}"`], verbatim: true };
 }

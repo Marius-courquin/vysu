@@ -10,11 +10,14 @@
 # What it does, in order:
 #   1. git clone https://github.com/Marius-courquin/vysu into $VYSU_INSTALL_DIR (default ~/vysu),
 #      or `git pull` when it is already there;
-#   2. links bin/vysu into the first directory that is BOTH already on your PATH and writable
+#   2. checks node >= 22.18, which the engine runs on (TypeScript, no build step), and installs the
+#      engine's own dependencies in its folder (`npm ci --omit=dev`: sharp, for sheets and diffs);
+#   3. links bin/vysu into the first directory that is BOTH already on your PATH and writable
 #      (/opt/homebrew/bin, /usr/local/bin, ~/.local/bin, ~/bin) — no shell file is touched then;
-#   3. otherwise appends a PATH line to your shell's startup file (zsh, bash or fish);
-#   4. checks that `vysu version` answers, and says what to do next.
+#   4. otherwise appends a PATH line to your shell's startup file (zsh, bash or fish);
+#   5. checks that `vysu version` answers, and says what to do next.
 # Nothing else is installed here: `vysu setup` does the tools, and asks before creating devices.
+# On Windows, install.ps1 does the same from PowerShell.
 set -euo pipefail
 
 REPO="${VYSU_REPO:-https://github.com/Marius-courquin/vysu}"
@@ -43,8 +46,26 @@ die() {
   exit 1
 }
 
+# The one command that installs a missing tool on this machine: Homebrew on macOS, the
+# distribution's package manager on Linux.
+hint() { # git | node | gh
+  if [ "$(uname)" = Darwin ]; then
+    case "$1" in git) echo "xcode-select --install";; node) echo "brew install node";; gh) echo "brew install gh && gh auth login";; esac
+  elif command -v apt-get >/dev/null; then
+    case "$1" in
+      git) echo "sudo apt-get install -y git";;
+      node) echo "curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && sudo apt-get install -y nodejs";;
+      gh) echo "sudo apt-get install -y gh && gh auth login";;
+    esac
+  elif command -v dnf >/dev/null; then
+    case "$1" in git) echo "sudo dnf install git";; node) echo "sudo dnf install nodejs";; gh) echo "sudo dnf install gh && gh auth login";; esac
+  else
+    case "$1" in git) echo "https://git-scm.com/downloads";; node) echo "https://nodejs.org/en/download (>= 22.18)";; gh) echo "https://cli.github.com";; esac
+  fi
+}
+
 head_ "engine"
-command -v git >/dev/null || die "git is missing" "xcode-select --install"
+command -v git >/dev/null || die "git is missing" "$(hint git)"
 
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" pull -q --ff-only || die "cannot update the checkout in $DIR" "cd $DIR && git status"
@@ -59,13 +80,25 @@ else
       || die "cannot clone with gh — is your account a collaborator of Marius-courquin/vysu?" "gh auth status"
   else
     git clone -q "$REPO" "$DIR" 2>/dev/null \
-      || die "cannot clone $REPO — no network, or the repository is private and this machine is not logged in" "brew install gh && gh auth login"
+      || die "cannot clone $REPO — no network, or the repository is private and this machine is not logged in" "$(hint gh)"
   fi
   ok "engine: cloned into $DIR"
 fi
 chmod +x "$DIR/bin/vysu"
 
-# 2. A link in a directory the PATH already holds: the shell finds it without any startup file.
+# 2. The engine is TypeScript that Node runs as it is (type stripping, 22.18 and later), on its own
+# node_modules: sharp, which every contact sheet and diff composes with.
+head_ "node"
+command -v node >/dev/null || die "node is missing — the engine runs on it (>= 22.18)" "$(hint node)"
+node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 18) ? 0 : 1)' \
+  || die "node $(node --version) is below 22.18, which the engine needs" "$(hint node)"
+ok "node: $(node --version)"
+command -v npm >/dev/null || die "npm is missing — it comes with node" "$(hint node)"
+(cd "$DIR" && npm ci --omit=dev --no-audit --no-fund --loglevel=error >/dev/null) \
+  || die "npm ci --omit=dev failed in $DIR" "cd $DIR && npm ci --omit=dev"
+ok "engine: dependencies installed (npm ci --omit=dev)"
+
+# 3. A link in a directory the PATH already holds: the shell finds it without any startup file.
 linked=""
 for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin" "$HOME/bin"; do
   case ":$PATH:" in *":$d:"*) ;; *) continue;; esac
@@ -73,7 +106,7 @@ for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin" "$HOME/bin"; do
   ln -sfn "$DIR/bin/vysu" "$d/vysu" && linked="$d/vysu" && break
 done
 
-# 3. Else, the PATH line in the startup file of the shell the user actually runs.
+# 4. Else, the PATH line in the startup file of the shell the user actually runs.
 rc=""; line="export PATH=\"$DIR/bin:\$PATH\""
 if [ -z "$linked" ]; then
   case "$(basename "${SHELL:-}")" in
@@ -89,7 +122,7 @@ else
   ok "path: $linked → $DIR/bin/vysu"
 fi
 
-# 4. The proof, through the absolute path — the current shell has not re-read anything yet.
+# 5. The proof, through the absolute path — the current shell has not re-read anything yet.
 head_ "check"
 if out="$("$DIR/bin/vysu" version 2>&1)"; then
   ok "$(printf '%s' "$out" | head -1)"

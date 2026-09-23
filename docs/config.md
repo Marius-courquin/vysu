@@ -1,7 +1,8 @@
 # `.vysu/config` — every key
 
-A project's `.vysu/config` is sourced by bash: `KEY='value'`, with no expansion you would not write
-by hand. An environment variable of the same name **wins over the file**, and unknown keys are
+A project's `.vysu/config` is read the way bash sources it: `KEY='value'` lines, quotes, `$VAR`
+and `${VAR:-default}`, with no expansion you would not write by hand (a line the engine's own
+reader cannot follow goes to a real bash where the machine has one). An environment variable of the same name **wins over the file**, and unknown keys are
 ignored. `vysu doctor` prints the values in force and where each one came from (`env`, `config`,
 `machine.env`, `devices.env`, `default`). `~/.vysu/machine.env` is what `vysu setup` writes about
 this machine — its simulators, its AVDs, its browser — and sits below the project config: a machine
@@ -46,10 +47,10 @@ empty; the command that needs one says which key is missing.
 
 | Key | Meaning | Default | Example |
 |---|---|---|---|
-| `VYSU_AUTH` | a built-in connector (`auth0` · `form` · `none`), `custom` for `.vysu/auth.sh`, or a path | empty (and `custom` when `.vysu/auth.sh` exists) | `auth0` |
+| `VYSU_AUTH` | a built-in connector (`auth0` · `form` · `none`), `custom` for `.vysu/auth.mjs` / `.js` / `.ts` / `.sh`, or a path | empty (and `custom` when one of those exists) | `auth0` |
 
 Options of the `auth0` connector, all optional; the defaults live in
-[`connectors/auth/auth0.sh`](../connectors/auth/auth0.sh) and the contract in
+[`src/connectors/auth/auth0.ts`](../src/connectors/auth/auth0.ts) and the contract in
 [`connectors/auth/README.md`](../connectors/auth/README.md).
 
 | Key | Meaning | Example |
@@ -64,7 +65,7 @@ Options of the `auth0` connector, all optional; the defaults live in
 | `VYSU_AUTH0_AFTER_LOGIN_LABELS` | buttons pressed if they show up after the login | `Continue,Back home` |
 
 Options of the `form` connector — a plain e-mail + password page — all optional; the defaults live
-in [`connectors/auth/form.sh`](../connectors/auth/form.sh).
+in [`src/connectors/auth/form.ts`](../src/connectors/auth/form.ts).
 
 | Key | Meaning | Example |
 |---|---|---|
@@ -139,7 +140,7 @@ One service, key by key (`<name>` is a name from `VYSU_SERVICES`):
 
 | Key | Meaning | Default |
 |---|---|---|
-| `VYSU_SERVICE_<name>_CMD` | the command, run through `sh -c` in `_DIR`, in the background, logged to `logs/<name>.log` | required |
+| `VYSU_SERVICE_<name>_CMD` | the command, run through the platform's shell (`sh -c`, `cmd.exe /c` on Windows) in `_DIR`, in the background, logged to `logs/<name>.log` | required |
 | `VYSU_SERVICE_<name>_DIR` | where to run it, relative to the project | the project root |
 | `VYSU_SERVICE_<name>_PORT` | the port it listens on: what `down` kills, and what `HEALTH=port` waits for | none |
 | `VYSU_SERVICE_<name>_HEALTH` | a url to poll, the literal `port` for a TCP listen check, or a command to succeed | `port` when `_PORT` is set, else no wait |
@@ -190,7 +191,8 @@ These are not written to `.vysu/config`; they are exported for one command or on
 | `VYSU_CHECKER_MODELS` | the model a visual-checker sub-agent runs on, per agent tool, as `family=model` pairs (`claude=sonnet,codex=gpt-5.6-luna`); the family is the caller's name as vysu detects it (`claude:41234` → `claude`). `vysu checker` answers for the caller, `vysu init` writes the Claude Code definition with it | empty: inherit the caller's model |
 | `VYSU_OWNER` | who a lock, a claim and a device choice are attributed to. A detected owner is `<name>:<pid>`: once that process is gone, its claims are dropped. The sub-agents of one session run under that same process, so they are one owner: while it holds two devices of a platform, a command that does not name its device (`VYSU_IOS_DEVICE` / `VYSU_ANDROID_AVD`) is refused | the agent or terminal above the command |
 | `VYSU_ENGINE` | the engine directory, exported to project commands and to the render script | resolved from `bin/vysu` |
-| `VYSU_UI_GLOBS` | read by `templates/hooks/stop-reminder.sh` only: which changed files count as UI | `**/*.tsx,**/*.vue,**/*.svelte,**/*.css` |
+| `VYSU_UI_GLOBS` | read by the Stop hook only (`templates/hooks/stop-reminder.sh`, or `stop-reminder.mjs` where there is no bash): which changed files count as UI | `**/*.tsx,**/*.vue,**/*.svelte,**/*.css` |
+| `VYSU_RUNTIME` | what `bin/vysu` and `bin\vysu.cmd` run the engine on: `node`, or `bun` | `node` |
 
 Personas themselves are not config: they live in `personas.env` under the state folder, mode 600,
 written by `vysu persona add|set|import` and read as `VYSU_PERSONA_<NAME>_<KEY>`.
@@ -198,4 +200,4 @@ A name may hold `_`, and so may a key (`FCM_TOKEN_IOS`): a persona is declared b
 key, every other key belongs to the longest declared name it starts with, and an `import` leaves
 behind, and names, the keys that belong to no persona (a fixture id kept next to the credentials
 belongs in `.vysu/config`). One reader does this for `persona list`, `import` and `doctor`:
-`py/personas.py`.
+`src/core/personas.ts`.

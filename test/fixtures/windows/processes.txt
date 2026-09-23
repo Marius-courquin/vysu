@@ -1,0 +1,8 @@
+0	0	[System Process]
+4	0	System
+1234	880	claude.exe
+5678	1234	node.exe
+9012	5678	cmd.exe
+4321	9012	Git Bash Launcher.exe
+not a line
+
