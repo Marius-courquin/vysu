@@ -144,7 +144,7 @@ same name in an earlier folder; both being 1x, the **zones are already in points
 mobile. `vysu mshot ios|android <name> [label] --full` walks the screen instead: a capture, a
 150 pt scroll (`--step`, that being the default on both platforms), the next capture, until two
 identical captures (end of content) or `--max 12` - a very long screen therefore needs a larger
-`--max`. `stitch.py` detects the fixed bands (top / bottom), finds the offset between two captures
+`--max`. The stitch detects the fixed bands (top / bottom), finds the offset between two captures
 and glues everything into **one tall image, under the usual name** - `--baseline`, `vysu report`
 and `vysu sheet` never notice. The screen is scrolled back to the top afterwards. The pieces stay
 in `<name>/full-frames/` (1x, a few kB): that is where a doubtful seam is checked.
@@ -158,7 +158,7 @@ two settings, in this order:
   content by about 100 pt. A short step advances less but leaves a clean overlap. A list of rows
   that all look alike aligns at several offsets at once, and the bigger the jump the less there is
   to decide with.
-- `--top <pt> --bottom <pt>`. `stitch.py` finds fixed bands by looking for rows identical in
+- `--top <pt> --bottom <pt>`. The stitch finds fixed bands by looking for rows identical in
   **every** capture; a bar drawn *over* the scroller has none. A shell that lets the content scroll
   under its status bar and under a floating tab bar gives `top 0 px · bottom 0 px`, and nothing
   aligns any more. `--top 60 --bottom 100` is the usual answer for such a shell.

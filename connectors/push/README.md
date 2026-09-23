@@ -9,10 +9,9 @@ It comes in two forms, with the same functions and the same primitives:
   given the primitives as its first argument. It runs wherever vysu runs, Windows included. The
   built-ins (`apns-sim`, `fcm`, `webhook`) are written this way, in `src/connectors/push/`; the
   template is `connectors/push/example.mjs`.
-- **a bash file** — `.vysu/push-drivers/<name>.sh`, the form every project wrote for the bash engine,
-  kept working on macOS and Linux: vysu sources it in a bash under `set -euo pipefail`, with the
-  functions it calls defined around it (`src/push/prelude.sh`). The files beside this README
-  (`apns-sim.sh`, `fcm.sh`, `webhook.sh`) are the bash engine's own drivers, and the shape to copy.
+- **a bash file** — `.vysu/push-drivers/<name>.sh`, the form projects wrote first, which keeps
+  working on macOS and Linux: vysu sources it in a bash under `set -euo pipefail`, with the
+  functions it calls defined around it (`src/push/prelude.sh`), and calls the two below.
 
 ```js
 // .vysu/push-drivers/<name>.mjs
@@ -89,8 +88,8 @@ default in brackets.
 ## Writing one
 
 Copy `connectors/push/example.mjs` to `.vysu/push-drivers/<name>.mjs` in your project and name it in
-`VYSU_PUSH`. A bash driver from the bash engine keeps working as it is on macOS and Linux; on Windows,
-rewrite it as a module (vysu says so when it meets one without a bash).
+`VYSU_PUSH`. A driver written in bash keeps working as it is on macOS and Linux; on Windows, rewrite
+it as a module (vysu says so when it meets one without a bash).
 
 ## Testing one
 

@@ -1,13 +1,15 @@
 # `.vysu/config` — every key
 
-A project's `.vysu/config` is read the way bash sources it: `KEY='value'` lines, quotes, `$VAR`
-and `${VAR:-default}`, with no expansion you would not write by hand (a line the engine's own
-reader cannot follow goes to a real bash where the machine has one). An environment variable of the same name **wins over the file**, and unknown keys are
-ignored. `vysu doctor` prints the values in force and where each one came from (`env`, `config`,
-`machine.env`, `devices.env`, `default`). `~/.vysu/machine.env` is what `vysu setup` writes about
-this machine — its simulators, its AVDs, its browser — and sits below the project config: a machine
-says what it has, a project says what it wants. It was called `devices.env` until 0.4.0, and a file
-of that name is still read, just below it.
+A project's `.vysu/config` is a list of `KEY='value'` lines, which vysu reads like a shell file with
+its own reader: the three kinds of quoting, `$VAR`, `${VAR:-default}`, `export`, several assignments
+on a line. Anything past that (a command substitution, a condition) goes to bash on macOS and Linux,
+and is an error naming the line on Windows; a config needs none of it. An environment variable of
+the same name **wins over the file**, and unknown keys are ignored. `vysu doctor` prints the values
+in force and where each one came from (`env`, `config`, `machine.env`, `devices.env`, `default`).
+`~/.vysu/machine.env` is what `vysu setup` writes about this machine — its simulators, its AVDs, its
+browser — and sits below the project config: a machine says what it has, a project says what it
+wants. It was called `devices.env` until 0.4.0, and a file of that name is still read, just below
+it.
 
 Every key is optional except `VYSU_PROJECT`, whose default is the project folder's name. A value an
 app has to decide — an origin, a bundle id, a locales folder — has no sensible default and stays

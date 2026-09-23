@@ -43,7 +43,7 @@ that wants a fresh page opens it itself, as its first step. Outputs, in the shot
   second, `+faststart`). `--mp4` is a no-op: the clip is always an mp4.
 - `events.json` - the take, machine-readable (below).
 - `web.contact-sheet.png` - the distinct states the page went through, produced by agent-browser.
-- `motion.txt` + `frames/` - the motion report (`motion.py`): a timeline of the frames that move,
+- `motion.txt` + `frames/` - the motion report: a timeline of the frames that move,
   transients (a row that flashes for 4-12 frames), and only the frames the report names.
 - `meta.json` - persona, viewport, fps, sha, branch, API, date.
 
@@ -120,7 +120,7 @@ line on stdout. Details and the writing rules: skill **demo-video**.
 
 ## `vysu frame` - the showable export
 
-`frame.py` draws a device bezel or lays the capture on a 16:9 canvas. It takes a PNG, an
+`vysu frame` draws a device bezel or lays the capture on a 16:9 canvas. It takes a PNG, an
 `.mp4`/`.webm` (a web clip from `rec` **or** a mobile clip from `mrec`), or a whole shots folder.
 
 ```bash
@@ -148,7 +148,7 @@ Two outputs, two readers:
 
 - **`compare.png`** (`compare-2.png`… when it overflows) - a **before / after / zones** triptych
   per capture, within the 1 568 px limit: this is the *only* image to read. Column 1 the baseline,
-  column 2 the current state, column 3 the marked image (`diff.py`'s rectangles over the dimmed
+  column 2 the current state, column 3 the marked image (the diff's rectangles over the dimmed
   background) - compare columns 1 and 2, column 3 says where to look.
 - **`compare.html`** - for a human: a before/after slider, onion-skin overlay, toggleable zones.
   To open in a browser, never to read in tokens.

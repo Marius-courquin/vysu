@@ -11,9 +11,9 @@ It comes in two forms, with the same functions and the same primitives:
   primitives as its first argument. It runs wherever vysu runs, Windows included. The built-ins
   (`none`, `auth0`, `form`) are written this way, in `src/connectors/auth/`; the template is
   `connectors/auth/example.mjs`.
-- **a bash file** — `.vysu/auth.sh`, the form every project wrote for the bash engine, kept working
-  on macOS and Linux: vysu runs each function in a bash that sources the file under
-  `set -euo pipefail`, with every primitive defined as a call back into vysu. The template is
+- **a bash file** — `.vysu/auth.sh`, the form projects wrote first, which keeps working on macOS
+  and Linux: vysu runs each function in a bash that sources the file under `set -euo pipefail`,
+  with every primitive defined as a call back into vysu. The template is
   `connectors/auth/example.sh`.
 
 Which one is used comes from `VYSU_AUTH` in the project's `.vysu/config`:

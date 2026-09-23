@@ -6,9 +6,10 @@ vysu, named by `VYSU_REF`:
 
     git archive v0.5.1 | tar -x -C <dir> && export VYSU_REF=<dir>/bin/vysu
 
-Without it every script stops on that line. The image scripts run the reference's Python helpers
-(`<dir>/py/<name>.py`, python3 with numpy and Pillow) against the modules of `src/img/`; the others
-run the reference's `vysu` against `bin/vysu`.
+Without it every script stops on that line (`hooks.sh`, which compares two hooks of this engine,
+needs none). The image scripts run the reference's Python helpers (`<dir>/py/<name>.py`, python3
+with numpy and Pillow) against the modules of `src/img/`; the others run the reference's `vysu`
+against `bin/vysu`.
 
 | Script | Needs | Compares |
 |---|---|---|
@@ -21,6 +22,6 @@ run the reference's `vysu` against `bin/vysu`.
 | `mobile.sh <scratch> <cases>` | a claimed simulator or emulator (`VYSU_OWNER`) | one command per line of a case file (`mobile/*.cases`) |
 | `hooks.sh <scratch>` | nothing (no reference) | the Stop hook, `stop-reminder.sh` against `stop-reminder.mjs` |
 
-A difference the port made on purpose is filtered out where the script says so (`KNOWN` in
+A deliberate difference from the reference is filtered out where the script says so (`KNOWN` in
 `platform.sh`, `ignore` in a web case): the doctor's and setup's python3 and helper lines, which
 this engine no longer has, and each helper naming itself without `.py`.
