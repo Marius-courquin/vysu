@@ -6,7 +6,7 @@ import { isAbsolute, join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
-import { devices, owner, type Platform } from '../core/hold.ts';
+import { devices, lockDrop, lockTake, owner, type Platform } from '../core/hold.ts';
 import { listenerPids } from '../core/host.ts';
 import { killPort, listening, waitHttp } from '../core/net.ts';
 import { spawnShellDetached } from '../core/proc.ts';
@@ -183,16 +183,23 @@ export function worktreeMobileDir(): string | null {
   return rel ? join(physical(hereTop), rel) : physical(hereTop);
 }
 
-// 8082 upward: a port nothing listens on and no other owner has on record (its Metro may be down for
-// a minute, its port is still its own).
-async function freePort(): Promise<string> {
+// The ports other owners have on record: their Metro may be down for a minute, or still starting,
+// and the port is still theirs.
+function othersPorts(): Set<string> {
   const state = config().state;
+  const mine = `metro-port.${slug(owner())}`;
   const recorded = new Set<string>();
   try {
-    for (const f of readdirSync(state)) if (f.startsWith('metro-port.')) recorded.add(read(join(state, f)).split(' ')[0] ?? '');
+    for (const f of readdirSync(state)) if (f.startsWith('metro-port.') && f !== mine) recorded.add(read(join(state, f)).split(' ')[0] ?? '');
   } catch {
     // no state yet
   }
+  return recorded;
+}
+
+// 8082 upward: a port nothing listens on and no other owner has on record.
+async function freePort(): Promise<string> {
+  const recorded = othersPorts();
   for (let p = 8082; p <= 8099; p++) {
     if (await listening(p)) continue;
     if (recorded.has(String(p))) continue;
@@ -210,6 +217,29 @@ function startMetro(dir: string, port: string, menv: string[]): void {
   spawnShellDetached(`npx expo start --port ${port}`, { cwd: dir, env, log: metroLog(port) });
 }
 
+// The port of this owner's isolated Metro, picked and put on record under one lock before Metro starts
+// (pid 0 until it answers): two owners starting together both found 8082 free, a Metro taking seconds
+// to listen and the record being written only then, and the one whose Metro lost the port stopped the
+// other's with `down metro`. A port asked for that another owner has on record is refused for the
+// same reason.
+export async function metroReserve(p: Platform, portIn: string, dir: string): Promise<string> {
+  let port = portIn;
+  await lockTake('metro-ports');
+  try {
+    if (!port) port = (await freePort()) || die(`vysu up ${p} --isolated: no free port between 8082 and 8099`);
+    else if (othersPorts().has(port)) die(`vysu up ${p} --isolated: :${port} is another owner's isolated Metro (another --port, or none to have one picked)`);
+    if (await listening(Number(port))) die(`vysu up ${p} --isolated: :${port} is taken (another --port)`);
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) die(`vysu up ${p} --isolated: no such folder ${dir}`);
+    if (!existsSync(join(dir, 'package.json'))) die(`vysu up ${p} --isolated: ${dir} holds no package.json (the Expo app folder)`);
+    mkdirSync(config().logs, { recursive: true });
+    mkdirSync(config().state, { recursive: true });
+    writeFileSync(isolatedFile(), `${port} 0 ${dir}\n`);
+    return port;
+  } finally {
+    lockDrop('metro-ports');
+  }
+}
+
 export async function metroIsolatedUp(p: Platform, portIn: string, dir: string, menv: string[]): Promise<void> {
   let port = portIn;
   const rec = isolatedRecord();
@@ -222,15 +252,16 @@ export async function metroIsolatedUp(p: Platform, portIn: string, dir: string, 
     port = rec.port;
   }
   if (/[^0-9]/.test(port)) die(`vysu up ${p} --isolated: --port takes a number (got « ${port} »)`);
-  if (!port) port = (await freePort()) || die(`vysu up ${p} --isolated: no free port between 8082 and 8099`);
-  if (await listening(Number(port))) die(`vysu up ${p} --isolated: :${port} is taken (another --port)`);
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) die(`vysu up ${p} --isolated: no such folder ${dir}`);
-  if (!existsSync(join(dir, 'package.json'))) die(`vysu up ${p} --isolated: ${dir} holds no package.json (the Expo app folder)`);
-  mkdirSync(config().logs, { recursive: true });
-  mkdirSync(config().state, { recursive: true });
+  port = await metroReserve(p, port, dir);
   const log = metroLog(port);
   startMetro(dir, port, menv);
-  await waitHttp(`http://localhost:${port}/status`, 180, `metro :${port} (see ${log})`);
+  try {
+    await waitHttp(`http://localhost:${port}/status`, 180, `metro :${port} (see ${log})`);
+  } catch (e) {
+    // A Metro that never answered keeps no port on record, as before the record came first.
+    if (read(isolatedFile()) === `${port} 0 ${dir}\n`) rmSync(isolatedFile(), { force: true });
+    throw e;
+  }
   writeFileSync(isolatedFile(), `${port} ${metroListenerPid(port)} ${dir}\n`);
   say(`metro: isolated on :${port} for ${owner()}, from ${dir} (log: ${log})`);
   say('metro: an isolated Metro costs ~1-1.5 GB of RAM (vysu down metro once the phase is over)');
