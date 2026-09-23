@@ -132,7 +132,7 @@ const ellipse = (b: number[], fill: string, stroke = '', width = 0): string => {
   return `<ellipse cx="${(b[0]! + b[2]! + 1) / 2}" cy="${(b[1]! + b[3]! + 1) / 2}" rx="${(b[2]! - b[0]! + 1) / 2 - h}" ry="${(b[3]! - b[1]! + 1) / 2 - h}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${width}"` : ''}/>`;
 };
 
-// Text placed by its ink box, as the Python did (no font anchor): align is horizontal l|c|r then
+// Text placed by its ink box, with no font anchor (Pillow's default): align is horizontal l|c|r then
 // vertical t|m. Returns the SVG and the ink box's size.
 function inkText(text: string, x: number, y: number, size: number, fill: string, align = 'lt'): { svg: string; w: number; h: number } {
   const [x0, y0, x1, y1] = inkBox(text, size);

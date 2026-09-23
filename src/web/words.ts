@@ -1,4 +1,4 @@
-// A step line cut into words the way the bash engine's `eval` cut it: `click "Se connecter"` is one
+// A step line cut into words the way a shell's `eval` cuts it: `click "Se connecter"` is one
 // label, `fill 'E-mail' "$VYSU_X"` two words with the variable read, a `#` at the start of a word the
 // end of the line. What only a shell can run — a pipe, a redirection, a command substitution — is
 // refused rather than run: a step is a line of a flow, not a script.

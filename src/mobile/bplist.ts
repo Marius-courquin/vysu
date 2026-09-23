@@ -1,8 +1,8 @@
-// Binary property lists (bplist00), read and written: what the bash engine asked Python's plistlib
-// for — locationd's clients.plist to read a location permission back, SpringBoard's BulletinBoard
-// file and the NSKeyedArchiver sections inside it to grant, deny or reset notifications. Integers,
-// reals, dates, data, strings, UIDs, arrays and dictionaries; a real stays a real and a UID a UID
-// through a round trip.
+// Binary property lists (bplist00), read and written the way Python's plistlib does: locationd's
+// clients.plist to read a location permission back, SpringBoard's BulletinBoard file and the
+// NSKeyedArchiver sections inside it to grant, deny or reset notifications. Integers, reals, dates,
+// data, strings, UIDs, arrays and dictionaries; a real stays a real and a UID a UID through a round
+// trip.
 import { readFileSync } from 'node:fs';
 import { runBuffer } from '../core/proc.ts';
 

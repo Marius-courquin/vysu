@@ -1,5 +1,5 @@
-// The Metro and device log readers against what the bash engine printed for the same log
-// (fixtures/metro.expected was written by lib/metro.sh and lib/mobile.sh on fixtures/metro.log).
+// The Metro and device log readers against what vysu 0.5 printed for the same log
+// (fixtures/metro.expected, its answers on fixtures/metro.log).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ const section = (name: string): string[] => {
 };
 const ignore = '\\[boot |i18next is made possible';
 
-test('a bundling failure since a line, as metro.sh reported it', () => {
+test('a bundling failure since a line', () => {
   assert.deepEqual([bundleErrorOf(log, '/Users/x/proj/')], section('bundle error from 0'));
   assert.equal(bundleErrorOf(log.split('\n').slice(13).join('\n'), '/Users/x/proj/'), '');
 });

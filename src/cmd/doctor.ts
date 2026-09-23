@@ -40,13 +40,13 @@ function settle<T>(p: Promise<T>): Promise<Settled<T>> {
   );
 }
 
-// A contract of the web or mobile code that is still a placeholder says so in one line; a real
-// failure (a die) ends the doctor as it did in bash.
+// A section the web or mobile code could not answer (an error it did not foresee) says so in one
+// line and the doctor goes on; a die ends the doctor.
 function linesOf(section: string, r: Settled<string[] | string>): string[] {
   if (r.ok) return typeof r.value === 'string' ? [r.value] : r.value;
   if (r.error instanceof VysuError) throw r.error;
   const msg = r.error instanceof Error ? r.error.message : String(r.error);
-  return [`${section}: (not available yet — ${msg})`];
+  return [`${section}: (unavailable — ${msg})`];
 }
 
 const listNames = (dir: string): string[] => {

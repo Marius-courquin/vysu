@@ -1,5 +1,5 @@
-// The few Python behaviours the engine's outputs were built on, reproduced so a layout, a glob or an
-// escaped caption comes out the same as before the port.
+// The few Python behaviours the engine's outputs are defined by, reproduced so a layout, a glob or
+// an escaped caption comes out as it always has.
 
 // round(): half to even, which is not Math.round (round(2.5) is 2).
 export function pyRound(x: number, digits = 0): number {

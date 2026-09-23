@@ -60,9 +60,8 @@ async function videoSize(path: string, crop: string): Promise<[number, number]> 
   return [Number(w), Number(h)];
 }
 
-// Grayscale frames streamed from ffmpeg, one at a time. `format=gray` lands within a level of the
-// PNG route it replaces (ffmpeg does the same yuv→luma conversion Pillow's .convert("L") did on the
-// extracted PNGs).
+// Grayscale frames streamed from ffmpeg, one at a time, rather than extracted as PNGs: `format=gray`
+// is the same yuv→luma conversion, within a level of a PNG's Pillow-style `convert("L")`.
 async function* videoFrames(path: string, width: number, height: number, fps: number, crop: string, io: Io): AsyncGenerator<Uint8Array> {
   const chain = `${videoFilter(fps, crop)},format=gray`;
   const child = spawn('ffmpeg', ['-v', 'error', '-i', path, '-vf', chain, '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], {

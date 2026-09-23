@@ -73,7 +73,7 @@ test('batch results: boxes out, expand and warm to stderr, a failure named', () 
   assert.equal(lastResult(''), '');
 });
 
-test('the JS and the lists are the bytes the bash engine built', () => {
+test('the JS and the lists keep their bytes', () => {
   assert.equal(pyJsonList(['light', 'dark']), '["light", "dark"]');
   assert.equal(pyJsonString('é"'), '"\\u00e9\\""');
   assert.ok(chromeJs(true).includes("s.textContent = '*,*::before"));

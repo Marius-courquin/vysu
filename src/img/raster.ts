@@ -1,4 +1,4 @@
-// Pixels in and out, the way Pillow handed them to the Python helpers: `convert("RGB")` drops an
+// Pixels in and out, the way Pillow hands them over: `convert("RGB")` drops an
 // alpha channel without blending it, `convert("L")` is Pillow's own integer luma, and an embedded
 // colour profile is ignored (Pillow never applied one, and a diff of two captures must compare the
 // bytes the device wrote). Decoding and resampling go through sharp; the maths runs over the raw
@@ -73,7 +73,8 @@ export async function resizeFast(img: Raster, width: number, height: number): Pr
 }
 
 // Image.reduce(n): the mean of every n×n block, in Pillow's own fixed point, the last partial row and
-// column averaged over the pixels they have. Byte for byte what screencap.py wrote on a 3x device.
+// column averaged over the pixels they have. Byte for byte what every version has written for a 3x
+// device, so a baseline captured before diffs clean.
 export function reduce(img: Raster, n: number): Raster {
   const { width: w, height: h, channels: c, data } = img;
   const ow = Math.ceil(w / n);

@@ -1,6 +1,6 @@
-// A bash auth connector (`.vysu/auth.sh`, or a `.sh` path in VYSU_AUTH), the form every project wrote
-// for the bash engine, kept working where there is a bash. Each of its functions runs in a bash that
-// sources it under `set -euo pipefail`, as the engine did, with every primitive of the contract
+// A bash auth connector (`.vysu/auth.sh`, or a `.sh` path in VYSU_AUTH), the form projects wrote
+// before the module one, run where there is a bash. Each of its functions runs in a bash that
+// sources it under `set -euo pipefail`, with every primitive of the contract
 // defined as a call back into vysu (`vysu __prim <name> …`). Those calls hold their locks in this
 // process's name (VYSU_LOCK_HOLDER): a session or a device the connector touches stays held between
 // two of its calls, and is given back when this command ends, whichever way it ends.
@@ -17,8 +17,8 @@ import { authTestSessionName } from '../web/ab.ts';
 import { stepsAreOn } from './context.ts';
 import type { AuthConnector } from './types.ts';
 
-// The primitives, then the few engine functions the connectors written for the bash engine reached
-// for beyond the contract (the built-in ones locked the device and reversed Metro's port themselves).
+// The primitives, then the few engine functions a bash connector may reach for beyond the contract
+// (locking the device and reversing Metro's port, which a module does through mobilePrepare).
 const PRIMITIVES = `
 cfg() { local _k="VYSU_$1"; printf '%s' "\${!_k:-\${2:-}}"; }
 die() { printf 'vysu: %s\\n' "$1" >&2; shift; [ $# -eq 0 ] || printf 'next: %s\\n' "$*" >&2; exit 1; }
@@ -46,7 +46,7 @@ metro_port() { cfg METRO_PORT 8081; }
 export function bridgeScript(): string {
   const c = config();
   const self = [process.execPath, ...process.execArgv, join(ENGINE, 'src', 'cli.ts')].map(shellQuote).join(' ');
-  // The values in force, as the shell variables a connector of the bash engine could read — not
+  // The values in force, as the shell variables a bash connector reads (`$VYSU_ORIGIN`) — not
   // exported: the vysu each primitive starts reads the config itself, and a value handed down in its
   // environment would count as set there on purpose (a Metro port, a device).
   const vars = [...c.values].filter(([k]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k)).map(([k, v]) => `${k}=${shellQuote(v)}`);

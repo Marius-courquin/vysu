@@ -1,6 +1,6 @@
 // What the rest of the engine asks of the mobile code: the primitives an auth connector may call, the
-// per-device state file, and `vysu up|down` for a device. The signatures are the contract the web and
-// platform lots code to.
+// per-device state file, and `vysu up|down` for a device. The signatures are the contract the web
+// code and the platform commands call.
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
@@ -59,7 +59,7 @@ export async function mobileLoadBundle(platform: Platform): Promise<void> {
 export function metroPort(): string {
   return port();
 }
-// Asked by the web lot for the auth connectors: what auth0.sh / form.sh did before opening the app —
+// What an auth connector needs done before it opens the app —
 // `ios_lock` on iOS, `android_select` then `adb reverse tcp:<metro_port> tcp:<metro_port>` on
 // Android — so a connector never reaches for adb or the Metro port itself.
 export async function mobilePrepare(platform: Platform): Promise<void> {

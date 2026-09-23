@@ -1,7 +1,7 @@
 // Small readers of what a step says: its words, its numbers, and the numbers it answers in.
 
 // A step's words, quoted the way a shell quotes them but never expanded: `fill "Mot de passe"
-// "pa$$word"` types what it says. Python's shlex.split, which the bash engine used: POSIX quoting,
+// "pa$$word"` types what it says. Python's shlex.split, to the letter: POSIX quoting,
 // a backslash escaping any character outside quotes and only `"` and `\` inside double quotes, an
 // empty pair of quotes being an empty word. A step whose quotes do not close is said to be one, not
 // run half-read.

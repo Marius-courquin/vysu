@@ -17,8 +17,8 @@ export interface AvdSpec {
   extra: string;
 }
 
-// `name:api:device:extra key=value …`, separated by « ; ». Split the way bash's parameter expansion
-// did it: the name up to the first colon, the api up to the next, the device up to the next, the
+// `name:api:device:extra key=value …`, separated by « ; ». Split on the first three colons only:
+// the name up to the first colon, the api up to the next, the device up to the next, the
 // rest (colons included) is the extra.
 export function avdSpecs(specs: string): AvdSpec[] {
   const out: AvdSpec[] = [];

@@ -1,7 +1,6 @@
 // Where the mobile code's lines go. A command prints straight to the terminal; `vysu mdo` runs each
-// step with its lines collected, then answers the step in one line of its own — what bash did by
-// redirecting a step's stdout and stderr into files it read back. `quiet` is `>/dev/null` (and
-// `2>&1` with `{ err: true }`).
+// step with its lines collected, then answers the step in one line of its own. `quiet` is
+// `>/dev/null` (and `2>&1` with `{ err: true }`).
 type Stream = string[] | 'pass' | 'drop';
 interface Sink {
   out: Stream;

@@ -80,7 +80,7 @@ function insideRounded(px: number, py: number, r: Rect, radius: number): boolean
 const div255 = (a: number): number => (((a >>> 8) + a) >>> 8);
 
 // Image.alpha_composite of black at alpha 120 over every pixel outside the holes, in Pillow's own
-// integer blend: the dimmed surrounding comes out at the levels mark.py wrote.
+// integer blend: the dimmed surrounding comes out at the levels every version has written.
 function dimOutside(img: Raster, holes: Rect[], radius: number): void {
   const { width: w, height: h, data } = img;
   const sa = 120;
@@ -100,7 +100,7 @@ function dimOutside(img: Raster, holes: Rect[], radius: number): void {
   }
 }
 
-// Draw `shapes` on an RGBA image: what mark.render did, and what diff.py's marked image is made of.
+// Draw `shapes` on an RGBA image: `vysu mark`, and the marked image of `diff`.
 export async function render(src: Raster, shapes: Shape[], o: RenderOptions = {}): Promise<Raster> {
   const grow = o.grow ?? 10;
   const color = o.color ?? COLOR;

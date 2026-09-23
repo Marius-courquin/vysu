@@ -66,7 +66,7 @@ export async function run(args: string[]): Promise<void> {
       await compareShots(dir, { against: againstDir, edge: SHEET_EDGE }, (l) => lines.push(l));
     } catch (e) {
       if (!(e instanceof CompareError)) throw e;
-      // What it printed before failing stays unsaid, as under the bash engine's `set -e`.
+      // What it printed before failing stays unsaid: a failed compare answers with its error alone.
       process.stderr.write(`${e.message}\n`);
       exit(1);
     }

@@ -1,5 +1,5 @@
 // Python's way of writing numbers, strings and JSON, reproduced so a report line, an events.json or a
-// cut.json reads byte for byte as it did when a Python script wrote it. Agents and the Remotion
+// cut.json reads byte for byte as every earlier version wrote it. Agents and the Remotion
 // toolkit read these outputs: « 12.2 % » turning into « 12.3 % » on a tie is a changed word.
 
 // f"{x:.{d}f}": the exact value rounded, half to even on a true tie (0.25 → « 0.2 »). JS toFixed rounds

@@ -29,7 +29,7 @@ test('the checker definition takes the model, or loses the line', () => {
   assert.equal(checkerAgentText(tpl, '', '0.5.1'), '---\nname: visual-checker\n---\n<!-- vysu-agent 0.5.1 -->\n\nYou are a checker.\n');
 });
 
-test('AVD specs split the way bash expanded them', () => {
+test('AVD specs split on their first three colons', () => {
   assert.deepEqual(avdSpecs('a:36:pixel_8:;b:36:pixel_8_pro:hw.lcd.width=1280 hw.lcd.density=480;c:30:pixel_4a'), [
     { name: 'a', api: '36', device: 'pixel_8', extra: '' },
     { name: 'b', api: '36', device: 'pixel_8_pro', extra: 'hw.lcd.width=1280 hw.lcd.density=480' },

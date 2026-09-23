@@ -163,8 +163,8 @@ export const connector: AuthConnector = {
   },
 };
 
-// The keyboard's return, else the form's own continue button; neither is a failure the bash engine
-// ended on too (set -e on the last of the two).
+// The keyboard's return, else the form's own continue button; when neither answers, the login ends
+// there (exit 1): the page cannot be submitted.
 async function submit(v: AuthContext, platform: Platform): Promise<void> {
   if ((await v.mobTry(platform, 'keyboard', 'return')).code === 0) return;
   if (!(await v.mobPressAny(platform, 'Continuer,Continue'))) exit(1);

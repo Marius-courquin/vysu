@@ -1,4 +1,4 @@
-// The command lines the Python helpers took through argparse, read the same way: options in any order,
+// The helpers' command lines, read the way argparse reads them: options in any order,
 // `--opt=value`, a unique prefix for a long option (`--thr 0.2`), `--` ending the options, and the
 // same errors on stderr with exit 2 (« argument --threshold: invalid float value: 'x' »).
 import type { Io } from './tools.ts';

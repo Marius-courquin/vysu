@@ -1,5 +1,5 @@
 // json.dumps as Python writes it by default — `", "` and `": "` between items, non-ASCII escaped
-// unless asked not to: what the bash drivers sent and printed, byte for byte.
+// unless asked not to: what the drivers have always sent and printed, byte for byte.
 function str(s: string, ascii: boolean): string {
   let out = '"';
   for (const ch of s) {

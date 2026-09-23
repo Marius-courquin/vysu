@@ -4,8 +4,8 @@ import type { Clip, Theme } from '../schema.ts';
 
 export type DeviceKind = 'phone' | 'browser';
 
-// Same rule as tools/visual/frame.py --device auto: a tall portrait capture is a phone, anything
-// else is a browser window.
+// Same rule as `vysu frame --device auto` (src/img/frame.ts): a tall portrait capture is a phone,
+// anything else is a browser window.
 export function deviceKind(clip: Clip): DeviceKind {
   const { w, h } = clip.logical;
   return h / w > 1.9 ? 'phone' : 'browser';

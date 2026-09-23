@@ -96,8 +96,8 @@ export function quiet(stderr: string): string {
 }
 
 export interface AbOptions {
-  // What becomes of agent-browser's stderr, once filtered: printed after the call (what bash's
-  // `ab` did), dropped (`2>/dev/null`), or handed back in the result.
+  // What becomes of agent-browser's stderr, once filtered: printed after the call (the default),
+  // dropped (`2>/dev/null`), or handed back in the result.
   stderr?: 'pass' | 'drop' | 'capture';
   // Straight to this process's stdout as it comes, for the passthrough.
   inherit?: boolean;

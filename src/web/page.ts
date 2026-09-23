@@ -177,8 +177,8 @@ export async function webShot(persona: string, shots: string, rest: string): Pro
   return file;
 }
 
-// A variable a step names (`fill "E-mail" "$VYSU_X"`), from what the bash engine could see: the
-// config, the files it sourced, the environment.
+// A variable a step names (`fill "E-mail" "$VYSU_X"`), from what a flow has always seen: the
+// config, the files it sources, the environment.
 const stepVar = (name: string): string => config().values.get(name) ?? config().fileVars.get(name) ?? process.env[name] ?? '';
 
 function words(step: string): string[] | null {

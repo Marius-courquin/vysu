@@ -55,7 +55,8 @@ export function parseDiffText(text: string): DiffSummary {
 }
 
 // The capture's entry under `verdicts` in meta.json, written through a temporary file so a reader
-// never sees half of it. Floats already there stay floats: the file reads as Python left it.
+// never sees half of it. Floats already there stay floats: the file keeps the spelling (« 30.0 ») it
+// was written with.
 export function recordVerdict(dir: string, capture: string, entry: Record<string, unknown>): void {
   const path = join(dir, 'meta.json');
   let meta: Record<string, unknown> = {};

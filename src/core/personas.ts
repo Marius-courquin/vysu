@@ -32,7 +32,7 @@ export function personaKey(persona: string, key: string): string {
 }
 
 // Any key the project set (`vysu persona set alice TOTP …`), from the file, else the config or the
-// environment, which is where bash found a variable the file did not set.
+// environment, which is where a sourced file finds a variable it does not set.
 export function personaVar(persona: string, key: string): string {
   const k = `${PREFIX}${persona.toUpperCase()}_${key}`;
   const file = existsSync(config().personas) ? loadPersonas() : new Map<string, string>();

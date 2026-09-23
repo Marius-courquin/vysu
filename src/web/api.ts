@@ -1,6 +1,6 @@
 // What the rest of the engine asks of the web code: a persona's browser session, what `vysu claim` /
-// `release --reset` read and do on it, and the auth connector's own line. The mobile and platform
-// lots code to these signatures.
+// `release --reset` read and do on it, and the auth connector's own line. The mobile code and the
+// platform commands call these signatures.
 import { config } from '../core/ctx.ts';
 import type { RunResult } from '../core/proc.ts';
 import { ab, abRaw, bboxes, bcmd, brun, browserName as name, evalValue, lastResult, sessionRunning } from './ab.ts';
@@ -57,7 +57,7 @@ export async function webDoctorLines(): Promise<string[]> {
 export async function authToken(persona: string): Promise<string> {
   return (await (await import('../auth/commands.ts')).token(persona)) ?? '';
 }
-// Added by the web lot for `vysu doctor`: which browser a capture renders in — the engine's headless
+// For `vysu doctor`: which browser a capture renders in — the engine's headless
 // Chrome for Testing, or the one this machine chose (a diff against a baseline captured elsewhere
 // depends on it).
 export function browserName(): string {

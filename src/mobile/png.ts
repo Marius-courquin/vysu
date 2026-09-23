@@ -1,5 +1,4 @@
-// The size of a PNG, read from its header: what the bash engine asked PIL for, at the cost of a
-// Python start-up per question.
+// The size of a PNG, read from its header: 24 bytes, no decoder.
 import { closeSync, openSync, readSync } from 'node:fs';
 
 export function pngSize(file: string): { width: number; height: number } {
@@ -15,7 +14,7 @@ export function pngSize(file: string): { width: number; height: number } {
 }
 
 // A float the way Python's repr() writes it: « 3.0 » where JavaScript says « 3 ». The scale cache
-// and every --scale handed to a helper were written by Python, and both engines read them.
+// and every --scale handed to a helper are written that way, and every version reads them back.
 export function pyFloat(x: number): string {
   if (Number.isInteger(x)) return `${x}.0`;
   return String(x);

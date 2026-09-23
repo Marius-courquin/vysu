@@ -3,9 +3,9 @@ import type { Raster } from './raster.ts';
 
 // resize(size, LANCZOS), Pillow's resampler to the byte: a Lanczos-3 kernel stretched by the scale,
 // coefficients normalised then rounded to 22-bit fixed point, a horizontal pass then a vertical one,
-// each clipped to 8 bits. A 1x capture written here is the one the Python engine would have written,
-// so a diff between captures of either engine compares pictures, not resamplers (libvips' Lanczos,
-// close as it is, moved edges by up to 20 levels).
+// each clipped to 8 bits. A 1x capture written here is the one every earlier version wrote, so a
+// diff against an older baseline compares pictures, not resamplers (libvips' Lanczos, close as it
+// is, moved edges by up to 20 levels).
 const PRECISION = 22;
 
 function sinc(x: number): number {
