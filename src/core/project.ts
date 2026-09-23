@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { config } from './ctx.ts';
 import { ENGINE } from './config.ts';
 import { die } from './errors.ts';
-import { bashPath, isWindows, which } from './host.ts';
+import { bashPath, isWindows, toolArgv, which } from './host.ts';
 
 const EXTENSIONS = ['', '.mjs', '.js', '.ts', '.py', '.sh', '.cmd', '.bat', '.ps1'];
 
@@ -28,22 +28,26 @@ export function projectCommandPath(name: string): string {
 }
 
 // How to start the file: itself where the system can, else through what its shebang or extension names.
-function argvFor(file: string): [string, string[]] {
+// A batch file goes through cmd.exe as one verbatim line with each argument quoted for it (toolArgv):
+// handed to cmd.exe as separate arguments, a path with a space broke at the space and an argument's
+// `&` started a second command.
+function argvFor(file: string, args: string[]): { file: string; args: string[]; verbatim: boolean } {
   const ext = file.slice(file.lastIndexOf('.')).toLowerCase();
   const node = process.execPath;
-  if (['.mjs', '.js', '.ts'].includes(ext)) return [node, ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', file]];
-  if (!isWindows && !['.cmd', '.bat', '.ps1'].includes(ext)) return [file, []];
-  if (ext === '.cmd' || ext === '.bat') return [process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', file]];
-  if (ext === '.ps1') return ['powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file]];
+  const plain = (cmd: string, pre: string[]) => ({ file: cmd, args: [...pre, ...args], verbatim: false });
+  if (['.mjs', '.js', '.ts'].includes(ext)) return plain(node, ['--experimental-strip-types', '--disable-warning=ExperimentalWarning', file]);
+  if (!isWindows && !['.cmd', '.bat', '.ps1'].includes(ext)) return plain(file, []);
+  if (ext === '.cmd' || ext === '.bat') return toolArgv(file, args);
+  if (ext === '.ps1') return plain('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file]);
   const first = readFileSync(file, 'utf8').split('\n', 1)[0] ?? '';
   const shebang = /^#!\s*(\S+)(?:\s+(\S+))?/.exec(first);
   const interp = shebang ? (shebang[1]!.endsWith('/env') ? shebang[2] ?? '' : shebang[1]!.split('/').pop()!) : ext.slice(1);
-  if (interp === 'node') return [node, [file]];
-  if (interp.startsWith('python') || ext === '.py') return [which('python3') || which('python') || 'py', [file]];
+  if (interp === 'node') return plain(node, [file]);
+  if (interp.startsWith('python') || ext === '.py') return plain(which('python3') || which('python') || 'py', [file]);
   if (['bash', 'sh', 'zsh'].includes(interp) || ext === '.sh') {
     const bash = bashPath();
     if (!bash) die(`${file} is a shell script, and this machine has no bash (Git Bash, or WSL)`);
-    return [bash, [file]];
+    return plain(bash, [file]);
   }
   die(`${file}: no way to run it here (a shebang or an extension: .mjs, .py, .cmd, .ps1)`);
 }
@@ -59,9 +63,9 @@ export function execProjectCommand(file: string, args: string[]): Promise<number
     VYSU_CONFIG_FILE: c.configFile,
     VYSU_ENGINE: ENGINE,
   });
-  const [cmd, pre] = argvFor(file);
+  const argv = argvFor(file, args);
   return new Promise((resolve) => {
-    const child = spawn(cmd, [...pre, ...args], { stdio: 'inherit', env });
+    const child = spawn(argv.file, argv.args, { stdio: 'inherit', env, windowsVerbatimArguments: argv.verbatim });
     child.on('close', (code, signal) => resolve(code ?? (signal ? 1 : 0)));
     child.on('error', (e) => {
       process.stderr.write(`vysu: ${file}: ${e.message}\n`);
