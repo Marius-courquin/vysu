@@ -19,6 +19,10 @@ export interface RunOptions {
   timeoutMs?: number;
   // Output straight to this process's own streams, as a passthrough does.
   inherit?: boolean;
+  // Output dropped (`>/dev/null 2>&1`), for a command whose words nobody reads: waited for until it
+  // exits, where a pipe is waited for until every process holding it closes it — a stop command that
+  // leaves a process in the background (`nohup … &`) kept its caller waiting as long as that one ran.
+  discard?: boolean;
   // Windows: the arguments are already a cmd.exe command line (see shellArgv, toolArgv).
   verbatim?: boolean;
 }
@@ -26,11 +30,12 @@ export interface RunOptions {
 // Waits for the process and hands back what it said. Never throws for a non-zero exit: the caller
 // reads the code and decides whether it is a failure.
 export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
+  const output = opts.discard ? 'ignore' : opts.inherit ? 'inherit' : 'pipe';
   return new Promise((resolve) => {
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       env: opts.env,
-      stdio: [opts.input === undefined ? 'ignore' : 'pipe', opts.inherit ? 'inherit' : 'pipe', opts.inherit ? 'inherit' : 'pipe'],
+      stdio: [opts.input === undefined ? 'ignore' : 'pipe', output, output],
       windowsHide: true,
       windowsVerbatimArguments: opts.verbatim,
     });
