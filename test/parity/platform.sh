@@ -28,10 +28,13 @@ FAILED=0 PASSED=0
 
 # Lines that differ on purpose (a check the bash engine did not have), and the job-control notice
 # bash prints for a service killed by `down`: dropped from both sides.
-KNOWN='^✓ engine: dependencies installed|^ready: [0-9]+ · |Terminated: 15 +env '
+KNOWN='^✓ engine: dependencies installed|^✓ node: v|^ready: [0-9]+ · |Terminated: 15 +env '
+# The doctor lines the web and mobile code print through their contracts: compared by those lots once
+# their code lands, set aside here while they are placeholders (one « not available yet » line each).
+CONTRACT='^(auth|push|ios device|android avd|emulators|state [^:]*|avds|session|devices|sessions):'
 
 norm() { # file side
-  sed -e "s#$W/$2#<W>#g" -e "s#$W#<W>#g" "$1" | grep -Ev "$KNOWN" || true
+  sed -e "s#$W/$2#<W>#g" -e "s#$W#<W>#g" "$1" | grep -Ev "$KNOWN" | { if [ -n "${FILTER:-}" ]; then grep -Ev "$FILTER"; else cat; fi; } || true
 }
 
 # case name — runs "$@" in $W/<side>/<name>/proj for side in legacy and ts, compares.
@@ -70,6 +73,14 @@ case_ checker checker
 case_ checker-for checker --for codex
 SETUP="mkdir -p .vysu && echo \"VYSU_CHECKER_MODELS='claude=sonnet, codex = luna'\" > .vysu/config" case_ checker-models checker
 SETUP="mkdir -p .vysu && echo \"VYSU_CHECKER_MODELS='claude=sonnet, codex = luna'\" > .vysu/config" case_ checker-models-codex checker --for codex
+
+# --- doctor ------------------------------------------------------------------------------------------
+FILTER="$CONTRACT" TREE=0 case_ doctor-none doctor
+FILTER="$CONTRACT" TREE=0 SETUP='mkdir -p .vysu .claude/skills/visual-check && printf "VYSU_PROJECT=dr\nVYSU_STATE=$W/state/dr\nVYSU_BROWSER_PATH=/bin/sh\nVYSU_MIN_VERSION=99.0.0\nVYSU_LOCALES=nope\nVYSU_CHECKER_MODELS=claude=haiku\n" > .vysu/config && printf -- "---\nname: x\n---\n\n<!-- vysu-skill 0.1.0 -->\n" > .claude/skills/visual-check/SKILL.md' case_ doctor-project doctor
+FILTER="$CONTRACT" TREE=0 case_ doctor-bogus doctor --bogus
+if [ -d "$HOME/Documents/Projects/Nidz/nidz-env/.vysu" ]; then
+  FILTER="$CONTRACT" TREE=0 VYSU_PROJECT_DIR="$HOME/Documents/Projects/Nidz/nidz-env" case_ doctor-nidz doctor
+fi
 
 # --- setup: reporting only, never an install -------------------------------------------------------
 VYSU_STATE="$W/state/setup" TREE=0 case_ setup setup --dry-run

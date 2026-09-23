@@ -59,3 +59,19 @@ test('init fills the template and comments out what was left empty', () => {
     "# the web app\nVYSU_ORIGIN='http://localhost:5173'\n# VYSU_BASELINE_ORIGIN=''\n# VYSU_STATE=\"$HOME/x\"\nVYSU_AUTH='it'\"'\"'s'\n",
   );
 });
+
+test('update prints the CHANGELOG entries since the version it was on', async () => {
+  const { changelogSince } = await import('../../src/cmd/update.ts');
+  const log = '# Changelog\n\n## 0.6.0 — 2026-10-01\n\nNew.\n\n## 0.5.1 — 2026-09-23\n\nOld.\n';
+  assert.equal(changelogSince(log, '0.5.1'), '## 0.6.0 — 2026-10-01\n\nNew.\n\n');
+  assert.equal(changelogSince(log, '0.6.0'), '');
+  assert.equal(changelogSince(log, '0.1.0'), '## 0.6.0 — 2026-10-01\n\nNew.\n\n## 0.5.1 — 2026-09-23\n\nOld.\n');
+});
+
+test('a size the way du -h writes it', async () => {
+  const { humanSize } = await import('../../src/cmd/doctor.ts');
+  assert.equal(humanSize(0), '0B');
+  assert.equal(humanSize(4096), '4.0K');
+  assert.equal(humanSize(12 * 1024 * 1024), '12M');
+  assert.equal(humanSize(1.84 * 1024 ** 3), '1.8G');
+});

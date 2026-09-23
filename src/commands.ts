@@ -19,6 +19,7 @@ export const commands: Record<string, () => Promise<CommandModule>> = {
   cut: () => import('./cmd/cut.ts'),
   video: () => import('./cmd/video.ts'),
   update: () => import('./cmd/update.ts'),
+  doctor: () => import('./cmd/doctor.ts'),
 };
 
 // The engine's own command names, ported or not: a project command of the same name is unreachable,
