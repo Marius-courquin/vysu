@@ -15,6 +15,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import type { PushContext, PushDriver } from '../../push/push.ts';
+import { pyJson } from '../../push/pyjson.ts';
 
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const head = (s: string, n: number): string => Buffer.from(s, 'utf8').subarray(0, n).toString('utf8');
@@ -113,7 +114,7 @@ async function post(v: PushContext, endpoint: string, bearer: string, message: s
     const r = await fetch(endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: m }),
+      body: pyJson({ message: m }),
       signal: AbortSignal.timeout(30000),
     });
     code = r.status;

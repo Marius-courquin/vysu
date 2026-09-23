@@ -117,7 +117,7 @@ export async function loadDriver(name: string): Promise<PushDriver> {
     return { describe: m.describe ?? (() => own), send: m.send };
   }
   const builtin = BUILTIN[name];
-  if (!builtin) die(`no push driver « ${name} » (${join(ENGINE, 'connectors', 'push', `${name}.ts`)})`);
+  if (!builtin) die(`no push driver « ${name} » (${join(ENGINE, 'src', 'connectors', 'push', `${name}.ts`)})`);
   return builtin();
 }
 
