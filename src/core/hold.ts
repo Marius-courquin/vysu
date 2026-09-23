@@ -3,9 +3,9 @@
 // of what it is about to touch — lazily, in the wrappers everything goes through — and holds it
 // until it exits. A claim holds one across several commands.
 //
-// The files are the ones the bash engine wrote, byte for byte (a lock directory holding owner, pid,
-// since and cmd; a claim file of key=value lines; one device-choice file per owner), so an engine of
-// either kind waits on the other's locks while both are installed.
+// The files keep the format of every earlier version, byte for byte (a lock directory holding owner,
+// pid, since and cmd; a claim file of key=value lines; one device-choice file per owner), so two
+// versions installed side by side (an agent on an older checkout) wait on each other's locks.
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, commandLine } from './ctx.ts';

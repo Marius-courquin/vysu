@@ -32,7 +32,7 @@
 #                                           and stitches, mobile has no full-page capture (--step: the scroll between
 #                                           two captures, 150 pt by default — a flick asking for more lands no further;
 #                                           --top / --bottom: the height of a bar drawn over the scroller, which
-#                                           stitch.py cannot find on its own). Android captures the whole display,
+#                                           stitch cannot find on its own). Android captures the whole display,
 #                                           system dialogs and keyboard included (the user's keyboard stands in for
 #                                           agent-device's invisible input method during the capture). The same label
 #                                           again: the earlier capture becomes <platform>-<label>.prev.png and one line
@@ -120,7 +120,7 @@
 #                                           (compare.html); a mobile capture with no baseline pairs with its .prev.png;
 #                                           renders through the `render` session:
 #                                           `vysu render <agent-browser args…>` to look at index.html / compare.html
-#   vysu frame <name|file> [frame.py options…]   demo-ready export of a capture, a clip or a whole shots folder
+#   vysu frame <name|file> [frame options…]   demo-ready export of a capture, a clip or a whole shots folder
 #                                           (--preset pitch --title … --caption … for a 16:9 slide, --preset framed for
 #                                            a device frame; a mobile clip from `mrec` and a web clip from `rec` both work)
 #   vysu cut <take> --draft [--force]       a starting cut.json (montage script) from events.json + motion.txt:

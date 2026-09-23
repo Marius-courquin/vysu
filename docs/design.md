@@ -4,8 +4,9 @@ vysu (say "visu") looks at a real app the way a reviewer does, in tokens an agen
 browser session per persona whose login survives across runs, a simulator and an emulator driven by
 label, screenshots and diffs written outside every repo, a 25-line text report before any image, and
 a recorded flow that becomes a demo video. It grew inside the Nidz monorepo as `tools/visual/nv`;
-this note is the contract for extracting it into a tool any project can adopt, with the Nidz apps as
-its first consumer and no behaviour change for them.
+this note was the contract for extracting it into a tool any project can adopt, with the Nidz apps as
+its first consumer and no behaviour change for them, and it stays the record of why vysu is shaped
+the way it is. How the engine's code is organised is [engine.md](engine.md).
 
 Source of the extraction: `nidz-env/tools/visual/` (script `nv`, 2 400 lines of bash, seven Python
 helpers, a Remotion toolkit) and the two skills `nidz-visual-check` and `nidz-demo-video`. Read them
@@ -23,11 +24,10 @@ before touching anything: the comments carry the reasons, and the reasons stay t
   replacing six calls) is kept as is.
 - **No behaviour change for Nidz.** Every `nv` command keeps its semantics under `vysu`. The
   non-regression is the two flows `web-tour` and `mobile-tour` plus a `walk` against prep.
-- **Small dependency surface.** bash ≥ 3.2 (macOS default), python3 with Pillow and numpy, node ≥ 22
-  for `agent-browser` and `agent-device`. Remotion is installed on first `vysu video`. No npm
-  package for vysu itself: install is `git clone` + PATH. Since the TypeScript engine (§ 15): Node
-  ≥ 22.18 and sharp (`npm ci --omit=dev` in the engine), no bash, and python3 only for as long as a
-  helper still runs from `py/`.
+- **Small dependency surface.** Node ≥ 22.18, which runs the engine and `agent-browser` and
+  `agent-device`, and sharp (`npm ci --omit=dev` in the engine) for the images. Remotion is
+  installed on first `vysu video`. No npm package for vysu itself: install is `git clone`,
+  `npm ci` + PATH.
 - **Secrets never enter a repo.** Personas and service accounts live under `~/.vysu/<project>/`
   with mode 600. Nothing prints a password.
 
@@ -35,37 +35,26 @@ before touching anything: the comments carry the reasons, and the reasons stay t
 
 ```
 vysu/
-├── bin/vysu                  entry point: resolves its own dir, sources lib/*.sh, dispatches
-├── lib/
-│   ├── core.sh               paths, config discovery, die/usage/slug, owner, locks, claims, meta
-│   ├── persona.sh            personas.env: add / set / list / import, persona_var
-│   ├── web.sh                agent-browser wrapper (sessions, batch, open/settle/expand/warm, check, box, lang)
-│   ├── mobile.sh             agent-device wrapper (ios/android select, udid, serial, state, textsize, appearance, mshot, mtap, mrelaunch)
-│   ├── shots.sh              shots / walk / report / sheet / mark / frame / prune / cache
-│   ├── flow.sh               flow / rec / mflow / mrec, events.json, clip normalisation
-│   ├── video.sh              cut / video (Remotion), lazy npm install
-│   ├── services.sh           up / down from the declared services, dev-client build and install
-│   ├── auth.sh               connector loader + primitives offered to connectors, `vysu auth test`
-│   ├── push.sh               push drivers loader, `vysu push`
-│   └── setup.sh              setup / init / doctor / update / version
-├── py/                       diff.py compare.py frame.py mark.py motion.py stitch.py take.py fields.py
+├── bin/vysu, bin/vysu.cmd    launchers (sh, cmd) of src/cli.ts
+├── src/                      the engine, TypeScript run as it is: cli, commands, cmd/ (one module per
+│                             command), core/, web/, auth/, mobile/, push/, img/, services/, setup/,
+│                             connectors/ (the built-in auth connectors and push drivers)
 ├── connectors/
-│   ├── auth/                 auth0.sh form.sh none.sh, README.md (the contract), example.sh
-│   └── push/                 apns-sim.sh fcm.sh webhook.sh, README.md
+│   ├── auth/                 README.md (the contract), example.mjs, example.sh (the bash form)
+│   └── push/                 README.md (the contract), example.mjs
 ├── remotion/                 the explainer toolkit; themes/default only (neutral, Inter)
 ├── skill/
 │   ├── visual-check/         SKILL.md + references/ (generic, English)
 │   └── demo-video/           SKILL.md
-├── templates/                config.example, agents-snippet.md, hooks/stop-reminder.sh
-├── docs/design.md            this note
-├── README.md LICENSE VERSION CHANGELOG.md
+├── templates/                config.example, agents-snippet.md, agents/, hooks/stop-reminder.{sh,mjs}
+├── docs/                     design.md (this note), engine.md, config.md
+├── test/, scripts/, assets/
+├── install.sh, install.ps1
+└── README.md LICENSE VERSION CHANGELOG.md tools.env package.json
 ```
 
-(That was the bash engine; § 15 has the TypeScript layout that replaces `bin/vysu` + `lib/` + `py/`.)
-
-`bin/vysu` stays the single entry point; `lib/` is sourced, never executed. Functions keep their
-`nv_*` names renamed to `vysu_*`; internal helpers keep their names so the source comments still
-match. Each `lib/*.sh` starts with a three-line header saying what it owns.
+`bin/vysu` is the single entry point. [engine.md](engine.md) has the layout of `src/` folder by
+folder, the APIs the commands are built on and the contracts between the parts.
 
 ## 3. Runtime layout
 
@@ -86,10 +75,10 @@ and `VYSU_STATE=~/.nidz/visual` keep every session, shot and login in place.
 Per consumer project, `.vysu/`:
 
 ```
-config                bash-sourced KEY=value, the only required file
-auth.sh               optional custom auth connector (else a built-in named in config)
+config                KEY=value lines read like a shell file, the only required file
+auth.mjs              optional custom auth connector, or .js / .ts / .sh (else a built-in named in config)
 push/<preset>.json    push payload templates
-push-drivers/<n>.sh   optional project push drivers, a name shared with a built-in wins over it
+push-drivers/<n>.mjs  optional project push drivers, or .sh; a name shared with a built-in wins over it
 commands/<name>       executables: `vysu <name>` runs them when the engine has no such command
 themes/<name>/        theme.json + brand/ + fonts/ for the video toolkit
 flows/                scripted flows, any extension
@@ -168,27 +157,29 @@ Flow files keep their grammar (`go`, `click`, `fill`, `press`, `sleep`, `shot`, 
 
 ## 6. Connectors
 
-A connector is a bash file sourced by the engine. It may only call the primitives below and its own
-helpers, so a connector written for one app runs unchanged on another machine.
+A connector is a module (`.mjs`, `.js`, `.ts`) exporting its functions, each handed the primitives
+as its first argument, or a bash file defining the same functions, run through a bridge where there
+is a bash. It may only call the primitives below and its own helpers, so a connector written for
+one app runs unchanged on another machine.
 
 ### 6.1 Auth
 
-Contract (`connectors/auth/README.md`, with `example.sh` as a commented template):
+Contract (`connectors/auth/README.md`, with `example.mjs` as a commented template, `example.sh` for
+the bash form, whose functions are `auth_describe`, `auth_web_login` and so on):
 
-```bash
-auth_describe            # one line for doctor: which system, which options are set
-auth_web_login  <persona> <url>       # session open on <url>; returns with the page logged in on the url's origin
-auth_web_token  <persona>             # prints the access token, or nothing
-auth_mobile_login  <platform> <persona>   # app in the foreground; returns logged in, on the app's home
-auth_mobile_logout <platform>         # optional; used by mlogin when another persona is signed in
+```js
+describe(v)                          // one line for doctor: which system, which options are set
+webLogin(v, persona, url)            // session open on <url>; returns with the page logged in on the url's origin
+webToken(v, persona)                 // the access token, or undefined
+mobileLogin(v, platform, persona)    // app in the foreground; returns logged in, on the app's home
+mobileLogout(v, platform)            // optional; used by mlogin when another persona is signed in
 ```
 
-Primitives available to a connector, defined in `lib/auth.sh` and `lib/web.sh` / `lib/mobile.sh`:
-`web <persona> <agent-browser args…>`, `web_click_any <persona> "<name>" "<name>"…` (first visible
-button by role and name), `mob <platform> <agent-device args…>`, `mob_press_if <platform> "<label>"`,
-`mob_wait_text <platform> "<text>" <ms>`, `mob_fields <platform>` (§ 6.3), `persona_var <persona>
-<KEY>`, `cfg <KEY> [default]`, `die`, `log`. Passwords go through `web … fill` and `mob … type`
-only; a connector never echoes them.
+Primitives a connector is handed (`src/auth/context.ts`; the README names their bash spellings):
+`web(persona, …args)`, `webClickAny(persona, …names)` (first visible button by role and name),
+`mob(platform, …args)`, `mobPressIf(platform, label)`, `mobWaitText(platform, text, ms)`,
+`mobFields(platform)` (§ 6.3), `personaVar(persona, KEY)`, `cfg(KEY, default)`, `die`, `log`.
+Passwords go through `web … fill` and `mob … type` only; a connector never echoes them.
 
 Built-ins:
 
@@ -207,7 +198,7 @@ Built-ins:
   Options: `VYSU_FORM_EMAIL_LABELS`, `VYSU_FORM_PASSWORD_LABELS`, `VYSU_FORM_SUBMIT_LABELS`,
   `VYSU_FORM_TOKEN_JS` (an expression evaluated in the page that prints the token, optional).
   Mobile: the same by accessibility labels.
-- `none` — no login; `auth_web_login` just opens the url and `auth_web_token` prints nothing. For
+- `none` — no login; `webLogin` just opens the url and `webToken` hands back nothing. For
   static sites and Storybooks, and the engine's default: without a config, or with no `VYSU_AUTH`
   in one, that is the connector in force, and `doctor` says `auth: none (default)`.
 
@@ -217,15 +208,16 @@ verdict.
 
 ### 6.2 Push
 
-Contract (`connectors/push/README.md`): `push_describe`, `push_send <persona> <preset> [--platform
-ios|android] [--field k=v]…`. Presets are files `.vysu/push/<preset>.json`; the driver substitutes
-`{{field}}` placeholders from `--field` and from the persona's variables.
+Contract (`connectors/push/README.md`): `describe(v)` and `send(v, { target, preset, platform,
+fields })` (`push_describe`, `push_send` in the bash form). Presets are files
+`.vysu/push/<preset>.json`; the driver substitutes `{{field}}` placeholders from `--field` and from
+the persona's variables.
 
 - `apns-sim` — `simctl push` on the running iOS simulator with the preset as the APNs payload
   (today's `ipush`). The three Nidz presets move to `nidz-env/.vysu/push/`.
 - `fcm` — a real FCM HTTP v1 send with a service account (`VYSU_FCM_SA`, a path under the state
   folder) to the token held by the persona (`VYSU_PERSONA_<NAME>_FCM_TOKEN_IOS` / `_ANDROID`). The
-  JWT is signed with `openssl`, no Python package. The preset holds the FCM message body, and the
+  JWT is signed with `node:crypto`, no package. The preset holds the FCM message body, and the
   driver adds the `token`. `VYSU_FCM_ENDPOINT` replaces the endpoint, for tests only.
 - `webhook` — POST `{email, preset, platform, fields}` to `VYSU_PUSH_WEBHOOK_URL`, prints the
   results the endpoint returns (today's `apush`, the Nidz cockpit being the endpoint).
@@ -235,11 +227,11 @@ ios|android] [--field k=v]…`. Presets are files `.vysu/push/<preset>.json`; th
 
 ### 6.3 Mobile field detection
 
-`py/fields.py <screenshot.png> [--scale N]` prints the text fields it sees, as JSON boxes in points,
-top to bottom: rounded rectangles with a continuous border, wider than 50 % of the screen, 36 to
-72 pt tall, light interior. It is the replacement for the "57 % / 65 %" blind flow on the iOS 18
-simulator, where agent-device cannot read the SafariViewService sheet. `mob_fields <platform>` wraps
-it (capture, scale, print). The `auth0` connector uses the accessibility path first and falls back
+The `fields` helper (`src/img/fields.ts`, `<screenshot.png> [--scale N]`) prints the text fields it
+sees, as JSON boxes in points, top to bottom: rounded rectangles with a continuous border, wider
+than 50 % of the screen, 36 to 72 pt tall, light interior. It is the replacement for the "57 % /
+65 %" blind flow on the iOS 18 simulator, where agent-device cannot read the SafariViewService
+sheet. `mobFields(platform)` wraps it (capture, scale, print). The `auth0` connector uses the accessibility path first and falls back
 to the detected boxes, never to constants. Validation: on the old iPhone, open the door, tap the
 sign-in button, capture, and check that the first box is the e-mail field; the same on the recent
 iPhone where accessibility works, to compare both answers. One real `mlogin` at most, as every login
@@ -284,7 +276,7 @@ DerivedData, `android/app/build/outputs/apk/debug/app-debug.apk`) are Expo conve
 ### 7.1 Native mobile apps (addendum)
 
 `VYSU_MOBILE_KIND` splits the mobile targets in two. Everything that is Metro — the bundler
-started by `up`, `adb reverse`, the dev-launcher hand-off of `mobile_load_bundle`, the « Bundled »
+started by `up`, `adb reverse`, the dev-launcher hand-off of `mobileLoadBundle`, the « Bundled »
 line `mrelaunch` waits for, `down metro` — happens in **expo** mode only. In **native** mode (a
 Swift, Kotlin, Flutter or .NET app, already built) the same commands do strictly less:
 
@@ -322,9 +314,8 @@ is written to the global file `~/.vysu/devices.env`, below the project config in
 
 `vysu setup` (machine-wide, idempotent, ~90 % of the onboarding):
 
-1. node ≥ 22 (≥ 22.18 since the TypeScript engine, with its dependencies installed), python3 with
-   Pillow and numpy while a helper still needs it (prints the install line of the machine — brew,
-   apt or dnf, winget — when missing);
+1. Node ≥ 22.18 and the engine's dependencies (prints the install line of the machine — brew, apt
+   or dnf, winget — when missing);
 2. `agent-browser` and `agent-device` installed globally through npm, Chrome for Testing downloaded;
 3. Xcode: simulators present, iOS 18 runtime present or the `xcodebuild -downloadPlatform` line;
 4. Android SDK: cmdline-tools present, system images downloaded, AVDs created with the device
@@ -334,7 +325,7 @@ is written to the global file `~/.vysu/devices.env`, below the project config in
 `vysu init` (in a project, interactive with defaults, `--yes` to accept them):
 
 1. project name (folder name), web origin, login path, baseline origin;
-2. auth connector among the built-ins, or "custom" which copies `example.sh` to `.vysu/auth.sh`;
+2. auth connector among the built-ins, or "custom" which copies `example.mjs` to `.vysu/auth.mjs`;
 3. mobile: yes/no, then bundle id, app name, Expo folder;
 4. push: drivers, and the webhook url when chosen;
 5. writes `.vysu/config` from the template, `.vysu/push/example.json`, `.vysu/commands/README`;
@@ -345,18 +336,19 @@ is written to the global file `~/.vysu/devices.env`, below the project config in
    `vysu up ios --build` when mobile, the service account for `fcm`.
 
 `vysu doctor`: tools and versions, engine version against `VYSU_MIN_VERSION`, resolved config with
-origins, connector `auth_describe`, push `push_describe`, personas by name, sessions, devices,
-locks and claims, state folder size. `vysu update`: `git pull --ff-only` in the engine dir, then
+origins, the auth connector's `describe`, each push driver's `describe`, personas by name,
+sessions, devices, locks and claims, state folder size. `vysu update`: `git pull --ff-only` in the engine dir, then
 prints the CHANGELOG entries since the previous version. `vysu version`: the VERSION file and the
 short sha.
 
 **0.4 addendum — one report grammar, the browser, and staying up to date.**
 
-`lib/ui.sh` gives every report line one of three shapes and no fourth: `ok` (✓, green, with the
-version), `warn` (!, yellow, optional and missing — what it unlocks, and the command), `miss` (✗,
-red, required and missing — the command). `ui_head` opens a section in bold, `summary` closes on
+`src/core/ui.ts` gives every report line one of three shapes and no fourth: `ok` (✓, green, with
+the version), `warn` (!, yellow, optional and missing — what it unlocks, and the command), `miss`
+(✗, red, required and missing — the command). `head` opens a section in bold, `summary` closes on
 `ready: N · optional missing: M · required missing: K`, then each distinct command once, then the
-next steps; `ui_status` is the exit code, 1 as soon as something required is missing. Colours
+next steps; the exit code is 1 as soon as something required is missing
+(`allRequiredPresent()`). Colours
 follow the tty of the stream they go to, and drop out under `NO_COLOR` or `--no-color`. `die` takes
 a second argument, the command to run next, on its own line. `setup`, `doctor` and `install.sh`
 (which inlines the same six functions, since it runs before the engine exists) speak only that.
@@ -384,7 +376,7 @@ pinned at a tag onto the remote's default branch rather than failing on a detach
 the outro hide the logo block when `logo` is absent, `schema.ts` makes it optional), a grey-blue
 palette. A project theme lives in `themes/<name>/` beside the config the engine loaded and is
 resolved first by `render.ts` (`VYSU_DIR`, which is `$VYSU_PROJECT_DIR/.vysu` unless `VYSU_CONFIG`
-names a config elsewhere), then in the engine. `take.py` writes `VYSU_THEME` into `cut.json`. The
+names a config elsewhere), then in the engine. `vysu cut --draft` writes `VYSU_THEME` into `cut.json`. The
 `theme.test.ts` that mirrors `@nidz/tokens` leaves the engine: it becomes
 `nidz-env/.vysu/themes/nidz/check.mjs`. `vysu video` runs `npm ci` in `remotion/` when
 `node_modules` is missing, once, and says so.
@@ -402,7 +394,7 @@ prep, E2E residence and the MR rules).
 ## 12. Install
 
 ```bash
-git clone https://github.com/Marius-courquin/vysu ~/vysu
+git clone https://github.com/Marius-courquin/vysu ~/vysu && (cd ~/vysu && npm ci --omit=dev)
 echo 'export PATH="$HOME/vysu/bin:$PATH"' >> ~/.zshrc && exec zsh
 vysu setup
 cd ~/my-project && vysu init
@@ -410,87 +402,33 @@ vysu persona add alice && vysu login alice
 vysu walk alice home --url http://localhost:3000/
 ```
 
-`vysu update` pulls. A tag per release (`v0.1.0`), CHANGELOG kept by hand.
-
-Since the TypeScript engine the clone needs its dependencies (`npm ci --omit=dev`), which
-`install.sh` runs after its Node check, and `vysu update` again whenever a pull changes
-`package-lock.json`. On Windows, `install.ps1` does the same from PowerShell and adds `<engine>\bin`
-(where `vysu` is `vysu.cmd`) to the user PATH:
+`install.sh` does the same after its Node check. `vysu update` pulls, and runs `npm ci --omit=dev`
+again whenever the pull changes `package-lock.json`. A tag per release (`v0.1.0`), CHANGELOG kept by
+hand. On Windows, `install.ps1` does the same from PowerShell and adds `<engine>\bin` (where `vysu`
+is `vysu.cmd`) to the user PATH:
 
 ```powershell
 irm https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.ps1 | iex
 ```
 
-## 13. Lots
-
-Each lot is one or more commits on `main` of the vysu repo (this repo has no MR rule), with the
-verification of the lot in the commit body. Lot 5 is a merge request in `nidz-env`.
-
-1. **Engine port.** `bin/vysu` + `lib/*.sh` + `py/` + `remotion/` from `nv`, config discovery and
-   the config contract, personas, services, devices, `setup` / `init` / `doctor` / `update`, the
-   `default` theme. Auth and push are ported as the `auth0` connector and the `apns-sim` +
-   `webhook` drivers so the engine already runs the Nidz case end to end. Verification: `bash -n`
-   on every file, `shellcheck` clean at its default level, a `.vysu/config` written by hand for
-   Nidz in a scratch copy, then `vysu doctor`, `vysu - open https://nidz.fr` + `walk`, `vysu login
-   resident` reusing the existing `nidz-resident` session (no re-login), `vysu walk resident news
-   --url http://localhost:8100/community/news --baseline-url @`, `vysu mshot ios <name>` on the
-   booted simulator.
-2. **Connectors.** `form` and `none`, `fcm`, `vysu auth test`, the contract READMEs and
-   `example.sh`, `fields.py` and the `auth0` fallback, project commands. Verification: `auth test`
-   on `none` against nidz.fr, on `auth0` against prep for the web (one login on the throwaway
-   session), `fields.py` on captures of both iPhones as in § 6.3.
-3. **Skills and docs.** The two generic skills, `templates/`, README with the install and a
-   five-minute tour, `docs/` for connectors and config.
-4. **Nidz consumer** (`nidz-env`, merge request): `.vysu/config`, `.vysu/push/*.json`,
-   `.vysu/commands/seed`, `.vysu/themes/nidz`, `tools/visual/nv` reduced to `exec vysu "$@"` with
-   a one-line notice, `nidz-visual-check` and `nidz-demo-video` reduced to overlays, `setup.js`,
-   hooks and `AGENTS.md` mentioning `vysu`, `personas.env` imported once with `vysu persona import
-   --prefix E2E_`. Verification: the two tour flows and a `walk` against prep, identical reports.
-5. **Release** `v0.1.0`: CHANGELOG, tag, the README's badge line.
-
-Lots 2 and 3 can run in parallel after lot 1; lot 4 after 2.
-
-## 14. Out of scope for 0.1
+## 13. Out of scope for 0.1
 
 - Windows and Linux support beyond "should work for web" (agent-device needs macOS for iOS) — in
-  scope since the TypeScript engine, § 15.
+  scope since the engine is TypeScript, § 14.
 - A Playwright or MSW harness of any kind: vysu looks at the real app only.
 - Publishing to npm or Homebrew. Clone and PATH is the install until someone asks.
 - Multi-project state sharing, cloud rendering, a web UI over the shots.
 
-## 15. The TypeScript engine
+## 14. The engine in TypeScript
 
-The bash engine grew to 7 000 lines and a dozen Python helpers, and its cost was in the plumbing: a
-fork per `cfg`, a `ps` per level of the owner walk, 250 ms of Python start-up per helper, `lsof`
-for every port question, and no Windows. The engine is now TypeScript that Node runs as it is
-(type stripping, Node ≥ 22.18, no build step), and keeps every observable behaviour: the same
+The cost of a tool like this is in its plumbing — a fork per config value, a `ps` per level of the
+owner walk, an interpreter's start-up per image helper, an `lsof` per port question — and in the
+systems it cannot run on. The engine is TypeScript that Node runs as it is (type stripping, Node ≥
+22.18, no build step), and keeps every observable behaviour from one version to the next: the same
 commands and options, the same lines on stdout and stderr, the same exit codes, the same files
 (shots folders, `meta.json`, `events.json`, verdicts, locks, claims, device choices, state files),
-so the two engines ran side by side on one machine during the port, each waiting on the other's
-locks.
-
-```
-vysu/
-├── bin/vysu, bin/vysu.cmd    launchers: sh (macOS, Linux, Git Bash) and cmd (Windows); VYSU_RUNTIME=bun
-├── src/
-│   ├── cli.ts                the leading --no-color, the config, then the command
-│   ├── commands.ts           every command by name, each module loaded on demand
-│   ├── core/                 config and ctx (discovery, values, origins), errors (die, cleanups),
-│   │                         ui (the three report shapes), hold (owner, locks, claims, devices),
-│   │                         host (everything OS-specific), winps (the Windows process table),
-│   │                         proc (run, detached, shell lines, npm shims), net (ports, health),
-│   │                         meta, rec, i18n, personas, project commands, shellenv, text
-│   ├── cmd/                  one module per command: run(args) → exit code
-│   ├── setup/                setup, init, doctor, update, version, checker: tools, skills, hints
-│   ├── services/             up / down of the declared services
-│   ├── web/, auth/, connectors/auth/    the browser side and the login connectors
-│   ├── mobile/, push/, connectors/push/ the device side and the push drivers
-│   └── img/                  the image and recording helpers of py/, behind tool(<name>, argv)
-├── test/                     unit tests (node --test), parity scripts against the bash engine,
-│                             fixtures (small PNGs, Windows command outputs)
-├── install.sh, install.ps1   the installers: clone, Node check, npm ci --omit=dev, PATH
-└── .github/workflows/ci.yml  macOS, Linux, Windows × Node 22, 24
-```
+so two versions installed side by side share one state folder and wait on each other's locks.
+[engine.md](engine.md) is the contributor's map of it.
 
 - **One file knows the operating system.** `src/core/host.ts` answers the questions whose answer
   differs: the process table and a process's name (Linux `/proc`, macOS one `ps`, Windows a
@@ -508,18 +446,18 @@ vysu/
   emulator) with none of vysu's handles: Node hands a child every inheritable handle, the pipe an
   agent reads vysu through included, and `vysu up` would not return before the service stopped. CIM
   and Node's own detached spawn remain the fallbacks where it cannot be built.
-- **The config is read, not sourced.** `src/core/shellenv.ts` reads `KEY=value` lines the way bash
-  did (quotes, `$VAR`, `${VAR:-x}`, `export`, several per line); a line it cannot follow goes to a
-  real bash when the machine has one, and is named otherwise.
+- **The config is read, not sourced.** `src/core/shellenv.ts` reads `KEY=value` lines the way a
+  shell does (quotes, `$VAR`, `${VAR:-x}`, `export`, several per line); a line it cannot follow
+  goes to a real bash on macOS and Linux, and is named where there is none.
 - **Contracts between the parts.** `src/web/api.ts` and `src/mobile/api.ts` are what the rest of
   the engine calls on the browser and device code (a persona's session, a device's state, `up
-  ios|android`, the doctor's lines); `src/img/tools.ts` runs a helper by its old script name, as a
-  TypeScript module once ported and as its Python script until then, so callers never know which.
-  `vysu doctor` prints one « not available yet » line for a contract that is still a placeholder.
+  ios|android`, the doctor's lines); `src/img/tools.ts` runs an image helper by name with a command
+  line, in process, the way every caller has always called it.
 - **Faster where it was free.** Independent questions are asked at once (`setup` 1.9 s → 0.4 s,
   `doctor` 1.5 s → 0.5 s on the Nidz project), a driver's version is read from its `package.json`,
-  a port is answered by a connection rather than `lsof`, a url by `fetch` rather than `curl`.
-- **Tested against the bash engine.** `test/parity/*.sh` run both engines on the same inputs in
-  mirrored scratch folders and compare stdout, stderr, exit codes and the files written;
-  `test/platform/smoke.ts` is what CI runs on the three systems.
-
+  a port is answered by a connection rather than `lsof`, a url by `fetch` rather than `curl`, an
+  image helper costs no interpreter start-up.
+- **Tested against a reference.** `test/parity/` runs a reference engine (`VYSU_REF`, a bash vysu
+  such as v0.5.1) and this one on the same inputs in mirrored scratch folders and compares stdout,
+  stderr, exit codes and the files written; `test/platform/smoke.ts` is what CI runs on the three
+  systems.

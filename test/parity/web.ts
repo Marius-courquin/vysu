@@ -1,17 +1,18 @@
-// Parity of the web lot: each case runs on the bash engine (A) then on this one (B), from a real
-// project, each engine with its own scratch shots folder; stdout, stderr, the exit code and the
-// files a case names are normalized (paths, dates, durations) and compared. Images are compared by
-// size only: a live page is not the same picture twice.
+// Parity of the web commands: each case runs on the reference engine (A: VYSU_REF, or --a) then on
+// this one (B), from a real project, each engine with its own scratch shots folder; stdout, stderr,
+// the exit code and the files a case names are normalized (paths, dates, durations) and compared.
+// Images are compared by size only: a live page is not the same picture twice.
 //
-//   node test/parity/web-cases.ts [--project <dir>] [--a "<bash engine>"] [--only <case,…>] [--skip <case,…>] [--list]
+//   node test/parity/web-cases.ts [--project <dir>] [--a "<reference vysu command>"] [--only <case,…>] [--skip <case,…>] [--list]
 //
 // Cases that log in or touch a real session are marked; `--only` picks some. Nothing here writes
 // into the project's own shots folder.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import sharp from 'sharp';
+import { ref } from './ref.ts';
 
 const ENGINE = resolve(import.meta.dirname, '..', '..');
 const argv = process.argv.slice(2);
@@ -20,8 +21,11 @@ const opt = (name: string, def: string): string => {
   return i >= 0 ? argv[i + 1]! : def;
 };
 const project = opt('--project', join(process.env.HOME ?? '', 'Documents/Projects/Nidz/nidz-env'));
-const engineA = opt('--a', `bash ${join(ENGINE, 'legacy', 'vysu')}`);
+const q = (s: string): string => `'${s.replaceAll("'", `'"'"'`)}'`;
+// The reference, as a command line: --a is one already, VYSU_REF a path.
+const engineA = argv.includes('--a') ? opt('--a', '') : argv.includes('--list') ? '' : q(ref());
 const engineB = join(ENGINE, 'bin', 'vysu');
+const refEngine = process.env.VYSU_REF && existsSync(process.env.VYSU_REF) ? realpathSync(resolve(dirname(process.env.VYSU_REF), '..')) : '';
 const only = opt('--only', '').split(',').filter(Boolean);
 const skip = opt('--skip', '').split(',').filter(Boolean);
 const scratch = opt('--scratch', join(process.env.VYSU_PARITY_DIR ?? tmpdir(), `vysu-parity-${process.pid}`));
@@ -46,10 +50,11 @@ export interface Case {
   prepare?: () => void;
 }
 
-const q = (s: string): string => `'${s.replaceAll("'", `'"'"'`)}'`;
-
 function normalize(text: string, shots: string, extra: RegExp[] = []): string {
   let t = text.replaceAll(shots, '<SHOTS>').replaceAll(ENGINE, '<ENGINE>').replaceAll(scratch, '<SCRATCH>');
+  if (refEngine) t = t.replaceAll(refEngine, '<ENGINE>');
+  // The reference's helpers named themselves <name>.py; this engine's say <name>.
+  t = t.replace(/\b(burst|compare|diff|fields|frame|mark|motion|screen|screencap|stitch|take|verdict)\.py\b/g, '$1');
   t = t.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/g, '<DATE>');
   t = t.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/g, '<DATE>');
   t = t.replace(/for \d+s\b/g, 'for Ns').replace(/after \d+s\b/g, 'after Ns');

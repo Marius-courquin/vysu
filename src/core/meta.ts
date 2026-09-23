@@ -18,7 +18,7 @@ export function metaRead(dir: string): Meta {
 }
 
 // key=value pairs, or values already typed. A string that parses as JSON (a list, an object, a
-// boolean, null) is stored as JSON, which is how the bash engine passed its arrays through.
+// boolean, null) is stored as JSON: that is how a caller passes a list through a key=value pair.
 export function metaWrite(dir: string, values: Record<string, unknown>): void {
   const meta = metaRead(dir);
   for (const [k, v] of Object.entries(values)) {

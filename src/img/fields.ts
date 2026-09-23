@@ -187,11 +187,11 @@ export async function fields(image: string, o: FieldsOptions = {}): Promise<Fiel
 }
 
 const SPEC: ParserSpec = {
-  prog: 'fields.py',
-  usage: `usage: fields.py [-h] [--scale SCALE] [--json] [--min-width MIN_WIDTH]
-                 [--min-height MIN_HEIGHT] [--max-height MAX_HEIGHT]
-                 [--edge EDGE]
-                 image`,
+  prog: 'fields',
+  usage: `usage: fields [-h] [--scale SCALE] [--json] [--min-width MIN_WIDTH]
+              [--min-height MIN_HEIGHT] [--max-height MAX_HEIGHT]
+              [--edge EDGE]
+              image`,
   pos: [{ name: 'image' }],
   opts: {
     '--scale': { kind: 'float', def: 1 },
@@ -216,7 +216,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       edge: a.edge as number,
     });
   } catch (e) {
-    io.err(`fields.py: ${osError(e, a.image as string)}\n`);
+    io.err(`fields: ${osError(e, a.image as string)}\n`);
     return 1;
   }
   if (a.json) io.out(`${pyJson(boxes)}\n`);

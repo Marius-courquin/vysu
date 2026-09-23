@@ -1,5 +1,6 @@
 // Addressing a simulator or an emulator: its UDID, its serial, its scale, all remembered per device
-// under the state folder (the same files the bash engine wrote, so both engines share them).
+// under the state folder (files every version reads and writes alike, so two installed side by side
+// share them).
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -50,7 +51,7 @@ export async function iosUdid(refresh = false, name = devices.ios): Promise<stri
       }
     }
   } catch {
-    // simctl answered nothing readable: « booted » is what the bash engine fell back to
+    // simctl answered nothing readable: « booted », simctl's own name for the booted simulator
   }
   if (udid !== 'booted') remember(f, udid);
   return udid;
@@ -189,7 +190,7 @@ export async function androidSdkLevel(): Promise<number> {
 
 // Pixels per point (iOS) or per dp (Android) of the running device, for the motion report and for
 // capturing at 1x. Two screenshots to find out: remembered per device until `vysu cache clear`. The
-// text is Python's (« 2.625 », « 3.0 », « 3 »), which both engines read back.
+// text is Python's (« 2.625 », « 3.0 », « 3 »), which every version reads back.
 export async function mobileScale(p: Platform): Promise<string> {
   const f = join(config().state, `scale-${p}-${slug(devices.of(p))}`);
   const cached = read(f);

@@ -18,14 +18,14 @@ export const COLOR = '#e11d48';
 
 export const DOC = `Point at what matters in a screenshot: boxes, labels, a dimmed surrounding, a padded crop, a zoom.
 
-Usage: mark.py <in.png> --out <out.png> [--box x,y,w,h[:label]]... [--circle cx,cy,r[:label]]...
-                [--grow 10] [--crop x,y,w,h | --crop auto] [--pad 32] [--zoom 2] [--dim] [--color e11d48]
+Usage: mark <in.png> --out <out.png> [--box x,y,w,h[:label]]... [--circle cx,cy,r[:label]]...
+             [--grow 10] [--crop x,y,w,h | --crop auto] [--pad 32] [--zoom 2] [--dim] [--color e11d48]
 
 Coordinates are pixels of the input image (a 1x screenshot: what \`vysu box\` prints for the web). \`--crop
 auto\` crops around every box/circle with \`--pad\` margin; \`--dim\` darkens everything outside them;
 \`--zoom\` upscales the result (small crops read better at 2x). \`--grow\` widens every shape by N px on
 each side before drawing: element boxes hug the text, and a full-page capture (no scrollbar) lands a
-few pixels off, so the dimming would otherwise bite the first letters. Pillow only — no other dependency.
+few pixels off, so the dimming would otherwise bite the first letters.
 `;
 
 export interface Shape {
@@ -80,7 +80,7 @@ function insideRounded(px: number, py: number, r: Rect, radius: number): boolean
 const div255 = (a: number): number => (((a >>> 8) + a) >>> 8);
 
 // Image.alpha_composite of black at alpha 120 over every pixel outside the holes, in Pillow's own
-// integer blend: the dimmed surrounding comes out at the levels mark.py wrote.
+// integer blend: the dimmed surrounding comes out at the levels every version has written.
 function dimOutside(img: Raster, holes: Rect[], radius: number): void {
   const { width: w, height: h, data } = img;
   const sa = 120;
@@ -100,7 +100,7 @@ function dimOutside(img: Raster, holes: Rect[], radius: number): void {
   }
 }
 
-// Draw `shapes` on an RGBA image: what mark.render did, and what diff.py's marked image is made of.
+// Draw `shapes` on an RGBA image: `vysu mark`, and the marked image of `diff`.
 export async function render(src: Raster, shapes: Shape[], o: RenderOptions = {}): Promise<Raster> {
   const grow = o.grow ?? 10;
   const color = o.color ?? COLOR;
@@ -258,7 +258,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       }
     }
   } catch (e) {
-    io.err(`mark.py: ${(e as Error).message}\n`);
+    io.err(`mark: ${(e as Error).message}\n`);
     return 1;
   }
   if (!out) {
@@ -268,7 +268,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
   try {
     io.out(`${await markFile({ src, out, shapes: [...boxes, ...circles], options })}\n`);
   } catch (e) {
-    io.err(`mark.py: ${(e as Error).message}\n`);
+    io.err(`mark: ${(e as Error).message}\n`);
     return 1;
   }
   return 0;

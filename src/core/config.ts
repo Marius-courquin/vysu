@@ -74,8 +74,8 @@ export class Config {
   // kept in a worktree while VYSU_PROJECT_DIR stays the checkout its relative paths point into.
   vysuDir = '';
   readonly values = new Map<string, string>();
-  // Every variable the files assigned, VYSU_ or not: bash sourced them under `set -a`, so each one
-  // reached every process vysu started.
+  // Every variable the files assigned, VYSU_ or not: a settings file is read as if sourced under
+  // `set -a`, so each one reaches every process vysu starts.
   readonly fileVars = new Map<string, string>();
   readonly envKeys = new Set<string>();
   private readonly setIn = new Map<string, Origin>();
@@ -217,7 +217,7 @@ export class Config {
     return v;
   }
 
-  // The environment a process vysu starts runs in: what the files assigned (bash exported all of it)
+  // The environment a process vysu starts runs in: what the files assigned (all of it, as `set -a`)
   // and the resolved values every helper reads.
   childEnv(extra: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env };
@@ -247,8 +247,8 @@ export class Config {
   }
 }
 
-// A settings file read the way bash sourced it. What this reader cannot follow goes to a real bash
-// when the machine has one; without one, the line is named.
+// A settings file read the way a shell sources it. What this reader cannot follow goes to a real
+// bash when the machine has one; without one, the line is named.
 export function readShellEnv(file: string, lookup: (name: string) => string | undefined): Map<string, string> {
   const text = readFileSync(file, 'utf8');
   const out = new Map<string, string>();

@@ -1,6 +1,8 @@
-# .vysu/config — what this project decides. Sourced by bash: KEY='value', no expansion you would
-# not write by hand. An environment variable of the same name wins over this file; unknown keys are
-# ignored. `vysu doctor` prints the values in force and where each one came from.
+# .vysu/config — what this project decides, as KEY='value' lines. vysu reads it like a shell file:
+# quotes, $VAR, ${VAR:-default}, export; anything past that goes to bash on macOS and Linux (and is
+# an error on Windows), so write nothing you would not write by hand. An environment variable of the
+# same name wins over this file; unknown keys are ignored. `vysu doctor` prints the values in force
+# and where each one came from.
 # Every key below is optional except VYSU_PROJECT: the default is what the engine runs on.
 
 # --- identity -----------------------------------------------------------------------------------
@@ -48,12 +50,13 @@ VYSU_LOGIN_PATH='/login'
 
 # --- auth ---------------------------------------------------------------------------------------
 
-# A built-in connector (auth0 · form · none), `custom` for .vysu/auth.sh, or a path. Default: none
-# — the url is opened as it is and `vysu auth token` prints nothing, which is what a static site, a
-# Storybook or a public page needs. `vysu auth test <persona>` runs the one in force and says which
-# step held. The contract is connectors/auth/README.md, the template connectors/auth/example.sh.
+# A built-in connector (auth0 · form · none), `custom` for .vysu/auth.mjs (or .js, .ts, .sh), or a
+# path. Default: none — the url is opened as it is and `vysu auth token` prints nothing, which is
+# what a static site, a Storybook or a public page needs. `vysu auth test <persona>` runs the one in
+# force and says which step held. The contract is connectors/auth/README.md, the template
+# connectors/auth/example.mjs.
 VYSU_AUTH='none'
-# Options of the auth0 connector, all optional (defaults in connectors/auth/auth0.sh):
+# Options of the auth0 connector, all optional (defaults in src/connectors/auth/auth0.ts):
 # VYSU_AUTH0_DOMAIN='my-tenant.eu.auth0.com'
 # VYSU_AUTH0_SIGNIN_LABELS='Se connecter,Sign in'
 # VYSU_AUTH0_CONTINUE_LABELS='Continuer,Continue'
@@ -63,7 +66,7 @@ VYSU_AUTH='none'
 # VYSU_AUTH0_MENU_LABEL='Menu'
 # VYSU_AUTH0_LOGOUT_LABEL='Se déconnecter'
 # VYSU_AUTH0_AFTER_LOGIN_LABELS='Entrer directement,Retour à l'"'"'accueil'
-# Options of the form connector, all optional (defaults in connectors/auth/form.sh). Labels are
+# Options of the form connector, all optional (defaults in src/connectors/auth/form.ts). Labels are
 # matched by <label>, then placeholder, then input type on the web, and by accessibility label on
 # mobile; the login is done when the page has left the login url.
 # VYSU_FORM_EMAIL_LABELS='E-mail,Email,Adresse e-mail,Identifiant,Username'

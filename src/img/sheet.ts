@@ -188,7 +188,7 @@ export interface SheetOptions {
   strip?: boolean;
 }
 
-// The files written, in the order the bash engine printed them: index.html first for a grid.
+// The files written, in the order they have always been printed: index.html first for a grid.
 export async function sheet(dir: string, o: SheetOptions): Promise<string[]> {
   const edge = o.edge ?? 1568;
   const onlyRaw = o.only ?? '';

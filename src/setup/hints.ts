@@ -3,7 +3,7 @@
 // names a command the reader cannot run is noise, so each OS gets its own.
 import { isMac, isWindows, which } from '../core/host.ts';
 
-export type Need = 'node' | 'ffmpeg' | 'python' | 'git' | 'xcode' | 'android' | 'gh';
+export type Need = 'node' | 'ffmpeg' | 'git' | 'xcode' | 'android' | 'gh';
 
 type Os = 'mac' | 'apt' | 'dnf' | 'linux' | 'windows';
 
@@ -30,13 +30,6 @@ const HINTS: Record<Need, Record<Os, string>> = {
     dnf: 'sudo dnf install ffmpeg-free',
     linux: 'https://ffmpeg.org/download.html',
     windows: 'winget install Gyan.FFmpeg',
-  },
-  python: {
-    mac: 'pip3 install --user numpy pillow',
-    apt: 'sudo apt-get install -y python3-numpy python3-pil',
-    dnf: 'sudo dnf install python3-numpy python3-pillow',
-    linux: 'pip3 install --user numpy pillow',
-    windows: 'winget install Python.Python.3.12 && py -m pip install --user numpy pillow',
   },
   git: {
     mac: 'xcode-select --install',

@@ -1,13 +1,15 @@
-// What every parity script shares: run the Python helper and its TypeScript port on the same input,
-// time both, compare what they printed and the images they wrote.
+// What every parity script shares: the reference engine (VYSU_REF, test/parity/README.md), and for
+// the image helpers, the reference's Python script and this engine's module run on the same input,
+// both timed, what they printed and the images they wrote compared.
 //
 // The inputs are copies of real captures, recordings and snapshots in a scratch folder (never the
 // shots folder itself): `node test/parity/<name>.ts <inputs> <scratch>`.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { readRgba } from '../../src/img/raster.ts';
 import type { Io, ToolMain } from '../../src/img/tools.ts';
+import { ref } from './ref.ts';
 
 export const ENGINE = resolve(import.meta.dirname, '..', '..');
 
@@ -18,18 +20,30 @@ export interface Ran {
   ms: number;
 }
 
+// The reference's helpers are py/<name>.py beside its bin/, and the image scripts need nothing else
+// of it: resolved when one of them loads this file, so a missing VYSU_REF stops it before any work.
+const REF_PY = join(dirname(dirname(ref())), 'py');
+if (!existsSync(REF_PY)) {
+  process.stderr.write(`VYSU_REF: no ${REF_PY} beside that vysu, whose Python helpers the image scripts run\n`);
+  process.exit(2);
+}
+
+// The reference's helper. It names itself `<script>.py` where this engine's says `<script>`: a
+// deliberate change, so that name is read as the other before anything is compared.
 export function py(script: string, args: string[], opts: { input?: Buffer; cwd?: string; env?: NodeJS.ProcessEnv } = {}): Ran {
+  const file = join(REF_PY, `${script}.py`);
   const t = performance.now();
-  const r = spawnSync('python3', [join(ENGINE, 'py', `${script}.py`), ...args], {
+  const r = spawnSync('python3', [file, ...args], {
     input: opts.input,
     cwd: opts.cwd,
     env: opts.env ?? process.env,
     maxBuffer: 1 << 28,
   });
-  return { code: r.status ?? 1, stdout: r.stdout.toString(), stderr: r.stderr.toString(), ms: performance.now() - t };
+  const named = (s: string): string => s.replaceAll(`${script}.py`, script);
+  return { code: r.status ?? 1, stdout: named(r.stdout.toString()), stderr: named(r.stderr.toString()), ms: performance.now() - t };
 }
 
-// The port, in this process: what the engine pays once the module is loaded.
+// This engine's module, in this process: what the engine pays once the module is loaded.
 export async function ts(main: ToolMain, args: string[], opts: { input?: Buffer; cwd?: string } = {}): Promise<Ran> {
   const out: string[] = [];
   const err: string[] = [];

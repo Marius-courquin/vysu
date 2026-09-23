@@ -1,6 +1,5 @@
-# What a project's `.sh` push driver was written against, defined around it: the bash engine sourced
-# drivers into itself, and this is the part of it they call — the config through the exported VYSU_*
-# values, the personas file, and the TypeScript engine for the preset and for agent-device.
+# What a project's `.sh` push driver calls, defined around it: the config through the exported VYSU_*
+# values, the personas file, and the engine itself for the preset and for agent-device.
 # Run as: bash prelude.sh <driver.sh> describe | send <target> <preset> [--platform p] [k=v]…
 # shellcheck shell=bash
 set -euo pipefail

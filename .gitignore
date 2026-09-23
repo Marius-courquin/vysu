@@ -1,5 +1,3 @@
-__pycache__/
-*.pyc
 remotion/node_modules/
 remotion/out/
 remotion/public/takes/

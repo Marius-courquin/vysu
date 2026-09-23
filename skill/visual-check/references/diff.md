@@ -71,7 +71,7 @@ Both baseline modes turn it on **by themselves**.
 **per viewport** (a header is not the same box at 360 and at 1440), and in document coordinates for
 a `--full` capture. Examples: `--ignore time`, `--ignore "[data-avatar]"`, `--ignore .badge`.
 
-## What `diff.py` does
+## What the diff does
 
 A pixel counts as changed when its largest channel gap exceeds `--threshold` (0.1 by default, the
 same 0..1 scale as agent-browser) **and** at least one of its eight neighbours changed too: font

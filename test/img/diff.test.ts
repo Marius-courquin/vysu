@@ -57,7 +57,7 @@ test('reduce averages whole blocks, then the partial ones', () => {
 });
 
 test('argparse errors', () => {
-  const spec: ParserSpec = { prog: 'x.py', usage: 'usage: x.py a', pos: [{ name: 'a' }, { name: 'rest', nargs: '+' }], opts: { '--num': { kind: 'int' }, '--mark': { kind: 'str' }, '--min': { kind: 'str' } } };
+  const spec: ParserSpec = { prog: 'x', usage: 'usage: x a', pos: [{ name: 'a' }, { name: 'rest', nargs: '+' }], opts: { '--num': { kind: 'int' }, '--mark': { kind: 'str' }, '--min': { kind: 'str' } } };
   const err: string[] = [];
   const io = { out: () => undefined, err: (s: string) => err.push(s) };
   assert.equal(parseArgs(spec, ['a', '--num', '3.5'], io), 2);

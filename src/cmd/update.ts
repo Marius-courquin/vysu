@@ -13,7 +13,7 @@ import { head, info, miss, ok } from '../core/ui.ts';
 import { engineDepsVersion, engineVersion, git, npmCiEngine, toolsCheck } from '../setup/engine.ts';
 import { skillsLine } from '../setup/skills.ts';
 
-// git with its output on this terminal, as the bash engine let it through.
+// git with its output straight on this terminal: a pull's own lines and errors say the most.
 const gitLoud = async (args: string[]): Promise<number> => (await spawnRun(which('git') || 'git', ['-C', ENGINE, ...args], { inherit: true })).code;
 
 // The branch the remote points at, for an engine checked out at a tag.

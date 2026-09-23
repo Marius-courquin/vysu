@@ -49,7 +49,7 @@ test('a value written back reads the same', () => {
   for (const v of ["it's", 'a"b', 'p$ss w0rd', '']) assert.equal(parse(`K=${shellQuote(v)}`).K, v);
 });
 
-test('slug is the bash one', () => {
+test('slug names state files as every version did', () => {
   assert.equal(slug('iPhone SE (iOS 18)'), 'iphone-se-ios-18-');
   assert.equal(slug('Nidz iPhone 17 Pro B'), 'nidz-iphone-17-pro-b');
   assert.equal(slug('claude:41234'), 'claude-41234');

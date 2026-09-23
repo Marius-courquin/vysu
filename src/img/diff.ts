@@ -323,11 +323,11 @@ export function diffJson(r: DiffResult): string {
 }
 
 const SPEC: ParserSpec = {
-  prog: 'diff.py',
-  usage: `usage: diff.py [-h] [--out OUT] [--mark MARKED] [--threshold THRESHOLD]
-               [--ignore x,y,w,h] [--scale SCALE] [--min-area MIN_AREA]
-               [--pad PAD] [--json]
-               baseline current`,
+  prog: 'diff',
+  usage: `usage: diff [-h] [--out OUT] [--mark MARKED] [--threshold THRESHOLD]
+            [--ignore x,y,w,h] [--scale SCALE] [--min-area MIN_AREA]
+            [--pad PAD] [--json]
+            baseline current`,
   pos: [{ name: 'baseline' }, { name: 'current' }],
   opts: {
     '--out': { kind: 'str' },

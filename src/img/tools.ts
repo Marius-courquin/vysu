@@ -1,11 +1,9 @@
-// The image and recording helpers, by the name the bash engine called them (py/<name>.py), with the
-// same arguments and the same output. A ported helper is a module of this folder exporting
-// `main(argv, io)` and runs in this process; one not ported yet still runs its Python script. Callers
-// never know which: that is what lets the web and mobile code move before the last script does.
-import { join } from 'node:path';
-import { ENGINE } from '../core/config.ts';
+// The image and recording helpers, by name: each is a module of this folder exporting
+// `main(argv, io)`, run in this process with a command line and answering on its own stdout and
+// stderr, the way the web and mobile code and `vysu mark` / `vysu frame` call it. The module is
+// loaded only when its helper is asked for.
 import { VysuError } from '../core/errors.ts';
-import { run, type RunResult } from '../core/proc.ts';
+import type { RunResult } from '../core/proc.ts';
 
 export interface Io {
   out(s: string): void;
@@ -27,8 +25,7 @@ export type Tool =
   | 'take'
   | 'verdict';
 
-// name → the module, once it is ported.
-const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {
+const helpers: Record<Tool, () => Promise<{ main: ToolMain }>> = {
   burst: () => import('./burst.ts'),
   compare: () => import('./compare.ts'),
   diff: () => import('./diff.ts'),
@@ -43,8 +40,9 @@ const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {
   verdict: () => import('./verdict.ts'),
 };
 
-// What a Python traceback was: the helper failed on something it did not foresee (an unreadable
-// file, a disk full), exit 1 and the reason on stderr. A VysuError still crosses to the entry point.
+// A helper that fails on something it did not foresee (an unreadable file, a disk full) exits 1 with
+// the reason on stderr, prefixed with its name, and its caller reads that like any other failure. A
+// VysuError still crosses to the entry point.
 async function guarded(name: Tool, main: ToolMain, argv: string[], io: Io): Promise<number> {
   try {
     return await main(argv, io);
@@ -56,8 +54,6 @@ async function guarded(name: Tool, main: ToolMain, argv: string[], io: Io): Prom
 }
 
 export async function tool(name: Tool, argv: string[], opts: { input?: Buffer | string } = {}): Promise<RunResult> {
-  const load = ported[name];
-  if (!load) return run('python3', [join(ENGINE, 'py', `${name}.py`), ...argv], { input: opts.input });
   const out: string[] = [];
   const err: string[] = [];
   const io: Io = {
@@ -65,16 +61,11 @@ export async function tool(name: Tool, argv: string[], opts: { input?: Buffer | 
     err: (s) => err.push(s),
     stdin: opts.input === undefined ? undefined : Buffer.isBuffer(opts.input) ? opts.input : Buffer.from(opts.input),
   };
-  const code = await guarded(name, (await load()).main, argv, io);
+  const code = await guarded(name, (await helpers[name]()).main, argv, io);
   return { code, stdout: out.join(''), stderr: err.join('') };
 }
 
 // The same, straight to this process's own streams: `vysu mark`, `vysu frame`.
 export async function toolPassthrough(name: Tool, argv: string[]): Promise<number> {
-  const load = ported[name];
-  if (!load) return (await run('python3', [join(ENGINE, 'py', `${name}.py`), ...argv], { inherit: true })).code;
-  return guarded(name, (await load()).main, argv, { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) });
+  return guarded(name, (await helpers[name]()).main, argv, { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) });
 }
-
-// Whether a helper runs in this process or still needs python3: what setup and doctor ask.
-export const isPorted = (name: Tool): boolean => name in ported;

@@ -118,14 +118,14 @@ export const connector: AuthConnector = {
       // Identifier-first means one field at a time: the first box is the e-mail, and after the
       // submit the same probe, run again on the password page, gives the password.
       let point = await firstField(v, 'ios');
-      if (!point) return v.die('ios: no text field found on the sheet (py/fields.py saw none)');
+      if (!point) return v.die('ios: no text field found on the sheet (fields saw none)');
       await v.mob('ios', 'press', ...point);
       await v.sleep(1);
       await v.mob('ios', 'type', email);
       await v.mob('ios', 'keyboard', 'return');
       await v.sleep(4);
       point = await firstField(v, 'ios');
-      if (!point) return v.die('ios: no password field found after the e-mail (py/fields.py saw none)');
+      if (!point) return v.die('ios: no password field found after the e-mail (fields saw none)');
       await v.mob('ios', 'press', ...point);
       await v.sleep(1);
       await v.mob('ios', 'type', password);
@@ -163,8 +163,8 @@ export const connector: AuthConnector = {
   },
 };
 
-// The keyboard's return, else the form's own continue button; neither is a failure the bash engine
-// ended on too (set -e on the last of the two).
+// The keyboard's return, else the form's own continue button; when neither answers, the login ends
+// there (exit 1): the page cannot be submitted.
 async function submit(v: AuthContext, platform: Platform): Promise<void> {
   if ((await v.mobTry(platform, 'keyboard', 'return')).code === 0) return;
   if (!(await v.mobPressAny(platform, 'Continuer,Continue'))) exit(1);

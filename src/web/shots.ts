@@ -169,7 +169,7 @@ export async function shots(persona: string, name: string, args: string[], print
       const ign = bx.split(' ').filter(Boolean).flatMap((b) => ['--ignore', b]);
       const r = await tool('diff', [base, cur, '--mark', join(dir, `${label}-changed.png`), ...ign]);
       const out = (r.stdout + r.stderr).replace(/\n+$/, '');
-      if (r.code > 1) die(`diff.py: ${out}`);
+      if (r.code > 1) die(`diff: ${out}`);
       const lines = out.split('\n');
       print(lines.map((l) => `  ${l}\n`).join(''));
       appendFileSync(join(dir, 'diff.txt'), lines.map((l, k) => (k === 0 ? `${label}: ${l}\n` : `  ${l}\n`)).join(''));

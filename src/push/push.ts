@@ -1,8 +1,8 @@
 // The push drivers: which ones the project enabled (VYSU_PUSH), the presets it keeps in
 // `.vysu/push/<preset>.json` with their `{{field}}` placeholders, and the one command that sends one —
 // `vysu push ios <preset>` on the simulator, `vysu push <persona> <preset>` for real. A driver is the
-// engine's own (connectors/push, in TypeScript) or the project's: `.vysu/push-drivers/<name>.mjs`, or
-// the `.sh` form of the bash engine, run through bash with the functions it was written against.
+// engine's own (src/connectors/push) or the project's: `.vysu/push-drivers/<name>.mjs`, or the bash
+// form `<name>.sh`, run through bash with the functions it calls defined around it (prelude.sh).
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +16,7 @@ import { run, type RunResult } from '../core/proc.ts';
 import { ad } from '../mobile/agent.ts';
 import { say } from '../mobile/io.ts';
 
-// What a driver is handed: the primitives the bash drivers called by name.
+// What a driver is handed: the primitives, which a bash driver calls by name.
 export interface PushContext {
   cfg(key: string, fallback?: string): string;
   need(key: string, why: string): string;

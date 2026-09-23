@@ -13,7 +13,7 @@ export interface Box {
 
 export interface AuthContext {
   // agent-browser in the persona's session, locked and restored. `web` hands back stdout and ends
-  // vysu with the call's own exit code when it fails (a bash connector ran under `set -e`);
+  // vysu with the call's own exit code when it fails (a bash connector runs under `set -e`);
   // `webTry` never fails and says nothing: the caller reads the code.
   web(persona: string, ...args: string[]): Promise<string>;
   webTry(persona: string, ...args: string[]): Promise<RunResult>;

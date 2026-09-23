@@ -302,10 +302,10 @@ export function takeDraft(dir: string, take: string): string {
 }
 
 const EVENTS: ParserSpec = {
-  prog: 'take.py events',
-  usage: `usage: take.py events [-h] --dir DIR --rows ROWS --clip CLIP --kind
-                      {mobile,web} --platform PLATFORM --t-stop T_STOP
-                      [--scale SCALE] [--viewport VIEWPORT]`,
+  prog: 'take events',
+  usage: `usage: take events [-h] --dir DIR --rows ROWS --clip CLIP --kind
+                   {mobile,web} --platform PLATFORM --t-stop T_STOP
+                   [--scale SCALE] [--viewport VIEWPORT]`,
   pos: [],
   opts: {
     '--dir': { kind: 'str', required: true },
@@ -320,8 +320,8 @@ const EVENTS: ParserSpec = {
 };
 
 const DRAFT: ParserSpec = {
-  prog: 'take.py draft',
-  usage: 'usage: take.py draft [-h] --dir DIR --take TAKE',
+  prog: 'take draft',
+  usage: 'usage: take draft [-h] --dir DIR --take TAKE',
   pos: [],
   opts: { '--dir': { kind: 'str', required: true }, '--take': { kind: 'str', required: true } },
 };
@@ -329,15 +329,15 @@ const DRAFT: ParserSpec = {
 export async function main(argv: string[], io: Io): Promise<number> {
   const [command, ...rest] = argv;
   if (command !== 'events' && command !== 'draft') {
-    const usage = 'usage: take.py [-h] {events,draft} ...';
+    const usage = 'usage: take [-h] {events,draft} ...';
     if (command === '-h' || command === '--help') {
       io.out(`${usage}\n`);
       return 0;
     }
     io.err(
       command === undefined
-        ? `${usage}\ntake.py: error: the following arguments are required: command\n`
-        : `${usage}\ntake.py: error: argument command: invalid choice: ${pyStrRepr(command)} (choose from 'events', 'draft')\n`,
+        ? `${usage}\ntake: error: the following arguments are required: command\n`
+        : `${usage}\ntake: error: argument command: invalid choice: ${pyStrRepr(command)} (choose from 'events', 'draft')\n`,
     );
     return 2;
   }

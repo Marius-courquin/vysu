@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Parity of the push drivers: both engines send the presets of a scratch project to fake FCM and
-# webhook endpoints (test/parity/push/server.mjs), their output, exit code and the requests the
-# endpoints received compared. No device, no network beyond 127.0.0.1, nothing outside the scratch dir.
+# Parity of the push drivers: the reference engine (VYSU_REF, test/parity/README.md) and this one
+# send the presets of a scratch project to fake FCM and webhook endpoints
+# (test/parity/push/server.mjs), their output, exit code and the requests the endpoints received
+# compared. No device, no network beyond 127.0.0.1, nothing outside the scratch dir.
 #
-#   test/parity/push.sh <scratch dir>
+#   VYSU_REF=<bash vysu> test/parity/push.sh <scratch dir>
 set -uo pipefail
 
 ENGINE="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ENGINE/test/parity/ref.sh"
 W="${1:?usage: test/parity/push.sh <scratch dir>}"
 mkdir -p "$W"
 W="$(cd "$W" && pwd -P)/push-$$"
@@ -53,23 +55,23 @@ n=0 FAILED=0 PASSED=0
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in ''|\#*) continue;; esac
   n=$((n + 1))
-  for side in legacy ts; do
+  for side in ref ts; do
     : >"$W/requests.log"
     eval "set -- $line"
     pre=()
     if [ "$1" = env ]; then shift; while [[ "$1" == *=* ]]; do pre+=("$1"); shift; done; fi
-    bin=("$ENGINE/bin/vysu"); [ "$side" = legacy ] && bin=(bash "$ENGINE/legacy/vysu")
+    bin=("$ENGINE/bin/vysu"); [ "$side" = ref ] && bin=("$REF")
     env ${pre[@]+"${pre[@]}"} "${bin[@]}" "$@" >"$W/$n.$side" 2>&1 </dev/null
     echo "exit $?" >>"$W/$n.$side"
     # The assertion carries its own time: the rest of a request is compared as it was sent.
     sed -E 's/assertion=[^ &]*/assertion=<jwt>/' "$W/requests.log" >"$W/$n.$side.req"
   done
-  if diff -q "$W/$n.legacy" "$W/$n.ts" >/dev/null && diff -q "$W/$n.legacy.req" "$W/$n.ts.req" >/dev/null; then
+  if diff -q "$W/$n.ref" "$W/$n.ts" >/dev/null && diff -q "$W/$n.ref.req" "$W/$n.ts.req" >/dev/null; then
     PASSED=$((PASSED + 1)); echo "same  $line"
   else
     FAILED=$((FAILED + 1)); echo "DIFF  $line"
-    diff "$W/$n.legacy" "$W/$n.ts" | sed 's/^/      /'
-    diff "$W/$n.legacy.req" "$W/$n.ts.req" | sed 's/^/      /' | cut -c1-240
+    diff "$W/$n.ref" "$W/$n.ts" | sed 's/^/      /'
+    diff "$W/$n.ref.req" "$W/$n.ts.req" | sed 's/^/      /' | cut -c1-240
   fi
 done <"$ENGINE/test/parity/push/cases.txt"
 echo "push parity: $PASSED same, $FAILED different ($W)"

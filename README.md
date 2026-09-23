@@ -52,8 +52,7 @@ Every line of the installer and of `vysu setup` says exactly one of three things
 with the version; `!` it is missing and optional, with what it unlocks and the command; `✗` it is
 missing and required, with the command — and `setup` ends on the counts, the exact commands to run
 and the two next steps. It exits 1 when something required is missing (Node ≥ 22.18, the engine's
-dependencies, `agent-browser`, `agent-device`, and python3 with numpy and Pillow for as long as a
-helper still runs from `py/`), 0 otherwise, so a script can branch on it. Every command it prints
+dependencies, `agent-browser`, `agent-device`), 0 otherwise, so a script can branch on it. Every command it prints
 is the one for your machine: Homebrew on macOS, apt or dnf on Linux, winget on Windows.
 
 ```
@@ -246,9 +245,10 @@ vysu down applog && vysu prune --match 'settings' --match 'general'
 ## Writing an auth connector
 
 The built-ins cover a hosted identity provider (`auth0`), a same-origin form (`form`) and no login
-at all (`none`). For anything else, a commented template goes to `.vysu/auth.mjs`
-(`connectors/auth/example.mjs`, which runs wherever vysu runs) or `.vysu/auth.sh`
-(`connectors/auth/example.sh`, macOS and Linux), and is picked up on its own. The contract — the
+at all (`none`). For anything else, `vysu init` → custom writes a commented template to
+`.vysu/auth.mjs` (`connectors/auth/example.mjs`, which runs wherever vysu runs), picked up on its
+own; `connectors/auth/example.sh` is the same connector in bash, for a `.vysu/auth.sh` on macOS and
+Linux. The contract — the
 functions to define, the primitives a connector may call, and how to test it — is in
 [`connectors/auth/README.md`](connectors/auth/README.md).
 
@@ -307,8 +307,6 @@ project that has its own definition of done writes a thin overlay skill on top.
   read it); the drivers and the video render still need Node.
 - **macOS, Linux or Windows** for the web side and the engine. The iOS simulator needs a Mac
   (agent-device drives it through Xcode); the Android emulator runs wherever its SDK does.
-- **python3** with **Pillow** and **numpy** for the helpers still under `py/` while they move to
-  TypeScript; `vysu setup` says whether this engine needs it, and stops asking once none does.
 - **ffmpeg** for `rec`, `mrec` and `video`.
 - **Xcode** (iOS simulators, plus an older iOS runtime for the old phone) and the **Android SDK**
   with `cmdline-tools` — both optional, and only for the platform you actually check.
@@ -321,15 +319,17 @@ The versions of `agent-browser` and `agent-device` the engine is known to work w
 
 ## The engine
 
-Up to 0.5 the engine was bash; it is now TypeScript, with the same commands, the same lines on stdout and
-stderr, the same exit codes and the same files (shots folders, `meta.json`, `events.json`, locks,
-claims, state files), so both engines can run side by side on one machine and wait on each other's
-locks. What changed is underneath: no fork per step, no Python start-up, `ps` and `lsof` only when
-needed — and it runs on Windows. `bin/vysu` (a POSIX `sh` launcher) and `bin\vysu.cmd` start
+The engine is TypeScript that Node runs as it is, with no build step and no other interpreter: an
+image helper runs in the same process, a question about a port or a process is asked only when it
+matters, and it runs on Windows. From one version to the next it keeps the same commands, the same
+lines on stdout and stderr, the same exit codes and the same files (shots folders, `meta.json`,
+`events.json`, locks, claims, state files), so two versions installed side by side share a state
+folder and wait on each other's locks. `bin/vysu` (a POSIX `sh` launcher) and `bin\vysu.cmd` start
 `src/cli.ts`; each command is a module loaded only when it is the one asked for; everything that
 differs from one system to the next (the process table, which process listens on a port, how a
 command line from the config is run, how a file is opened for a human) is in `src/core/host.ts`.
-The design note has the layout ([docs/design.md](docs/design.md), § 15).
+The map for a contributor is [docs/engine.md](docs/engine.md); the reasons are in the design note
+([docs/design.md](docs/design.md), § 14).
 
 ## Status
 

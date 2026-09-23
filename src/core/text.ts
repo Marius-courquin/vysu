@@ -1,8 +1,8 @@
 // Small text helpers every module shares.
 
 // A name as it appears in a file or a session name: lower case, anything but letters and digits as
-// one dash (« iPhone SE (iOS 18) » → « iphone-se-ios-18- », the trailing dash included, which is
-// what every state file of the bash engine was named with).
+// one dash (« iPhone SE (iOS 18) » → « iphone-se-ios-18- », the trailing dash included: every
+// version's state files are named with it).
 export function slug(s: string): string {
   return s
     .replace(/[A-Z]/g, (c) => c.toLowerCase())

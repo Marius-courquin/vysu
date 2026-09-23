@@ -2,8 +2,8 @@
 // and where each came from, the connectors, the personas, the shots, the devices, the locks and the
 // browser sessions. Read-only: it installs nothing and drives nothing.
 //
-// The slow answers (the two drivers, ffmpeg, python, the size of the shots, the devices and sessions
-// the web and mobile code report) are all asked at once at the start, and printed in their place.
+// The slow answers (the two drivers, ffmpeg, the size of the shots, the devices and sessions the web
+// and mobile code report) are all asked at once at the start, and printed in their place.
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { ENGINE } from '../core/config.ts';
@@ -14,12 +14,10 @@ import { isWindows, which } from '../core/host.ts';
 import { personaNames } from '../core/personas.ts';
 import { run as spawnRun, runTool } from '../core/proc.ts';
 import { noColor, ok, warn } from '../core/ui.ts';
-import { isPorted, type Tool } from '../img/tools.ts';
 import { mobileDoctorLines, pushDescribeLines } from '../mobile/api.ts';
 import { authDescribeLine, webDoctorLines } from '../web/api.ts';
 import { checkerFamily, checkerModel } from '../setup/checker.ts';
 import { engineDepsCheck, engineSha, engineVersion, ffmpegReport, ffmpegVersion, nodeCheck, toolsCheck, versionWarn } from '../setup/engine.ts';
-import { pythonProbe, pythonReport } from '../setup/python.ts';
 import { skillsLine } from '../setup/skills.ts';
 
 // The values in force, and where each comes from: a surprise in a report is nearly always a key set
@@ -42,13 +40,13 @@ function settle<T>(p: Promise<T>): Promise<Settled<T>> {
   );
 }
 
-// A contract of the web or mobile code that is still a placeholder says so in one line; a real
-// failure (a die) ends the doctor as it did in bash.
+// A section the web or mobile code could not answer (an error it did not foresee) says so in one
+// line and the doctor goes on; a die ends the doctor.
 function linesOf(section: string, r: Settled<string[] | string>): string[] {
   if (r.ok) return typeof r.value === 'string' ? [r.value] : r.value;
   if (r.error instanceof VysuError) throw r.error;
   const msg = r.error instanceof Error ? r.error.message : String(r.error);
-  return [`${section}: (not available yet — ${msg})`];
+  return [`${section}: (unavailable — ${msg})`];
 }
 
 const listNames = (dir: string): string[] => {
@@ -107,14 +105,6 @@ export function humanSize(bytes: number): string {
   return v < 10 ? `${v.toFixed(1)}${units[i]}` : `${Math.round(v)}${units[i]}`;
 }
 
-const HELPERS: Tool[] = ['diff', 'take', 'motion', 'mark', 'stitch'];
-
-// A helper runs in this process once ported, else from its Python script: named as what runs.
-function helperState(name: Tool): string {
-  if (isPorted(name)) return `${name} ok`;
-  return `${name}.py ${existsSync(join(ENGINE, 'py', `${name}.py`)) ? 'ok' : 'MISSING'}`;
-}
-
 export async function run(args: string[]): Promise<void> {
   for (const a of args) {
     if (a === '--no-color') noColor();
@@ -122,7 +112,6 @@ export async function run(args: string[]): Promise<void> {
   }
   const c = config();
   const sha = engineSha();
-  const python = pythonProbe();
   const ffmpeg = ffmpegVersion();
   const shotsSize = diskUsage(c.shots);
   // `agent-browser doctor` would answer this too, but it launches a browser to do it: the help page is
@@ -164,12 +153,13 @@ export async function run(args: string[]): Promise<void> {
   else out(`personas: MISSING (${c.personas})`);
   out(`shots: ${c.shots} (${listNames(c.shots).length} folders, ${await shotsSize})`);
   ffmpegReport(await ffmpeg);
-  pythonReport(await python, false);
+  // Where the `t:<key>` labels of a flow are looked up: a folder the config names, relative to the
+  // project, that a flow finds missing only when it needs a label.
   const locales = c.locales;
-  out(`helpers: ${HELPERS.map(helperState).join(' · ')} · locales ${locales ? (existsSync(locales) && statSync(locales).isDirectory() ? 'ok' : 'MISSING') : '(none)'}`);
+  if (locales) out(`locales: ${existsSync(locales) && statSync(locales).isDirectory() ? 'ok' : `MISSING (${locales})`}`);
   const rec = (await record).code === 0 ? `ok${which('ffmpeg') ? '' : ' (ffmpeg MISSING)'}` : 'MISSING (agent-browser >= 0.38)';
   out(`remotion: node_modules ${existsSync(join(c.remotion, 'node_modules')) ? 'ok' : 'MISSING (installed on the first vysu video)'}`);
-  out(`demo: ${helperState('frame')} · ${helperState('compare')} · agent-browser record ${rec}`);
+  out(`demo: agent-browser record ${rec}`);
   // An empty cache is an answer, not a failure.
   const cached = listNames(c.state).filter((n) => /^(ios-udid-|android-serial-|scale-|state-)/.test(n));
   out(`cache: ${cached.length ? `${cached.map((n) => `${n} `).join('')} — vysu cache clear` : '(empty)'}`);

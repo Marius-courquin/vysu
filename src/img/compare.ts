@@ -80,7 +80,7 @@ export function statuses(dir: string): Map<string, string> {
   return found;
 }
 
-// "%s" of a JSON value, as Python printed it.
+// "%s" of a JSON value, in Python's spelling (None, True, False).
 const pyStr = (v: unknown): string => (v === undefined || v === null ? 'None' : v === true ? 'True' : v === false ? 'False' : String(v));
 
 interface Pair {
@@ -122,7 +122,7 @@ function measure(rows: Size[][], width: number): { colW: number; heights: number
   return { colW, heights, total };
 }
 
-// Text placed by its ink box, as the Python did (no font anchor): left-top, or centred on x.
+// Text placed by its ink box, with no font anchor (Pillow's default): left-top, or centred on x.
 function inkText(text: string, x: number, y: number, size: number, fill: string, centre = false): string {
   const [x0, y0, x1] = inkBox(text, size);
   const left = centre ? x - (x1 - x0) / 2 : x;
@@ -250,7 +250,7 @@ export interface CompareOptions {
 
 export class CompareError extends Error {}
 
-// The lines the Python printed, each handed to `emit` as it comes (a « no baseline » line is said
+// The report's lines, each handed to `emit` as it comes (a « no baseline » line is said
 // before the error that follows it). Throws CompareError for what ended it with exit 1.
 export async function compare(shots: string, o: CompareOptions, emit: (line: string) => void): Promise<void> {
   const edge = o.edge ?? 1568;
@@ -304,10 +304,10 @@ export async function compare(shots: string, o: CompareOptions, emit: (line: str
 }
 
 const SPEC: ParserSpec = {
-  prog: 'compare.py',
-  usage: `usage: compare.py [-h] [--against AGAINST] [--out OUT] [--edge EDGE]
-                  [--rows ROWS]
-                  shots`,
+  prog: 'compare',
+  usage: `usage: compare [-h] [--against AGAINST] [--out OUT] [--edge EDGE]
+               [--rows ROWS]
+               shots`,
   pos: [{ name: 'shots' }],
   opts: {
     '--against': { kind: 'str' },

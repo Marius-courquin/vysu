@@ -276,8 +276,8 @@ export function androidPermissionState(dump: string, perm: string): string {
 const permState = async (bundle: string, perm: string): Promise<string> => androidPermissionState(await adbShell(['dumpsys', 'package', bundle]), perm);
 
 // The line of a `pm` failure worth reading: the exception's own message, not « Exception occurred ».
-// A class name has capitals (java.lang.SecurityException): the bash engine's lower-case pattern never
-// matched one, and printed « Exception occurred while executing » instead.
+// A class name has capitals (java.lang.SecurityException): a lower-case pattern never matches one,
+// and would print « Exception occurred while executing » instead.
 export function pmError(out: string): string {
   const ls = crlf(out).split('\n');
   const line = ls.find((l) => /^[A-Za-z.]+(Exception|Error): /.test(l)) ?? ls.find((l) => l !== '') ?? '';
@@ -663,7 +663,7 @@ export async function mburst(p: string, args: string[]): Promise<boolean> {
   await loop;
   const r = await tool('burst', [raw, '--out-dir', dir, '--platform', p, '--scale', scale]);
   const out = `${r.stdout}${r.stderr}`.replace(/\n+$/, '');
-  if (r.code !== 0) return mctlWhy(`burst.py: ${lines(out).pop() ?? ''}`);
+  if (r.code !== 0) return mctlWhy(`burst: ${lines(out).pop() ?? ''}`);
   rmSync(raw, { recursive: true, force: true });
   writeFileSync(join(dir, `${p}-burst.txt`), `${out.split('\n')[0] ?? ''}\n`);
   say(out);

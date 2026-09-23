@@ -1,4 +1,4 @@
-// Step words, numbers and the answers built from them, against what Python and bash gave.
+// Step words, numbers and the answers built from them, against the answers every version gave.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { firstSentence, msOf, pyG, secondsOk, shellWords, WordsError } from '../../src/mobile/words.ts';

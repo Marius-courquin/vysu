@@ -1,8 +1,9 @@
-// Parity of the auth connectors (test/parity/web.ts runs them): a login form served on 127.0.0.1,
-// scratch projects around it, and each connector form — built-in `none` and `form`, a project's
-// bash `.vysu/auth.sh` (run natively by the bash engine, through the bridge by this one), and a
-// project's `.vysu/auth.mjs` (this engine) against the same connector written in bash (the bash
-// engine). Personas and sessions are the scratch project's own (`lotweb-<persona>`).
+// Parity of the auth connectors (test/parity/web.ts runs them against VYSU_REF): a login form served
+// on 127.0.0.1, scratch projects around it, and each connector form — built-in `none` and `form`, a
+// project's bash `.vysu/auth.sh` (sourced by the reference, run through the bridge by this engine),
+// and a project's `.vysu/auth.mjs` (this engine) against the same connector written in bash (the
+// reference, which reads only that one). Personas and sessions are the scratch project's own
+// (`lotweb-<persona>`).
 //
 //   node test/parity/auth-cases.ts [--only <case,…>]
 import { spawn } from 'node:child_process';
@@ -62,7 +63,8 @@ const cases: Case[] = [
   { name: 'load/bogus', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'bogus' }, ignore: [/^vysu: no auth connector « bogus »/] },
   { name: 'load/missing-path', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'connectors/mine.sh' } },
   { name: 'load/path', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: sh } },
-  { name: 'load/custom-none', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'custom' } },
+  // Deliberate: with no connector in .vysu/, the one expected is the module form vysu init writes.
+  { name: 'load/custom-none', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'custom' }, ignore: [/^vysu: no auth connector « custom »/] },
   { name: 'load/no-origin', args: ['login', 'alice'], cwd: plain, env: { VYSU_ORIGIN: '' } },
 ];
 

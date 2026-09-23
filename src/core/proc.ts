@@ -24,7 +24,7 @@ export interface RunOptions {
 }
 
 // Waits for the process and hands back what it said. Never throws for a non-zero exit: the caller
-// reads the code, which is what every « || die … » of the bash engine did.
+// reads the code and decides whether it is a failure.
 export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, {

@@ -1,4 +1,4 @@
-// Push presets, the JSON the bash drivers sent and printed, and the fcm assertion.
+// Push presets, the JSON the drivers send and print, and the fcm assertion.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, verify } from 'node:crypto';

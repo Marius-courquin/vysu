@@ -85,7 +85,7 @@ export async function run(args: string[]): Promise<void> {
   }
   // `record stop` fails on its own now and then — a contact-sheet analyzer falling behind a heavy
   // page drops the whole take — so what it said is worth more than a bare non-zero exit. Anchored on
-  // the moment the last frame is asked for: the take is anchored on its end (see take.py).
+  // the moment the last frame is asked for: the take is anchored on its end (see src/img/take.ts).
   const tStop = now();
   const stop = await ab(persona, ['record', 'stop'], { stderr: 'capture' });
   disarm();

@@ -1,4 +1,4 @@
-// `vysu help`: the usage, which is the header the bash entry point always printed.
+// `vysu help`: the usage, src/usage.txt as it is (a block of `#` lines, the shape it always had).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

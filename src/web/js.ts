@@ -51,7 +51,7 @@ export function ignoreJs(selectors: string[], full: boolean): string {
   return `/*vysubox*/${pyJsonList(selectors)}.flatMap(s => [...document.querySelectorAll(s)]).map(e => { const r = e.getBoundingClientRect(), o = ${off}; return [Math.round(r.x) + o[0], Math.round(r.y) + o[1], Math.round(r.width), Math.round(r.height)] })`;
 }
 
-// Python's json.dumps of a list of strings, which is what these snippets and meta.json were fed.
+// Python's json.dumps of a list of strings, which is what these snippets and meta.json are fed.
 export function pyJsonList(items: string[]): string {
   return `[${items.map(pyJsonString).join(', ')}]`;
 }

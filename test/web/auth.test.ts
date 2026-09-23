@@ -1,7 +1,6 @@
-// The connectors' mobile paths, against a fake context: the calls a login makes, in order, the way
-// auth0.sh / form.sh / none.sh made them — what the devices cannot check until the mobile lot's
-// primitives land. And the bash bridge's own plumbing (cfg, step, die, persona_require) on a stub
-// connector.
+// The connectors' mobile paths, against a fake context: the calls a login makes, in order, which
+// a device run cannot pin down call by call. And the bash bridge's own plumbing (cfg, step, die,
+// persona_require) on a stub connector.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -168,7 +167,7 @@ test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => 
   await assert.rejects(auth0.mobileLogin(droid.v, 'android', 'alice'), /die: android: the login form did not show up/);
 });
 
-test('auth0: the fallbacks the bash connector chained with ||', async () => {
+test('auth0: the fallbacks, each tried when the one before fails', async () => {
   const { v, calls } = fake({
     failing: ['ios fill role="textfield" a@b.fr', 'ios fill role="securetextfield" pw', 'ios fill id="password" pw'],
   });

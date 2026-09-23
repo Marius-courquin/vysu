@@ -23,8 +23,9 @@ set -euo pipefail
 REPO="${VYSU_REPO:-https://github.com/Marius-courquin/vysu}"
 DIR="${VYSU_INSTALL_DIR:-$HOME/vysu}"
 
-# The same three things a `vysu setup` line says, inlined: this script runs before lib/ui.sh
-# exists on the machine. Markers are coloured only on a terminal, and NO_COLOR is honoured.
+# The same three things a `vysu setup` line says, inlined: this script runs before the engine
+# (src/core/ui.ts) exists on the machine. Markers are coloured only on a terminal, and NO_COLOR is
+# honoured.
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   M_OK=$'\033[32m✓\033[0m'; M_WARN=$'\033[33m!\033[0m'
   M_INFO=$'\033[2m·\033[0m'; H_ON=$'\033[1m'; H_OFF=$'\033[0m'
