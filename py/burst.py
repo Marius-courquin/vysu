@@ -151,7 +151,9 @@ def main():
             parts.append(f"{name} {when}")
         else:
             # The first distinct frame says what the number is; the rest just give it.
-            parts.append(f"{name} {when} ({pct:.0f} %{' changed' if n == 1 else ''})")
+            # Under 1 %, one decimal: a distinct frame never reads « 0 % » (a tab pill sliding over).
+            share = f"{pct:.1f}" if pct < 1 else f"{pct:.0f}"
+            parts.append(f"{name} {when} ({share} %{' changed' if n == 1 else ''})")
 
     # Past a dozen thumbnails a 1568 px row stops being readable: an even sample, first and last kept.
     shown = kept

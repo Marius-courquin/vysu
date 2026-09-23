@@ -17,22 +17,29 @@ mctl_platform() { # platform usage → 0 for ios|android, the usage line otherwi
 mctl_int() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
 mctl_num() { case "$1" in ''|.|*[!0-9.]*|*.*.*) return 1;; esac; }
 
-# Is the app's process alive? A cold deep link is the one that goes wrong: a dev-client not yet
-# handed its bundle shows Expo's launcher and swallows the link, so a cold start is launched the
-# vysu way first and only then handed the URL. iOS: launchd names an app « UIKitApplication:<id>[…] »
-# and lists it with a pid while it runs, « - » once it has exited.
-mobile_running() { # platform bundle
+# Is the app's process alive? iOS: launchd names an app « UIKitApplication:<id>[…] » and lists it
+# with a pid while it runs, « - » once it has exited. A permission change on either platform ends it.
+mctl_app_running() { # platform bundle
   if [ "$1" = android ]; then
-    [ -n "$(adb shell pidof "$2" 2>/dev/null | tr -d '\r')" ] || return 1
-    # Alive but parked on Expo's launcher is the cold case all over again: that is where a raw cold
-    # link leaves a dev-client (seen on the real app, for good), and a second link would land there
-    # too. One `dumpsys window` answers it; iOS would need a snapshot, and is not checked.
-    [ "$(mobile_kind)" = expo ] || return 0
-    ! adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | grep -q DevLauncherActivity
+    [ -n "$(adb shell pidof "$2" 2>/dev/null | tr -d '\r')" ]
   else
     ios_lock
     local list; list="$(xcrun simctl spawn "$(ios_udid)" launchctl list 2>/dev/null || true)"
     printf '%s\n' "$list" | awk -v b="UIKitApplication:$2[" 'index($3, b) == 1 && $1 ~ /^[0-9]+$/ { found = 1 } END { exit !found }'
+  fi
+}
+# Up = running AND past Expo's launcher. A cold deep link is the one that goes wrong: a dev-client
+# not yet handed its bundle opens on the launcher and keeps the link there (seen on both platforms
+# with the real app: a raw cold `am start -d` / `simctl openurl` parks it on « Development Build »
+# for good), and a second link lands there too. Android answers in one `dumpsys window`; iOS needs
+# a snapshot, the price of not handing a link to the launcher.
+mopen_app_up() { # platform bundle
+  mctl_app_running "$1" "$2" || return 1
+  [ "$(mobile_kind)" = expo ] || return 0
+  if [ "$1" = android ]; then
+    ! adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | grep -q DevLauncherActivity
+  else
+    case "$(ad ios snapshot -i 2>/dev/null || true)" in *'"Development Build"'*) return 1;; esac
   fi
 }
 
@@ -81,7 +88,7 @@ vysu_mopen() {
   bundle="$(cfg MOBILE_BUNDLE)"
   [ -n "$bundle" ] || { mctl_why "mopen: VYSU_MOBILE_BUNDLE is not set (the app id on both platforms)"; return 1; }
   [ "$platform" != android ] || android_select
-  if ! mobile_running "$platform" "$bundle"; then
+  if ! mopen_app_up "$platform" "$bundle"; then
     log "$platform: $bundle is not up (not running, or on the launcher): launching it first, so the link reaches the app"
     vysu_mrelaunch "$platform" >/dev/null || { mctl_why "$platform: the cold start before $url failed"; return 1; }
     # A relaunch can still come up on the launcher (seen after a raw cold link had parked the
@@ -90,8 +97,14 @@ vysu_mopen() {
   fi
   # The screen before the link, when there is no text to wait for: `am start` and `openurl` return
   # as soon as the intent is delivered, and the app routes it a second or two later (2.2 s measured
-  # on an API 30 emulator, a sheet closing first). A « stable » wait alone reads the old screen.
-  local before=""; [ -n "$wait_text" ] || before="$(mopen_sig "$platform")"
+  # on an API 30 emulator, a sheet closing first). A « stable » wait alone reads the old screen, and
+  # so does a change test against a screen still loading (a discussion painting its comments): the
+  # screen is let settle first. `--wait` is the quick and sure way; this is the fallback.
+  local before=""
+  if [ -z "$wait_text" ]; then
+    ad "$platform" wait stable 400 4000 >/dev/null 2>&1 || true
+    before="$(mopen_sig "$platform")"
+  fi
   if [ "$platform" = ios ]; then
     sim openurl "$url" >/dev/null 2>&1 || { mctl_why "ios: simctl refused $url (no app claims that scheme?)"; return 1; }
     mopen_confirm_ios
@@ -131,8 +144,8 @@ vysu_mopen() {
 # The emulator's radios, through airplane mode: the one switch that cuts Wi-Fi and cellular for the
 # whole device and that the app sees exactly as a user's. `adb reverse` rides the adb channel, not
 # the network, so Metro keeps serving the bundle while the app's own requests fail.
-android_airplane() { adb shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r'; }
-android_default_network() { # → the active network's id, or « none »
+mnet_airplane() { adb shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r'; }
+mnet_default_network() { # → the active network's id, or « none »
   local n; n="$(adb shell dumpsys connectivity 2>/dev/null | grep -m1 'Active default network' | tr -d '\r' || true)"
   n="${n##*: }"; printf '%s' "${n:-none}"
 }
@@ -153,18 +166,18 @@ vysu_mnet() {
   # the setting plus the broadcast the Settings app sends; recent images refuse that broadcast to the
   # shell, which is why the setting is read back rather than trusted.
   adb shell cmd connectivity airplane-mode "$verb" >/dev/null 2>&1 || true
-  if [ "$(android_airplane)" != "$on" ]; then
+  if [ "$(mnet_airplane)" != "$on" ]; then
     local state=false; [ "$on" = 0 ] || state=true
     adb shell settings put global airplane_mode_on "$on" >/dev/null 2>&1 || true
     adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state "$state" >/dev/null 2>&1 || true
   fi
-  [ "$(android_airplane)" = "$on" ] || { mctl_why "android: airplane_mode_on still reads $(android_airplane) (wanted $on): this image refused both ways of switching it"; return 1; }
+  [ "$(mnet_airplane)" = "$on" ] || { mctl_why "android: airplane_mode_on still reads $(mnet_airplane) (wanted $on): this image refused both ways of switching it"; return 1; }
   # The radios follow the setting a beat later, and coming back takes a DHCP round: the answer is
   # given once the network the app would use is gone, or is back, so the next step sees that state.
-  local i net; net="$(android_default_network)"
+  local i net; net="$(mnet_default_network)"
   for i in $(seq 1 40); do
     if [ "$on" = 1 ]; then [ "$net" = none ] && break; else [ "$net" != none ] && break; fi
-    sleep 0.5; net="$(android_default_network)"
+    sleep 0.5; net="$(mnet_default_network)"
   done
   if [ "$on" = 1 ]; then
     mstate_set android net offline
@@ -281,8 +294,9 @@ mperm_pm_error() {
 mperm_word() { case "$1" in grant) printf 'granted';; deny) printf 'denied';; reset) printf 'reset';; esac; }
 mperm_next() { [ "$1" != reset ] || printf ' · the app will ask again'; }
 # iOS: `simctl privacy` speaks TCC for the services it lists; the answer is read back from the
-# simulator's own TCC.db, where each one has its row. Location is kept by locationd, not TCC, and
-# has no read-back; the camera has no simctl service at all (and a simulator no camera).
+# simulator's own TCC.db, where each one has its row. Location is locationd's, not TCC's: its
+# clients.plist holds « Authorization » per app (1 denied, 2 when in use, 4 always, absent = never
+# asked). The camera has no simctl service at all (and a simulator no camera).
 mperm_ios_tcc() { # simctl service → the TCC service name, or nothing
   case "$1" in
     photos) printf 'kTCCServicePhotos';; photos-add) printf 'kTCCServicePhotosAdd';;
@@ -291,6 +305,9 @@ mperm_ios_tcc() { # simctl service → the TCC service name, or nothing
     media-library) printf 'kTCCServiceMediaLibrary';; motion) printf 'kTCCServiceMotion';; siri) printf 'kTCCServiceSiri';;
   esac
 }
+mperm_ios_read() { # TCC service | locationd, bundle → the state
+  if [ "$1" = locationd ]; then mperm_ios_location "$2"; else mperm_ios_state "$1" "$2"; fi
+}
 mperm_ios_state() { # TCC service bundle → granted | denied | limited | not asked
   local db v
   db="$HOME/Library/Developer/CoreSimulator/Devices/$(ios_udid)/data/Library/TCC/TCC.db"
@@ -298,6 +315,19 @@ mperm_ios_state() { # TCC service bundle → granted | denied | limited | not as
   # Read-only: tccd owns the file (in WAL mode), a reader never has to write to it.
   v="$(sqlite3 -readonly "$db" "select auth_value from access where service = '$1' and client = '$2' limit 1" 2>/dev/null || true)"
   case "$v" in 0) printf 'denied';; 2) printf 'granted';; 3) printf 'limited';; '') printf 'not asked';; *) printf 'auth_value %s' "$v";; esac
+}
+mperm_ios_location() { # bundle → granted | granted always | denied | not asked
+  local f; f="$HOME/Library/Developer/CoreSimulator/Devices/$(ios_udid)/data/Library/Caches/locationd/clients.plist"
+  [ -f "$f" ] || { printf 'not asked'; return 0; }
+  python3 -c '
+import plistlib, sys
+try:
+    c = plistlib.load(open(sys.argv[1], "rb")).get("i%s:" % sys.argv[2]) or {}
+except Exception:
+    c = {}
+a = c.get("Authorization")
+print({None: "not asked", 1: "denied", 2: "granted", 4: "granted always"}.get(a, "authorization %s" % a))
+' "$f" "$1" 2>/dev/null || printf 'unknown'
 }
 mperm_ios() { # name action
   local name="$1" action="$2" bundle service tcc before="" after="" was_running=0
@@ -309,20 +339,27 @@ mperm_ios() { # name action
   service="$name"
   ios_lock
   tcc="$(mperm_ios_tcc "$service")"
-  [ -z "$tcc" ] || before="$(mperm_ios_state "$tcc" "$bundle")"
-  ! mobile_running ios "$bundle" || was_running=1
+  case "$service" in location|location-always) tcc=locationd;; esac
+  [ -z "$tcc" ] || before="$(mperm_ios_read "$tcc" "$bundle")"
+  ! mctl_app_running ios "$bundle" || was_running=1
   local verb="$action" out; [ "$action" != deny ] || verb=revoke
   out="$(sim privacy "$verb" "$service" "$bundle" 2>&1)" || {
     mctl_why "ios: simctl privacy $verb $service: $(printf '%s\n' "$out" | grep -m1 . || true)"; return 1
   }
   local stopped=""
-  [ "$was_running" = 0 ] || mobile_running ios "$bundle" || stopped=" · the app was stopped (simctl ends it on a change)"
+  [ "$was_running" = 0 ] || mctl_app_running ios "$bundle" || stopped=" · the app was stopped (simctl ends it on a change)"
   if [ -z "$tcc" ]; then
-    echo "ios: $name $(mperm_word "$action") · simctl privacy $verb $service (no read-back for this service)$(mperm_next "$action")$stopped"
+    echo "ios: $name $(mperm_word "$action") · simctl privacy $verb $service (no read-back known for this service)$(mperm_next "$action")$stopped"
     return 0
   fi
-  after="$(mperm_ios_state "$tcc" "$bundle")"
-  local want; case "$action" in grant) want=granted;; deny) want=denied;; reset) want="not asked";; esac
+  local want i; case "$action" in grant) want=granted;; deny) want=denied;; reset) want="not asked";; esac
+  [ "$service" != location-always ] || [ "$action" != grant ] || want="granted always"
+  # locationd writes its file a beat after simctl returns; TCC.db is there at once.
+  for i in 1 2 3 4 5 6; do
+    after="$(mperm_ios_read "$tcc" "$bundle")"
+    [ "$after" != "$want" ] || break
+    sleep 0.3
+  done
   [ "$after" = "$want" ] || { mctl_why "ios: $name $action did not hold: $tcc reads « $after » (was « $before »)"; return 1; }
   echo "ios: $name $(mperm_word "$action") · $tcc $after (was $before)$(mperm_next "$action")$stopped"
 }
