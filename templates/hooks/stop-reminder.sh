@@ -5,7 +5,8 @@
 # run a script at the end of a turn can use it; Claude Code reads its stdout).
 #
 # Install (Claude Code): copy it into the project, make it executable, and add it as a `Stop` hook
-# command in .claude/settings.json. Run it by hand to see what it would say.
+# command in .claude/settings.json. Run it by hand to see what it would say. stop-reminder.mjs beside
+# it says the same with node instead of bash, and is the one to install on Windows.
 #
 # Which files count as UI comes from VYSU_UI_GLOBS, comma-separated, matched against the paths
 # `git status --porcelain` reports (a leading `**/` matches at any depth):
