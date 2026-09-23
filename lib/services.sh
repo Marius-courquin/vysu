@@ -100,8 +100,10 @@ vysu_down() {
       # In reverse: a dependency is stopped after what depends on it.
       for s in $(cfg SERVICES | tr ' ' '\n' | sed -n '1!G;h;$p'); do vysu_down "$s"; done
       return;;
-    metro) kill_port 8081; echo "metro: stopped"; return;;
-    # The native app-log tails `vysu up` started. No platform named: both, whichever are running.
+    # This owner's isolated Metro, or the shared one when this owner is the one that started it.
+    metro) metro_down; return;;
+    # The log tails vysu started: the native app's, and each device's JS console in expo mode. No
+    # platform named: both, whichever are running.
     applog) shift; [ $# -gt 0 ] || set -- ios android; applog_stop "$@"; return;;
   esac
   need_project
@@ -146,16 +148,21 @@ mobile_app_artifact() { # platform mobile-dir
 mobile_up() {
   local what="$1"; shift
   local kind; kind="$(mobile_kind)"
-  local build=0 reinstall=0
+  local build=0 reinstall=0 isolated=0 iso_port="" iso_dir=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --avd) ANDROID_AVD="$2"; device_remember android-avd "$2"; shift 2;;
       --device) IOS_DEVICE="$2"; device_remember ios-device "$2"; shift 2;;
       --build) build=1; shift;;
       --reinstall) reinstall=1; shift;;
+      --isolated) isolated=1; shift;;
+      --port) iso_port="$2"; shift 2;;
+      --dir) iso_dir="$2"; shift 2;;
       *) die "vysu up $what: unknown option $1";;
     esac
   done
+  [ "$isolated" = 1 ] || [ -z "$iso_port$iso_dir" ] || die "vysu up $what: --port and --dir go with --isolated"
+  [ "$isolated" = 0 ] || [ "$kind" = expo ] || die "vysu up $what --isolated: a native app has no Metro to isolate"
   local bundle; bundle="$(need_cfg MOBILE_BUNDLE "the app id on both platforms")"
   # Where a build runs: the mobile app's folder when the project names one, the project itself
   # otherwise — a native app often has no folder of its own to point at.
@@ -178,10 +185,22 @@ exit \$rc"
     ( cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup sh -c "$script" >"$LOGS/$what-build.log" 2>&1 </dev/null & )
     echo "$what: build started in $mdir (5-10 min the first time) — tail -f $LOGS/$what-build.log"; return
   fi
-  if [ "$kind" = expo ] && ! listening 8081; then
-    ( cd "$mdir" && env ${menv[@]+"${menv[@]}"} nohup npx expo start >"$LOGS/metro.log" 2>&1 </dev/null & )
-    wait_http http://localhost:8081/status 60 metro
+  # The Metro this owner talks to. Shared by default (one checkout, one bundler, several sessions);
+  # --isolated starts one for this owner alone, from its own checkout: without --dir, the worktree
+  # the command runs in, when it belongs to the repository that holds VYSU_MOBILE_DIR.
+  if [ "$isolated" = 1 ]; then
+    [ -n "$iso_dir" ] || iso_dir="$(metro_worktree_mobile_dir)" \
+      || die "vysu up $what --isolated: this folder is not a worktree of the mobile app's repository" "vysu up $what --isolated --dir <the Expo app folder to serve>"
+    iso_dir="$(cd "$iso_dir" 2>/dev/null && pwd -P)" || die "vysu up $what --isolated: no such folder"
+    metro_isolated_up "$what" "$iso_port" "$iso_dir" ${menv[@]+"${menv[@]}"}
+  elif [ "$kind" = expo ]; then
+    local mport; mport="$(metro_port)"
+    if ! listening "$mport"; then
+      metro_is_isolated && metro_need "vysu up $what" "$what"
+      metro_shared_up "$mdir" "$mport" ${menv[@]+"${menv[@]}"}
+    fi
   fi
+  local port; port="$(metro_port)"
   local artifact; artifact="$(mobile_app_artifact "$what" "$mdir")"
   if [ "$what" = android ]; then
     android_lock
@@ -203,8 +222,8 @@ exit \$rc"
       # running? », taking the app-log's dumpsys and the first launch down with it.
       sleep 20; wait_android_boot; wait_android_shell
     fi
-    # Metro reachable as localhost from the emulator (adbd restarts drop it) — expo only.
-    [ "$kind" != expo ] || adb reverse tcp:8081 tcp:8081 >/dev/null
+    # Metro reachable as localhost from the emulator (adbd restarts drop it): expo only.
+    [ "$kind" != expo ] || adb reverse "tcp:$port" "tcp:$port" >/dev/null
     if [ "$reinstall" = 1 ] || ! mobile_installed android "$bundle"; then
       if [ -n "$artifact" ] && [ -f "$artifact" ] && adb install -r "$artifact" >/dev/null 2>&1; then
         echo "android: $bundle installed on $ANDROID_AVD (from $artifact)"
@@ -217,7 +236,8 @@ exit \$rc"
       echo "android: $bundle already installed on $ANDROID_AVD"
     fi
     if [ "$kind" = expo ]; then
-      echo "android: Metro on 8081, $ANDROID_AVD booted on $ANDROID_SERIAL → vysu android open $bundle --foreground"
+      ! mobile_installed android "$bundle" || mobile_quiet_dev_menu android "$bundle"
+      echo "android: Metro on $port, $ANDROID_AVD booted on $ANDROID_SERIAL → vysu android open $bundle --foreground"
     else
       applog_start android
       echo "android: $ANDROID_AVD booted on $ANDROID_SERIAL → vysu android open $bundle --foreground"
@@ -242,10 +262,14 @@ exit \$rc"
       echo "ios: $bundle already installed on $IOS_DEVICE"
     fi
     if [ "$kind" = expo ]; then
-      echo "ios: Metro on 8081, $IOS_DEVICE booted → vysu ios open \"$(cfg IOS_APP)\" --foreground"
+      ! mobile_installed ios "$bundle" || mobile_quiet_dev_menu ios "$bundle"
+      echo "ios: Metro on $port, $IOS_DEVICE booted → vysu ios open \"$(cfg IOS_APP)\" --foreground"
     else
       applog_start ios
       echo "ios: $IOS_DEVICE booted → vysu ios open \"$(cfg IOS_APP)\" --foreground"
     fi
   fi
+  # The device is pointed at the isolated Metro now, and proves it: the relaunch waits for that
+  # Metro's own « Bundled » line.
+  [ "$isolated" = 0 ] || vysu_mrelaunch "$what"
 }

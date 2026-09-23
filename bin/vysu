@@ -11,6 +11,8 @@
 #   vysu login <persona> [url]              log the persona in through the project's auth connector
 #   vysu up <service> [--env k=v]…          start a service declared in the config, wait for its health
 #   vysu up all | down <service> | down all | down metro | down applog [ios|android]
+#                                           down metro: this owner's isolated Metro (else the shared one, only
+#                                           when this owner started it); down applog: the log tails, JS ones included
 #   vysu up ios|android [--build] [--reinstall] [--avd <name>] [--device <name>]   the device, and what runs in
 #                                           front of the app: Metro in expo mode, nothing in native mode
 #                                           (VYSU_MOBILE_KIND) where `up` installs the app from VYSU_IOS_APP_PATH /
@@ -18,6 +20,11 @@
 #                                           _ANDROID in the background; --device / --avd are remembered for this owner
 #                                           iOS devices: the config's VYSU_IOS_DEVICE and VYSU_IOS_OLD_DEVICE
 #                                           AVDs: the specs of VYSU_ANDROID_AVDS, created by `vysu setup`
+#   vysu up ios|android --isolated [--port <n>] [--dir <mobile dir>]   a Metro for this owner alone, from its own
+#                                           checkout (default: the worktree the command runs in), on the next free
+#                                           port from 8082; the device is relaunched onto it. ~1-1.5 GB of RAM:
+#                                           `vysu down metro` hands the device back to the shared Metro
+#                                           (VYSU_METRO_PORT, 8081) on its next relaunch
 #   vysu ios|android <agent-device args…>   passthrough on the chosen simulator / emulator
 #   vysu mlogin ios|android <persona>       log the persona in inside the app (one install = one session)
 #   vysu mshot ios|android <name> [label] [--baseline <name>]
@@ -29,14 +36,21 @@
 #                                           stitch.py cannot find on its own)
 #   vysu mtap ios|android "<label>"         press by accessible label (then visible text), settled
 #   vysu mrelaunch ios|android [--textsize normal|large|xl] [--appearance light|dark] [--lang <l>]   kill + relaunch,
-#                                           wait for the screen
+#                                           wait for the screen (dev menu and launcher cleared on the way, the
+#                                           agent-device session reopened when it is gone)
+#   vysu mreload ios|android                this device's JS only, reloaded in place (not every app on the Metro);
+#                                           falls back to mrelaunch when the device has no inspector page of its own
 #   vysu mflow ios|android <file|-> [--shots <name>]   scripted steps (tap "…" / tap t:<i18n.key> / sleep / shot /
 #                                           relaunch…) → contact sheet
 #   vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] -- "<step>" …   record the screen while the steps run →
 #                                           normalized H.264 clip + motion report + events.json (each step in clip
 #                                           seconds, with the point it tapped)
-#   vysu mlog [ios|android] [mark | --tail N]   the app's log since the last mark (or its last N lines):
-#                                           logs/metro.log in expo mode, logs/<platform>-app.log in native mode
+#   vysu mlog [ios|android] [--device] [--errors] [mark | --tail N]   the app's log since this owner's last mark
+#                                           (or its last N lines): Metro's in expo mode (logs/metro[-<port>].log),
+#                                           logs/<platform>-app.log in native mode; --device: this device's JS console
+#                                           only; --errors: errors, warnings and the first line of each stack, ×N for
+#                                           repeats. Lines matching VYSU_MLOG_IGNORE are dropped (and counted). A
+#                                           bundling failure since the mark comes first: « metro: bundle failed … »
 #   vysu push ios <preset>                  simulated APNs on the iOS simulator (driver apns-sim)
 #   vysu push <persona> <preset> [--platform ios|android] [--field k=v…]   a real push to the persona's devices
 #   vysu textsize ios|android normal|large|xl   Dynamic Type / font scale of the running simulator or emulator
@@ -149,6 +163,8 @@ export VYSU_ENGINE
 . "$VYSU_ENGINE/lib/web.sh"
 # shellcheck source=lib/mobile.sh
 . "$VYSU_ENGINE/lib/mobile.sh"
+# shellcheck source=lib/metro.sh
+. "$VYSU_ENGINE/lib/metro.sh"
 # shellcheck source=lib/shots.sh
 . "$VYSU_ENGINE/lib/shots.sh"
 # shellcheck source=lib/flow.sh
@@ -184,6 +200,7 @@ case "$cmd" in
   mshot) vysu_mshot "$@";;
   mtap) vysu_mtap "$@";;
   mrelaunch) vysu_mrelaunch "$@";;
+  mreload) vysu_mreload "$@";;
   mflow) vysu_mflow "$@";;
   mrec) vysu_mrec "$@";;
   mlog) vysu_mlog "$@";;

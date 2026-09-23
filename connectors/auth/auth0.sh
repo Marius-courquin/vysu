@@ -102,7 +102,7 @@ auth_mobile_login() { # platform persona
 
   # Before the opens below, which drop stderr along with the « waiting for » line.
   [ "$platform" != ios ] || ios_lock
-  [ "$platform" != android ] || { android_select; adb reverse tcp:8081 tcp:8081 >/dev/null 2>&1; }
+  [ "$platform" != android ] || { android_select; adb reverse "tcp:$(metro_port)" "tcp:$(metro_port)" >/dev/null 2>&1; }
   # The first open on a new simulator runtime builds agent-device's XCTest runner: give it room.
   mob "$platform" open "$app" --foreground --relaunch --timeout 600000 >/dev/null 2>&1 \
     || die "$platform: cannot open the dev-client (vysu up $platform --build?)"

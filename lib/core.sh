@@ -121,6 +121,11 @@ config_defaults() {
   : "${VYSU_MOBILE_DIR:=}"
   : "${VYSU_MOBILE_ENV:=}"
   : "${VYSU_MOBILE_SCHEME:=}"
+  # The port of the Metro every owner shares (an isolated one takes the next free port for itself),
+  # the labels that close Expo's dev menu and its first-run intro, and the log lines `vysu mlog` drops.
+  : "${VYSU_METRO_PORT:=8081}"
+  : "${VYSU_MOBILE_DISMISS_LABELS:=Continue,Close}"
+  : "${VYSU_MLOG_IGNORE:=}"
   # What kind of mobile app this is: an Expo dev-client served by Metro, or a native app (Swift,
   # Kotlin, Flutter, .NET) already built. A project that names an Expo folder means expo; anything
   # else — including no mobile app at all — means native, where `up` installs and launches, full stop.
@@ -445,10 +450,15 @@ lang_check() { # lang — dies unless the config lists it
 read_lines() { if [ "$1" = - ]; then cat; else cat "$1"; fi; }
 
 listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
-kill_port() { # the port must be free when the function returns, or the next `up` sees a ghost
-  lsof -nP -tiTCP:"$1" -sTCP:LISTEN | xargs kill 2>/dev/null || true
+kill_port() { # port [pid]: the port must be free when the function returns, or the next `up` sees a ghost
+  # With a pid, only that listener: an isolated Metro is stopped by the process `up` recorded, never
+  # by whatever happens to hold its port now.
+  local pids; pids="$(lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null || true)"
+  [ -z "${2:-}" ] || pids="$(printf '%s\n' "$pids" | grep -x "$2" || true)"
+  [ -n "$pids" ] || return 0
+  printf '%s\n' "$pids" | xargs kill 2>/dev/null || true
   local i; for i in $(seq 1 20); do listening "$1" || return 0; sleep 0.5; done
-  lsof -nP -tiTCP:"$1" -sTCP:LISTEN | xargs kill -9 2>/dev/null || true
+  printf '%s\n' "$pids" | xargs kill -9 2>/dev/null || true
 }
 wait_http() { # url seconds label
   # -m: a port that accepts the connection but never answers (a half-started bundler) would
@@ -526,7 +536,7 @@ vysu_reset() { # resource — back to the defaults, only what differs from them
       local platform="${1%%-*}" args
       args="$(mreset_args "$platform")"
       [ -n "$args" ] || { echo "reset: $platform already in its defaults"; return; }
-      [ "$(mobile_kind)" != expo ] || listening 8081 \
+      [ "$(mobile_kind)" != expo ] || listening "$(metro_port)" \
         || { echo "reset: $platform left as it is — Metro is not running (vysu up $platform)"; return; }
       # shellcheck disable=SC2086  # the flags are built as a word list on purpose
       vysu_mrelaunch "$platform" $args >/dev/null
