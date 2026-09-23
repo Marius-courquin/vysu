@@ -49,3 +49,6 @@ export async function toolPassthrough(name: Tool, argv: string[]): Promise<numbe
   if (!load) return (await run('python3', [join(ENGINE, 'py', `${name}.py`), ...argv], { inherit: true })).code;
   return (await load()).main(argv, { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) });
 }
+
+// Whether a helper runs in this process or still needs python3: what setup and doctor ask.
+export const isPorted = (name: Tool): boolean => name in ported;

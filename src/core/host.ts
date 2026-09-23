@@ -3,7 +3,7 @@
 // Everything above this file is the same code on macOS, Linux and Windows.
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node:fs';
-import { delimiter, extname, join } from 'node:path';
+import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { connect } from 'node:net';
 import { parseNetstatListeners, parseProcessLines, windowsProcessLines } from './winps.ts';
 
@@ -195,7 +195,7 @@ export function cmdQuote(arg: string): string {
 // (CVE-2024-27980): those go through cmd.exe, verbatim, with each argument quoted for it.
 export function toolArgv(cmd: string, args: string[]): { file: string; args: string[]; verbatim: boolean } {
   if (!isWindows) return { file: cmd, args, verbatim: false };
-  const path = which(cmd) || cmd;
+  const path = isAbsolute(cmd) ? cmd : which(cmd) || cmd;
   if (!/\.(cmd|bat)$/i.test(path)) return { file: path, args, verbatim: false };
   const line = [path, ...args].map(cmdQuote).join(' ');
   return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', `"${line}"`], verbatim: true };

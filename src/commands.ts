@@ -10,6 +10,10 @@ export const commands: Record<string, () => Promise<CommandModule>> = {
   persona: () => import('./cmd/persona.ts'),
   report: () => import('./cmd/report.ts'),
   sheet: () => import('./cmd/sheet.ts'),
+  version: () => import('./cmd/version.ts'),
+  checker: () => import('./cmd/checker.ts'),
+  setup: () => import('./cmd/setup.ts'),
+  init: () => import('./cmd/init.ts'),
 };
 
 // The engine's own command names, ported or not: a project command of the same name is unreachable,

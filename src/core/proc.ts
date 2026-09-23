@@ -51,6 +51,8 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
         stderr: Buffer.concat(err).toString('utf8'),
       });
     });
+    // A child that exits without reading all of its input must not take this process down with EPIPE.
+    child.stdin?.on('error', () => undefined);
     if (opts.input !== undefined) child.stdin?.end(opts.input);
   });
 }
