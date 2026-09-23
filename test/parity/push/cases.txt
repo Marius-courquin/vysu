@@ -1,0 +1,20 @@
+# One `vysu …` per line, run by both engines in the scratch project push.sh makes. `env K=V …` sets
+# variables for that line only.
+push alice ticket
+push alice ticket --platform ios
+push bob ticket
+push alice withfield --field title=Ascenseur --field "body=En panne é" --field ticketId=42 --platform ios
+push alice withfield --field title=X
+push alice nopreset
+env VYSU_PUSH=webhook push alice withfield --field title=T --field body=B --field ticketId=7
+env VYSU_PUSH=webhook VYSU_PUSH_WEBHOOK_URL=http://127.0.0.1:18089/hook-flat push alice ticket --platform android
+env VYSU_PUSH=webhook VYSU_PUSH_WEBHOOK_URL=http://127.0.0.1:18089/hook-404 push alice ticket
+env VYSU_PUSH=webhook VYSU_PUSH_WEBHOOK_URL=http://127.0.0.1:18089/hook-500 push alice ticket
+env VYSU_PUSH=webhook VYSU_PUSH_WEBHOOK_URL=http://127.0.0.1:1/x push alice ticket
+env VYSU_PUSH=webhook push carol ticket
+env VYSU_PUSH=apns-sim push alice ticket
+push ios ticket
+env VYSU_PUSH=fcm VYSU_FCM_ENDPOINT=http://127.0.0.1:18089/nothere push alice ticket --platform ios
+env VYSU_FCM_SA=missing.json push alice ticket
+ipush ticket
+apush alice ticket --platform ios

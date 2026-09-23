@@ -1,0 +1,8 @@
+# a comment
+screen
+tap "Discussions"
+wait idle 5
+expect "Discussions"
+expect no "Zzzqqq"
+tap "Actualités"
+shot a
