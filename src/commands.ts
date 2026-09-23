@@ -12,6 +12,8 @@ export const commands: Record<string, () => Promise<CommandModule>> = {
   sheet: () => import('./cmd/sheet.ts'),
   shots: () => import('./cmd/shots.ts'),
   walk: () => import('./cmd/walk.ts'),
+  flow: () => import('./cmd/flow.ts'),
+  rec: () => import('./cmd/rec.ts'),
   lang: () => import('./cmd/lang.ts'),
   check: () => import('./cmd/check.ts'),
   box: () => import('./cmd/box.ts'),
