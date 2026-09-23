@@ -31,15 +31,20 @@ mctl_app_running() { # platform bundle
 # Up = running AND past Expo's launcher. A cold deep link is the one that goes wrong: a dev-client
 # not yet handed its bundle opens on the launcher and keeps the link there (seen on both platforms
 # with the real app: a raw cold `am start -d` / `simctl openurl` parks it on « Development Build »
-# for good), and a second link lands there too. Android answers in one `dumpsys window`; iOS needs
-# a snapshot, the price of not handing a link to the launcher.
+# for good), and a second link lands there too. Android answers in one `dumpsys window` (the
+# launcher and its error page are both DevLauncher* activities); iOS needs a snapshot, the price of
+# not handing a link to the launcher.
 mopen_app_up() { # platform bundle
   mctl_app_running "$1" "$2" || return 1
   [ "$(mobile_kind)" = expo ] || return 0
   if [ "$1" = android ]; then
-    ! adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | grep -q DevLauncherActivity
+    ! adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | grep -q DevLauncher
   else
-    case "$(ad ios snapshot -i 2>/dev/null || true)" in *'"Development Build"'*) return 1;; esac
+    # The launcher itself, or its error page (« There was a problem loading the project »: a
+    # bundle request that timed out), which is just as deaf to a link.
+    case "$(ad ios snapshot -i 2>/dev/null || true)" in
+      *'"Development Build"'*|*'"There was a problem loading the project."'*) return 1;;
+    esac
   fi
 }
 
