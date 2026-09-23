@@ -1,4 +1,4 @@
-# mctl.sh — the device conditions an agent used to reach past vysu for: a deep link opened in the
+# mctl.sh: the device conditions an agent used to reach past vysu for: a deep link opened in the
 # running app (`mopen`), the network cut and brought back (`mnet`), a permission granted, denied or
 # put back to « ask » (`mperm`), and a burst of 1x frames around one step (`mburst`). Each is the raw
 # `xcrun simctl` / `adb` call, made under vysu's device lock, read back before it claims anything,
@@ -46,7 +46,7 @@ mopen_app_up() { # platform bundle
 # --- mopen ---------------------------------------------------------------------------------------
 
 # A route is appended to VYSU_MOBILE_DEEPLINK (« myapp:/// » + « discussions/42 »); anything holding
-# « :// » is already a URL and goes as it is — an https universal link included.
+# « :// » is already a URL and goes as it is (an https universal link included).
 mopen_url() { # route|url → the url
   case "$1" in *://*) printf '%s' "$1"; return 0;; esac
   local prefix route="$1"; prefix="$(cfg MOBILE_DEEPLINK)"
@@ -54,17 +54,18 @@ mopen_url() { # route|url → the url
   while [ "${route#/}" != "$route" ]; do route="${route#/}"; done
   printf '%s%s' "$prefix" "$route"
 }
-# iOS asks « Ouvrir dans « App » ? » before handing a custom-scheme URL from simctl to the app, the
-# way Safari would. The alert belongs to SpringBoard, not to the app, and does not always come (an
-# https link, a runtime that skips it): it is looked for in one snapshot, and pressed only if there.
+# iOS 18 asks « Ouvrir dans « App » ? » before handing a custom-scheme URL from simctl to the app,
+# the way Safari would; the iOS 26 simulator opens it straight away. So the alert is looked for,
+# not assumed: by its own text on an [alert] node (an app button that merely says « Ouvrir » must
+# never be pressed for it), twice over half a second, and pressed only if it is there.
 mopen_confirm_ios() {
   local i tree
-  for i in 1 2 3; do
+  for i in 1 2; do
     tree="$(ad ios snapshot -i 2>/dev/null || true)"
     case "$tree" in
-      *'"Ouvrir"'*|*'"Open"'*) mob_press_any ios "Ouvrir,Open" && return 0;;
+      *'[alert] "Ouvrir dans'*|*'[alert] "Open in'*) mob_press_any ios "Ouvrir,Open" && return 0;;
     esac
-    [ "$i" = 3 ] || sleep 0.4
+    [ "$i" = 2 ] || sleep 0.4
   done
   return 0
 }
@@ -100,7 +101,7 @@ vysu_mopen() {
   # on an API 30 emulator, a sheet closing first). A « stable » wait alone reads the old screen, and
   # so does a change test against a screen still loading (a discussion painting its comments): the
   # screen is let settle first. `--wait` is the quick and sure way; this is the fallback.
-  local before=""
+  local before="" unchanged=0
   if [ -z "$wait_text" ]; then
     ad "$platform" wait stable 400 4000 >/dev/null 2>&1 || true
     before="$(mopen_sig "$platform")"
@@ -131,12 +132,15 @@ vysu_mopen() {
     # push animation, the first query landing), bounded so a screen that never settles costs 5 s.
     local until_t; until_t="$(perl -e 'printf "%.3f", $ARGV[0] + 5' "$(now)")"
     while [ "$(mopen_sig "$platform")" = "$before" ]; do
-      perl -e 'exit($ARGV[0] < $ARGV[1] ? 0 : 1)' "$(now)" "$until_t" || break
+      perl -e 'exit($ARGV[0] < $ARGV[1] ? 0 : 1)' "$(now)" "$until_t" || { unchanged=1; break; }
       sleep 0.2
     done
-    ad "$platform" wait stable 500 5000 >/dev/null 2>&1 || true
+    [ "$unchanged" = 1 ] || ad "$platform" wait stable 500 5000 >/dev/null 2>&1 || true
   fi
-  echo "$platform: opened $url · $(mscreen_line "$platform")"
+  # A tree that never moved is said, not hidden behind the old labels: the link may have gone
+  # nowhere, or opened what the tree does not show (an iOS pageSheet, seen with the real app).
+  local note=""; [ "$unchanged" = 0 ] || note=" · the tree did not change in 5s (same screen, or a sheet it does not show: --wait \"<text>\")"
+  echo "$platform: opened $url · $(mscreen_line "$platform")$note"
 }
 
 # --- mnet ----------------------------------------------------------------------------------------
@@ -279,7 +283,7 @@ mperm_android() { # name action
 # `pm set-permission-flags` / `clear-permission-flags` exist from API 31: API 30 lists them in its
 # help and answers « Unknown command ». There, $noflags says so and the caller decides what that
 # costs; any other failure is the caller's error line.
-mperm_android_flags() { # set|clear package permission — sets $noflags, $out
+mperm_android_flags() { # set|clear package permission; sets $noflags and $out
   out="$(adb shell pm "$1-permission-flags" "$2" "$3" user-set user-fixed 2>&1 | tr -d '\r')"
   case "$out" in "Unknown command"*) noflags=1; out=""; return 0;; esac
   case "$out" in *Exception*|*Error*) return 1;; esac

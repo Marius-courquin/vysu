@@ -6,9 +6,9 @@ Usage: burst.py <raw-dir> --out-dir <dir> --platform ios|android [--scale 3] [--
 
 <raw-dir> holds the device-pixel captures (000.png, 001.png…) and times.tsv (index, start, end:
 epoch seconds of each capture). Each frame is brought down to 1x (points / dp: what every other vysu
-capture is in), then compared with the last frame kept, through diff.py's own rule — a pixel counts
+capture is in), then compared with the last frame kept, through diff.py's own rule (a pixel counts
 when a channel moves past --threshold and a neighbour moved too, and a change needs a zone of
---min-area pixels — so « near-identical » means here exactly what `diff.py` exit 0 means. The
+--min-area pixels), so « near-identical » means here exactly what `diff.py` exit 0 means. The
 status-bar band (--band pt at the top) is left out of that comparison: its clock and battery move on
 a still screen.
 
@@ -29,8 +29,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import diff  # noqa: E402 — sibling script: the same « changed » rule as every other vysu comparison
-import mark  # noqa: E402 — sibling script, reused for its system-font search
+import diff  # noqa: E402 (sibling script): the same « changed » rule as every other vysu comparison
+import mark  # noqa: E402 (sibling script), reused for its system-font search
 
 GAP = 8         # px between two thumbnails of the strip
 LABEL_H = 22    # px of label band under each thumbnail
