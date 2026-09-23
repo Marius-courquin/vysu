@@ -46,6 +46,12 @@ export interface RenderOptions {
 
 type Rect = [number, number, number, number];
 
+// `--color` the way Pillow read « # » + the value: 3, 4, 6 or 8 hex digits, or nothing it can draw.
+export function hexColor(v: string): string | null {
+  const c = `#${v.replace(/^#+/, '')}`;
+  return /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c) ? c : null;
+}
+
 export function parseShape(spec: string): { nums: number[]; label: string | null } {
   let label: string | null = null;
   const at = spec.indexOf(':');
@@ -121,6 +127,11 @@ export async function render(src: Raster, shapes: Shape[], o: RenderOptions = {}
     }
     return [Math.max(0, r[0] - grow), Math.max(0, r[1] - grow), Math.min(w, r[2] + grow), Math.min(h, r[3] + grow)];
   });
+  // A shape off the image comes out of the clamp inverted: it was drawn as nothing, and cropped around
+  // as nothing (« Input Bit Array is empty »). Pillow refused it; so does this, in one line.
+  rects.forEach((r, i) => {
+    if (r[2] < r[0] || r[3] < r[1]) throw new Error(`--${shapes[i]!.kind} ${shapes[i]!.v.join(',')} draws nothing on the ${w}x${h} image`);
+  });
 
   if (o.dim && rects.length) dimOutside(im, rects, stroke * 3);
 
@@ -170,6 +181,7 @@ export async function render(src: Raster, shapes: Shape[], o: RenderOptions = {}
     const [x, y, cw, ch] = o.crop as [number, number, number, number];
     im = cropBox(im, Math.max(0, x), Math.max(0, y), Math.min(w, x + cw), Math.min(h, y + ch));
   }
+  if (!im.width || !im.height) throw new Error(`--crop ${o.crop === 'auto' ? 'auto' : (o.crop as number[]).join(',')} leaves nothing of the ${w}x${h} image`);
 
   if (zoom !== 1) im = await resizeFast(im, pyRound(im.width * zoom), pyRound(im.height * zoom));
   return im;
@@ -251,7 +263,12 @@ export async function main(argv: string[], io: Io): Promise<number> {
         if (z === null) throw new Error(`could not convert string to float: '${v}'`);
         options.zoom = z;
       } else if (a === '--dim') options.dim = true;
-      else if (a === '--color') options.color = `#${take(a).replace(/^#+/, '')}`;
+      else if (a === '--color') {
+        const v = take(a);
+        const c = hexColor(v);
+        if (!c) throw new Error(`--color wants a hex colour (e11d48), got ${v}`);
+        options.color = c;
+      }
       else {
         io.err(`unknown option ${a}\n${DOC}`);
         return 1;
