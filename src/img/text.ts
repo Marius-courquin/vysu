@@ -76,3 +76,44 @@ export function ellipsize(text: string, size: number, width: number, weight: Wei
 export function escapeXml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
+
+// A glyph's outline extent in font units, y down: its points' box (a font puts the extremes of a
+// curve on the curve, so the control points do not widen it).
+const extents = new Map<string, [number, number, number, number] | null>();
+function extent(f: Face, weight: Weight, ch: string): [number, number, number, number] | null {
+  const key = `${weight}:${ch}`;
+  if (extents.has(key)) return extents.get(key)!;
+  const nums = (glyph(f, ch)[1].match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  let box: [number, number, number, number] | null = null;
+  for (let i = 0; i + 1 < nums.length; i += 2) {
+    const x = nums[i]!;
+    const y = nums[i + 1]!;
+    if (!box) box = [x, y, x, y];
+    else box = [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)];
+  }
+  extents.set(key, box);
+  return box;
+}
+
+// What Pillow's textbbox((0, 0), text) gave: the ink box of the text drawn with its top-left corner
+// at the origin, in whole pixels, its right edge reaching at least the advance.
+export function inkBox(text: string, size: number, weight: Weight = 400): [number, number, number, number] {
+  const f = face(weight);
+  const s = size / f.units;
+  const top = ascent(size, weight);
+  let pen = 0;
+  let prev = '';
+  let box: [number, number, number, number] | null = null;
+  for (const ch of text) {
+    if (prev) pen += f.kern[prev + ch] ?? 0;
+    const e = extent(f, weight, ch);
+    if (e) {
+      const g: [number, number, number, number] = [pen + e[0], e[1], pen + e[2], e[3]];
+      box = box ? [Math.min(box[0], g[0]), Math.min(box[1], g[1]), Math.max(box[2], g[2]), Math.max(box[3], g[3])] : g;
+    }
+    pen += glyph(f, ch)[0];
+    prev = ch;
+  }
+  if (!box) return [0, 0, Math.ceil(pen * s), 0];
+  return [Math.floor(Math.min(0, box[0]) * s), Math.floor(top + box[1] * s), Math.ceil(Math.max(box[2], pen) * s), Math.ceil(top + box[3] * s)];
+}

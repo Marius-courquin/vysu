@@ -7,6 +7,7 @@ export const commands: Record<string, () => Promise<CommandModule>> = {
   help: () => import('./cmd/help.ts'),
   '-h': () => import('./cmd/help.ts'),
   '--help': () => import('./cmd/help.ts'),
+  mark: () => import('./cmd/mark.ts'),
   persona: () => import('./cmd/persona.ts'),
   report: () => import('./cmd/report.ts'),
   sheet: () => import('./cmd/sheet.ts'),

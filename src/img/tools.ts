@@ -27,7 +27,10 @@ export type Tool =
   | 'verdict';
 
 // name → the module, once it is ported.
-const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {};
+const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {
+  diff: () => import('./diff.ts'),
+  mark: () => import('./mark.ts'),
+};
 
 export async function tool(name: Tool, argv: string[], opts: { input?: Buffer | string } = {}): Promise<RunResult> {
   const load = ported[name];
