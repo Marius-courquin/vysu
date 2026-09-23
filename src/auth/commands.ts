@@ -1,25 +1,12 @@
 // The commands that go through the auth connector: `login`, `mlogin`, `auth token`, `auth test`.
 import { rmSync } from 'node:fs';
 import { config } from '../core/ctx.ts';
-import { die, exit, onCleanup } from '../core/errors.ts';
+import { die, onCleanup } from '../core/errors.ts';
 import type { Platform } from '../core/hold.ts';
-import { legacy } from '../core/legacy.ts';
-import * as mobile from '../mobile/api.ts';
 import { abRaw, lastLine, restoreFile, sessionRunning, setAuthTestSession } from '../web/ab.ts';
 import { sleep } from '../core/text.ts';
 import { context, stepsOn } from './context.ts';
 import { authLoad } from './load.ts';
-
-// Until the mobile lot's code lands, its contract is placeholders: a mobile login is then the bash
-// engine's, whole. Goes with legacy/ at the end of the port.
-function mobilePorted(): boolean {
-  try {
-    mobile.mobileApp('ios');
-    return true;
-  } catch (e) {
-    return !(e instanceof Error && e.message.includes('not ported yet'));
-  }
-}
 
 export async function login(persona: string, url: string): Promise<void> {
   if (!url) url = config().need('ORIGIN', "the app's web origin").replace(/\/$/, '') + config().get('LOGIN_PATH');
@@ -28,7 +15,6 @@ export async function login(persona: string, url: string): Promise<void> {
 }
 
 export async function mlogin(platform: string, persona: string): Promise<void> {
-  if (!mobilePorted()) exit(await legacy(['mlogin', platform, persona]));
   const a = await authLoad();
   await a.connector.mobileLogin(context(), platform as Platform, persona);
 }
@@ -50,7 +36,6 @@ async function closeTestSession(session: string): Promise<void> {
 }
 
 export async function test(persona: string, platform: string): Promise<void> {
-  if (platform && !mobilePorted()) exit(await legacy(['auth', 'test', persona, platform]));
   const a = await authLoad();
   const v = context();
   stepsOn(true);

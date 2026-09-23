@@ -1,0 +1,49 @@
+# Android, on a claimed emulator (the Nidz dev-client): run from the project, VYSU_OWNER set.
+mrelaunch android
+mshot android par home
+mshot android par home
+mwait android "Actualités" --timeout 5
+mwait android "Zzzqqq" --timeout 2
+mwait android --idle --timeout 6
+mtap android "Discussions" --wait "Discussions"
+mtap android "Actualités"
+mtap android "Zzzqq"
+mlog android mark
+mlog android --errors
+mlog --tail 5
+textsize android large
+textsize android normal
+appearance android dark
+appearance android light
+mnet android offline
+mnet android online
+mperm android camera grant
+mperm android notifications grant
+mperm android microphone reset
+mdo android -- screen 'tap "Discussions"' 'wait idle 5' 'expect "Discussions"' 'expect no "Zzzqqq"' 'tap "Actualités"' 'shot a' 'shot b'
+mdo android --keep-going -- 'expect "Zzzqqq"' 'wait "Zzzq" 1' 'scroll-to "Zzzq" 1' 'fill "Zzz" "v"' 'key dismiss' screen
+mdo android -- 'shot x --bad'
+mdo android -- 'tap t:common.close'
+mflow android $ENGINE/test/parity/mobile/flow.txt --shots flow1
+adb shell getprop ro.build.version.sdk
+android appstate
+mperm android microphone deny
+mperm android microphone reset
+mperm android photos grant
+mperm android notifications deny
+mshot android parfull home --full --max 4
+mopen android discussions --wait "Discussions" --timeout 10
+mopen android /
+mnet ios offline
+mperm ios camera grant
+mreload android
+mlog android --device
+mlog android --device --errors
+claim android --any --minutes 30 --note "ts port parity (lot-mobile)"
+textsize android xl
+textsize android normal
+mburst android burst1 --seconds 1.5 --every 0.3 -- "sleep 0.5"
+mrec android rec1 --fps 30 -- "sleep 1" 'tap "Discussions"' "sleep 1"
+release android --reset
+claim android --avd nidz_pixel4a_api30 --minutes 30 --note "ts port parity (lot-mobile)"
+devices --prune-clones --dry-run

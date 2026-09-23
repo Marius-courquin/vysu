@@ -1,0 +1,56 @@
+# iOS, on a claimed simulator (the Nidz dev-client): run from the project, VYSU_OWNER set.
+ios snapshot -i --json
+mrelaunch ios
+mshot ios par home
+mshot ios par home
+mwait ios "Actualités" --timeout 5
+mwait ios "Zzzqqq" --timeout 2
+mwait ios --idle --timeout 6
+mtap ios "Discussions" --wait "Discussions"
+mtap ios "Actualités"
+mtap ios "Zzzqq"
+mdo ios -- screen 'tap "Discussions"' 'wait idle 5' 'expect "Discussions"' 'expect no "Zzzqqq"' 'tap "Actualités"' 'shot a' 'shot b'
+mdo ios --keep-going -- 'expect "Zzzqqq"' 'wait "Zzzq" 1' 'wait gone "Zzzq" 2' 'scroll-to "Zzzq" 1' 'fill "Zzz" "v"' 'key dismiss' 'key back' screen
+mflow ios $ENGINE/test/parity/mobile/flow.txt --shots flow1
+push ios ticket
+mlog ios mark
+mlog ios --device --errors
+textsize ios xl
+textsize ios normal
+appearance ios dark
+appearance ios light
+simctl getenv HOME
+mperm ios photos grant
+mperm ios photos reset
+mperm ios location grant
+mperm ios location-always grant
+mperm ios location reset
+mperm ios contacts deny
+mperm ios contacts reset
+mperm ios camera grant
+mnet ios offline
+mopen ios discussions --wait "Discussions" --timeout 10
+mshot ios parfull home --full --max 4
+! mrelaunch ios
+mopen ios discussions
+mopen ios / --wait "Actualités" --timeout 10
+mopen ios zzz --wait "Zzzqq" --timeout 3
+mopen android2 x
+mburst ios burst1 --seconds 1.5 --every 0.3 -- "sleep 0.5"
+mrec ios rec1 --fps 30 -- "sleep 1" 'tap "Discussions"' "sleep 1" 'tap "Actualités"'
+mreload ios
+mrelaunch ios --appearance dark --textsize large
+release ios --reset
+claim ios --any --minutes 30 --note "ts port parity (lot-mobile)"
+! mrelaunch ios
+mdo ios --devices "Nidz iPhone SE (iOS 18)" --textsize normal,large -- screen 'shot m'
+mwait ios "Zzzqqq" --gone --timeout 2
+mwait ios "Actualités" --gone --timeout 2
+mdo ios -- 'relaunch --appearance light' screen
+mrelaunch ios --lang en
+mrelaunch ios --lang fr
+mshot ios base1 home
+mshot ios cmp1 home --baseline base1
+mdo ios -- 'open discussions' 'net offline' 'perm photos reset' screen
+claim nobody_here --minutes 1 --note "ts port parity"
+release nobody_here --reset

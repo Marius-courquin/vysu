@@ -1,0 +1,72 @@
+# Usage and refusals: no device is driven.
+claim
+claim ios --device "No Such Phone"
+claim android --avd nope_avd
+claim ios --any --device x
+claim ios --minutes 0
+claim ios --bogus
+claim web --any
+claim ios --device
+release
+release android --bogus
+release android --delete-clone
+release ios --delete-clone
+adb
+adb -s emulator-5554 shell ls
+adb kill-server
+adb -e shell ls
+simctl
+mshot
+mshot ios
+mshot ios x --bogus
+mshot web x
+mshot ios x lbl --baseline nope
+mtap ios
+mtap ios "X" --bogus
+mdo
+mdo ios
+mdo ios --bogus
+mdo ios nofile.txt
+mdo ios -- '#only a comment' ''
+mdo ios --textsize huge -- screen
+mdo ios x.txt -- screen
+mwait ios
+mwait ios --idle "x"
+mwait ios x --timeout abc
+mwait ios --bogus
+mflow ios
+mflow ios nofile
+mflow ios - --bogus
+mrec
+mrec ios x
+mrec ios x --bogus
+mrelaunch
+mrelaunch ios --bogus x
+mrelaunch ios --lang de
+mreload
+mreload ios extra
+mopen
+mopen ios
+mopen ios x --timeout 1.5
+mopen ios x --wait
+mopen ios x --bogus
+mnet ios
+mnet android sideways
+mperm ios
+mperm ios camera
+mperm ios camera grant extra
+mperm android camera maybe
+mburst ios
+mburst ios x --seconds abc
+mburst ios x --every
+mburst ios x --bogus
+textsize
+textsize ios huge
+appearance ios sepia
+mlog --bogus
+push
+push ios
+push alice ticket --bogus x
+devices --bogus
+devices --prune-clones --bogus
+ipush

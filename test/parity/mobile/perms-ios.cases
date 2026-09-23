@@ -1,0 +1,10 @@
+# iOS permissions: run with PARITY_FIRST=ts too, each engine then reads the state the other left.
+mperm ios photos grant
+mperm ios photos reset
+mperm ios location grant
+mperm ios location-always grant
+mperm ios location reset
+mperm ios contacts deny
+mperm ios contacts reset
+mperm ios notifications deny
+mperm ios notifications grant
