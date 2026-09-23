@@ -158,6 +158,12 @@ export function typeRun(raw = config().get('TYPE_RUN')): number {
   return v > 2 ? v : 2;
 }
 
+// The beat between two runs. The bash engine never slept it: it was the round trip of the CLI call
+// that typed each run — a Node start-up, the device lock, a Python parse of the answer, about 0.35 s
+// more than the typing itself — and the library client pays none of it: without it an Android
+// emulator typed 47 characters a second (the bash engine 13.5), a paste again.
+export const RUN_BEAT_MS = 350;
+
 export interface Chunk {
   // Milliseconds between two keys of the run (0: the driver's own speed), and after the run.
   delay: number;

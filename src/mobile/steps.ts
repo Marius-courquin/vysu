@@ -8,7 +8,7 @@ import type { Platform } from '../core/hold.ts';
 import { i18nLabel } from '../core/i18n.ts';
 import { ev, evTouch, now, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
-import { chunks } from '../img/pace.ts';
+import { chunks, RUN_BEAT_MS } from '../img/pace.ts';
 import { ad, adCall, calls, parseAnswer, type Answer, type Call } from './agent.ts';
 import { lines, quiet, say, tell, why } from './io.ts';
 import { mrelaunch } from './launch.ts';
@@ -278,6 +278,7 @@ export async function mfill(p: Platform, words: string[]): Promise<boolean> {
       if (!found.ok) return answer(p, found);
       target = ev.target;
     } else {
+      await sleep(RUN_BEAT_MS);
       const s = await adJson(p, calls.type(run.text, run.delay));
       if (!s.ok) {
         ev.target = target;
@@ -293,7 +294,8 @@ export async function mfill(p: Platform, words: string[]): Promise<boolean> {
 // `type "<text>"` into the field that has the focus, at a person's pace while a take records.
 export async function mtype(p: Platform, value: string): Promise<boolean> {
   if (!value || !typingHuman()) return answer(p, await adJson(p, calls.type(value)));
-  for (const run of chunks(value)) {
+  for (const [k, run] of chunks(value).entries()) {
+    if (k) await sleep(RUN_BEAT_MS);
     const s = await adJson(p, calls.type(run.text, run.delay));
     if (!s.ok) return answer(p, s);
     await sleep(run.pause);
