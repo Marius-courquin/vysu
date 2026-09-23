@@ -1,2 +1,5 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
+*.sh text eol=lf
+bin/vysu text eol=lf
+test/fixtures/windows/* -text

@@ -3,7 +3,7 @@
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { isWindows, shellArgv } from './host.ts';
+import { isWindows, shellArgv, toolArgv } from './host.ts';
 
 export interface RunResult {
   code: number;
@@ -18,6 +18,8 @@ export interface RunOptions {
   timeoutMs?: number;
   // Output straight to this process's own streams, as a passthrough does.
   inherit?: boolean;
+  // Windows: the arguments are already a cmd.exe command line (see shellArgv, toolArgv).
+  verbatim?: boolean;
 }
 
 // Waits for the process and hands back what it said. Never throws for a non-zero exit: the caller
@@ -29,6 +31,7 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
       env: opts.env,
       stdio: [opts.input === undefined ? 'ignore' : 'pipe', opts.inherit ? 'inherit' : 'pipe', opts.inherit ? 'inherit' : 'pipe'],
       windowsHide: true,
+      windowsVerbatimArguments: opts.verbatim,
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
@@ -66,10 +69,17 @@ export function runBuffer(cmd: string, args: string[], opts: RunOptions = {}): P
 }
 
 // A process that outlives vysu, its output in a log file. Returns its pid.
-export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string }): number {
+export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string; verbatim?: boolean }): number {
   mkdirSync(dirname(opts.log), { recursive: true });
   const fd = openSync(opts.log, 'w');
-  const o: SpawnOptions = { cwd: opts.cwd, env: opts.env, detached: true, stdio: ['ignore', fd, fd], windowsHide: true };
+  const o: SpawnOptions = {
+    cwd: opts.cwd,
+    env: opts.env,
+    detached: true,
+    stdio: ['ignore', fd, fd],
+    windowsHide: true,
+    windowsVerbatimArguments: opts.verbatim,
+  };
   const child = spawn(cmd, args, o);
   child.on('error', () => undefined);
   child.unref();
@@ -80,13 +90,19 @@ export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string;
 // A command line from a config, detached, through the platform's shell.
 export function spawnShellDetached(command: string, opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string }): number {
   const [sh, args] = shellArgv(command);
-  return spawnDetached(sh, args, opts);
+  return spawnDetached(sh, args, { ...opts, verbatim: isWindows });
 }
 
 // A command line from a config, waited for (a health check, a stop command).
 export function runShell(command: string, opts: RunOptions = {}): Promise<RunResult> {
   const [sh, args] = shellArgv(command);
-  return run(sh, args, opts);
+  return run(sh, args, { ...opts, verbatim: isWindows });
+}
+
+// A tool on the PATH by its name (npm, git, agent-browser), wherever it is a `.cmd` shim.
+export function runTool(cmd: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
+  const t = toolArgv(cmd, args);
+  return run(t.file, t.args, { ...opts, verbatim: t.verbatim });
 }
 
 export function killTree(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {
