@@ -1,5 +1,55 @@
 # Changelog
 
+## Unreleased — the TypeScript engine
+
+The engine is TypeScript now, run as it is by Node: it runs on Windows as well as macOS and Linux,
+and it stopped paying a bash fork per helper, a Python start-up per image and a Node start-up per
+device call. Every command was compared with 0.5.1 on real shots folders, pages and devices; the
+lock, claim, device-choice and state files are unchanged, so both versions can run side by side.
+
+- **macOS, Linux and Windows.** Node ≥ 22.18 and `npm ci --omit=dev` in the engine folder (for
+  `sharp`), nothing to build: Node strips the types. No bash, Python, numpy, Pillow, perl, openssl,
+  sqlite3, lsof or curl on the engine's paths any more. `install.ps1` installs on Windows (PowerShell
+  5.1, `bin\vysu.cmd`); `install.sh` checks Node and installs the dependencies; `vysu update` re-runs
+  `npm ci` when the lock file changed. Android works on the three systems, iOS on macOS (one line
+  says so elsewhere). CI runs the engine on the three systems with Node 22 and 24.
+  `VYSU_RUNTIME=bun` runs it on Bun instead.
+- **Faster.** agent-browser is called by its native binary (8 ms a call instead of ~80), agent-device
+  through its library (2–6 ms instead of ~150; `VYSU_AGENT_DEVICE=cli` forces the CLI), every image
+  helper in process. Medians against 0.5.1 on a loaded machine: `report` 251 → 90 ms, `check`
+  529 → 166 ms, `walk` 9.2 → 4.1 s, `shots` (2 sizes) 5.6 → 3.0 s, `sheet` (8 pages) 1.0 → 0.56 s,
+  `doctor` 3.1 → 0.76 s, `devices` 1.18 → 0.28 s, `claim` 1.0 → 0.48 s, `mshot` 0.93 → 0.6 s, `mdo`
+  (4 steps) 5.3 → 3.9 s, `diff` 284 → 36 ms, `fields` 206 → 6 ms.
+- **Auth connectors and push drivers in JavaScript.** `.vysu/auth.mjs` (or `.js`, `.ts`) exports
+  `describe`, `webLogin`, `webToken`, `mobileLogin` and optionally `mobileLogout`, each given the
+  primitives; `connectors/auth/example.mjs` is the template `vysu init` copies for a custom one. A
+  project push driver is `.vysu/push-drivers/<name>.mjs`. Both run on every system; the bash forms
+  (`.vysu/auth.sh`, `<name>.sh`) keep working on macOS and Linux through a bridge. The FCM driver
+  signs with Node's own crypto.
+- **The same picture on every machine.** Contact sheets, marks, compare pages and frames draw their
+  text from Inter, shipped with the engine, instead of the system font. Captures that get diffed are
+  resampled exactly as Pillow did.
+- **Fixed on the way.**
+  - `shots` stops with exit 1 when a step of its batch fails; it used to carry on to exit 0 with a
+    capture of the error page.
+  - A label list is searched as whole labels: « Se connecter » was searched as « Se » and « connecter ».
+  - `vysu claim <persona>` prints the page's url: the script that read it had a syntax error.
+  - A `t:<key>` that does not resolve ends the flow instead of clicking an empty label; flow steps
+    are no longer shell-expanded (`$VAR`, globs).
+  - `rec` stops its recorder when vysu dies mid-take.
+  - An unreachable push webhook says so, a failing iOS text size or appearance says why, and
+    `vysu push <persona>` uses any project driver `VYSU_PUSH` lists.
+  - `init` copies the connector template when « custom » is answered, and quotes an answer holding
+    a `'`; `up` names a service folder that does not exist instead of timing out.
+  - `persona add|set` write quoted values: a password holding a `$` or a quote reads back as typed.
+  - `/usr/bin/time`, `nice`, `caffeinate` and the like in front of vysu are no longer taken for its
+    owner (the command drove the config's device instead of the one just claimed); on Linux a Node
+    process is named by its command, not « MainThread ».
+  - `vysu adb shell` is interactive; `cache clear` skips a directory instead of dying on it; a
+    missing option value is named instead of « unbound variable »; `vysu doctor | head` ends quietly;
+    a helper that fails prints one line instead of a Python traceback.
+- `VYSU_DEBUG=mobile` traces what a relaunch waited for.
+
 ## 0.5.1 — 2026-09-23
 
 Two checker sub-agents of one session, one on a Pixel 4a and one on a Pixel 8: the 4a's commands
