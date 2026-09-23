@@ -3,7 +3,7 @@
 // Everything above this file is the same code on macOS, Linux and Windows.
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node:fs';
-import { delimiter, extname, isAbsolute, join } from 'node:path';
+import { delimiter, extname, isAbsolute, join, win32 } from 'node:path';
 import { connect } from 'node:net';
 import { parseNetstatListeners, parseProcessLines, windowsProcessLines } from './winps.ts';
 
@@ -144,6 +144,45 @@ export function which(cmd: string, fresh = false): string {
   }
   whichCache.set(cmd, found);
   return found;
+}
+
+// The bash a shell script runs in. On Windows, System32's bash.exe (and the WindowsApps alias) is
+// WSL's launcher: it runs a Linux bash inside the distribution, where a C:\ path and vysu's
+// environment never arrive, and it comes early on the PATH. Git for Windows' bash is the one meant:
+// where its installer puts it, else a bash.exe on the PATH under a Git folder, else any other one
+// outside System32 (MSYS2, Cygwin).
+let bash: string | undefined;
+export function bashPath(): string {
+  bash ??= isWindows ? windowsBash(process.env, isFile) : which('bash');
+  return bash;
+}
+
+export function windowsBash(env: NodeJS.ProcessEnv, exists: (p: string) => boolean): string {
+  const key = (p: string): string => win32.normalize(p).replace(/\\+$/, '').toLowerCase();
+  const system32 = key(win32.join(env.SystemRoot ?? env.windir ?? 'C:\\Windows', 'System32'));
+  const apps = env.LOCALAPPDATA ? key(win32.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps')) : '';
+  const installed = [env.ProgramFiles, env.ProgramW6432, env['ProgramFiles(x86)'], env.LOCALAPPDATA && win32.join(env.LOCALAPPDATA, 'Programs')]
+    .filter((d): d is string => !!d)
+    .map((d) => win32.join(d, 'Git', 'bin', 'bash.exe'));
+  const onPath = (env.PATH ?? env.Path ?? '')
+    .split(';')
+    .map((d) => d.replace(/^"(.*)"$/, '$1'))
+    .filter(Boolean)
+    .filter((d) => {
+      const k = key(d);
+      return k !== system32 && !k.startsWith(`${system32}\\`) && k !== apps;
+    })
+    .map((d) => win32.join(d, 'bash.exe'));
+  const underGit = (p: string): boolean => key(win32.dirname(p)).split('\\').includes('git');
+  return [...installed, ...onPath.filter(underGit), ...onPath.filter((p) => !underGit(p))].find(exists) ?? '';
+}
+
+function isFile(p: string): boolean {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export function isExecutable(p: string): boolean {

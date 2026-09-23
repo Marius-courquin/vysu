@@ -12,7 +12,7 @@ import { ENGINE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
 import { die, exit, onCleanup } from '../core/errors.ts';
 import { owner, releaseOnExit } from '../core/hold.ts';
-import { which } from '../core/host.ts';
+import { bashPath } from '../core/host.ts';
 import type { RunResult } from '../core/proc.ts';
 import { shellQuote } from '../core/shellenv.ts';
 import { authTestSessionName } from '../web/ab.ts';
@@ -79,7 +79,7 @@ export function bridgeEnv(file: string): NodeJS.ProcessEnv {
 // this user can read, in a folder of its own, removed once bash is done, or by the cleanups when
 // vysu ends first.
 async function call(file: string, fn: string, args: string[], capture: boolean): Promise<RunResult> {
-  const bash = which('bash');
+  const bash = bashPath();
   if (!bash) die(`${file} is a bash connector, and this machine has no bash`, 'write it as .vysu/auth.mjs (connectors/auth/example.mjs)');
   const dir = mkdtempSync(join(tmpdir(), 'vysu-auth-'));
   const drop = (): void => rmSync(dir, { recursive: true, force: true });

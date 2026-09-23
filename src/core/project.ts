@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { config } from './ctx.ts';
 import { ENGINE } from './config.ts';
 import { die } from './errors.ts';
-import { isWindows, which } from './host.ts';
+import { bashPath, isWindows, which } from './host.ts';
 
 const EXTENSIONS = ['', '.mjs', '.js', '.ts', '.py', '.sh', '.cmd', '.bat', '.ps1'];
 
@@ -41,7 +41,7 @@ function argvFor(file: string): [string, string[]] {
   if (interp === 'node') return [node, [file]];
   if (interp.startsWith('python') || ext === '.py') return [which('python3') || which('python') || 'py', [file]];
   if (['bash', 'sh', 'zsh'].includes(interp) || ext === '.sh') {
-    const bash = which('bash');
+    const bash = bashPath();
     if (!bash) die(`${file} is a shell script, and this machine has no bash (Git Bash, or WSL)`);
     return [bash, [file]];
   }
