@@ -219,7 +219,7 @@ mobile_session_repair() { # platform "<the error agent-device answered>"
   case "$2" in *"is already bound to"*) agent-device close --session "$name" >/dev/null 2>&1 || true;; esac
   out="$(ad "$platform" open "$(mobile_app "$platform")" --timeout "$(mobile_open_timeout "$platform")" 2>&1 >/dev/null)" && return 0
   [ "$platform" = android ] || return 1
-  other="$(printf '%s\n' "$out" | sed -n 's/.*in use by session "\([^"]*\)".*/\1/p' | head -1)"
+  other="$(printf '%s\n' "$out" | sed -n 's/.*in use by session "\([^"]*\)".*/\1/p' | head -1 || true)"
   case "$other" in "$(cfg PROJECT)-android-"*) [ "$other" != "$name" ] || return 1;; *) return 1;; esac
   agent-device close --session "$other" >/dev/null 2>&1 || true
   log "android: dropped the session $other, left over on $ANDROID_SERIAL from an emulator restart"
@@ -790,8 +790,23 @@ mlog_filter() { # errors(0|1): stdin → stdout
   fi
   if [ "$1" = 1 ]; then
     text="$(printf '%s\n' "$text" | LC_ALL=C awk '
+      # A device log stamps every line (time, pid): the stamp goes, the level stays, so that the
+      # same error seen twice reads as one line « ×2 ».
+      function bare(l,   lvl) {
+        if (l ~ /^[0-9]+-[0-9]+-[0-9]+ [0-9:.]+ +[A-Za-z]+ +[^ ]+\[[0-9a-fx:]+\] /) {
+          split(l, f, " "); lvl = f[3]
+          sub(/^[0-9]+-[0-9]+-[0-9]+ [0-9:.]+ +[A-Za-z]+ +[^ ]+\[[0-9a-fx:]+\] (\[[^]]*\] )?/, "", l)
+          return lvl " " l
+        }
+        if (l ~ /^[0-9]+-[0-9]+ [0-9:.]+ [VDIWEF]\/[^(]*\( *[0-9]+\): /) {
+          lvl = substr(l, index(l, "/") - 1, 1)
+          sub(/^[0-9]+-[0-9]+ [0-9:.]+ [VDIWEF]\/[^(]*\( *[0-9]+\): /, "", l)
+          return lvl " " l
+        }
+        return l
+      }
       function keep(l,   o) {
-        o = l; l = substr(l, 1, 200)
+        l = bare(l); o = l; l = substr(l, 1, 200)
         # A cut inside a multi-byte character would leave invalid UTF-8 behind.
         if (length(o) > 200) sub(/[\200-\377]+$/, "", l)
         if (!(l in count)) order[++n] = l

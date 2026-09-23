@@ -155,8 +155,10 @@ metro_down() {
 metro_bundle_error_since() { # line [log]
   local from="${1:-0}" log="${2:-$(metro_log)}"
   [ -f "$log" ] || return 1
-  # The cheap test first: this runs in the relaunch loop, and the awk below reads every line.
-  tail -n "+$((from + 1))" "$log" 2>/dev/null | grep -qE 'Bundling failed|SyntaxError|Unable to resolve|TransformError' || return 1
+  # The cheap test first: this runs in the relaunch loop, and the awk below does more per line.
+  # `grep -c`, not -q: -q leaves at the first match, `tail` dies of SIGPIPE on a long window, and
+  # pipefail reads that as « none ».
+  [ "$(tail -n "+$((from + 1))" "$log" 2>/dev/null | grep -cE 'Bundling failed|SyntaxError|Unable to resolve|TransformError' || true)" != 0 ] || return 1
   tail -n "+$((from + 1))" "$log" 2>/dev/null | LC_ALL=C awk -v root="${VYSU_PROJECT_DIR:-/nonexistent}/" '
     function take(line,   f) {
       sub(/^[ \t]*(ERROR|error:?)[ \t]+/, "", line)
