@@ -53,6 +53,15 @@ lock, claim, device-choice and state files are unchanged, so both versions can r
   taps meant for what lay under it (`tap Notifications` opened the dev menu). A shake still opens
   the menu.
 - `VYSU_DEBUG=mobile` traces what a relaunch waited for.
+- **`mreload` knows within seconds whether the reload landed.** The page's acknowledgement proved
+  nothing (the device answers before it reloads), so an app that never fetched its bundle cost the
+  whole 60 s before anything happened. The reload now watches its own device's JS context through
+  the inspector: a reload the app does not start within 5 s, that fetches no bundle within 10 s of
+  starting, or whose app leaves Metro half way (killed, crashed) becomes a relaunch at once, with a
+  line that says which, instead of ending on « Metro never served the … bundle in 60s ». On Android
+  it puts `adb reverse` back first: an adbd restart since the launch had sent the reload to the
+  dev-launcher's « Unable to load script » page (18 s with the hand-off, 5 s now). A reload that
+  goes well takes what it took: 3-4 s on the iOS 18 simulator, 5-6 s on the API 30 emulator.
 
 ## 0.5.1 — 2026-09-23
 

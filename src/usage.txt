@@ -58,7 +58,9 @@
 #                                           wait for the screen (dev menu and launcher cleared on the way, the
 #                                           agent-device session reopened when it is gone)
 #   vysu mreload ios|android                this device's JS only, reloaded in place (not every app on the Metro);
-#                                           falls back to mrelaunch when the device has no inspector page of its own
+#                                           falls back to mrelaunch, saying why, when the device has no inspector
+#                                           page of its own, or its app does not start the reload within 5 s or
+#                                           fetch no bundle within 10 s of starting it
 #   vysu mflow ios|android <file|-> [--shots <name>] [--keep-going]   the steps of a file, as `mdo` runs
 #                                           them (tap t:<i18n.key> too) → ✓ / ✗ lines + contact sheet
 #   vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] [--strict] -- "<step>" …   record the screen while the steps run →

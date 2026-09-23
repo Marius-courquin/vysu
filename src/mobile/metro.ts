@@ -377,56 +377,176 @@ async function pageName(p: Platform): Promise<string> {
   return (await adbShell(['echo "$(getprop ro.product.model) - $(getprop ro.build.version.release) - API $(getprop ro.build.version.sdk)"'])).replace(/\n$/, '');
 }
 
+export interface InspectorPage {
+  appId?: string;
+  deviceName?: string;
+  webSocketDebuggerUrl?: string;
+}
+
+// The one page of this app on this device in the proxy's /json/list, as its debugger websocket on
+// 127.0.0.1, or '' when there is none or more than one. One device with the app running registers
+// exactly one page, « React Native Bridgeless [C++ connection] » with `nativePageReloads`: the proxy
+// hands Page.reload to the device, which reloads its own JS and nothing else (checked on an API 30
+// emulator and an iOS 18 simulator side by side, 2026-09-24: the other device's page was untouched).
+// There is no other target to aim at: the app has no second page, and the proxy's synthetic
+// « React Native Experimental (Improved Chrome Reloads) » page only stands in for legacy pages.
+export function pagePick(pages: unknown, appId: string, deviceName: string): string {
+  if (!Array.isArray(pages)) return '';
+  const hits = (pages as Array<InspectorPage | null>).filter((x) => x?.appId === appId && x.deviceName === deviceName);
+  const url = hits.length === 1 ? hits[0]!.webSocketDebuggerUrl : '';
+  return url ? url.replace('ws://localhost:', 'ws://127.0.0.1:') : '';
+}
+
 export async function metroPageWs(p: Platform, port: string): Promise<string> {
   const name = await pageName(p);
   if (!name) return '';
-  let pages: Array<{ appId?: string; deviceName?: string; webSocketDebuggerUrl?: string }>;
   try {
     const r = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) });
-    pages = (await r.json()) as typeof pages;
+    return pagePick(await r.json(), config().get('MOBILE_BUNDLE'), name);
   } catch {
     return '';
   }
-  if (!Array.isArray(pages)) return '';
-  const hits = pages.filter((x) => x.appId === config().get('MOBILE_BUNDLE') && x.deviceName === name);
-  if (hits.length !== 1 || !hits[0]!.webSocketDebuggerUrl) return '';
-  return hits[0]!.webSocketDebuggerUrl.replace('ws://localhost:', 'ws://127.0.0.1:');
+}
+
+// What the page said about a reload, as Date.now() stamps (0: not yet). The acknowledgement alone
+// proves nothing: the device answers Page.reload as soon as it has queued the reload, so an app that
+// then never fetched a bundle looked, to the old wait, like a Metro slow to print « Bundled », for
+// the whole 60 s budget. With the Runtime domain enabled first, the page also says what its JS did:
+// its context goes away when the reload starts, on this device and no other, where Metro's
+// « Bundled » line is shared by every device of a platform. The two together are the proof. A new
+// context proves no bundle: Android creates it once the bundle is in (after Metro's line), iOS
+// before fetching it; it is kept for the trace. Measured on a warm Metro (2026-09-24): API 30
+// emulator, context gone with the acknowledgement, « Bundled » 1 s later; iOS 18 simulator, the
+// acknowledgement, the old context gone and the new one all within 0.1 s of the send.
+export interface ReloadSeen {
+  t0: number; // when the watch began: the start budget counts from here
+  runtime: boolean | null; // did Runtime.enable work (null: no answer yet)
+  sentAt: number;
+  acked: number;
+  refused: boolean;
+  started: number; // the JS context went away: the app is reloading
+  created: number; // a new context after that
+  closed: number; // the socket closed: the page, the app or its connection to Metro went away
+}
+
+export const RUNTIME_ID = 1;
+export const RELOAD_ID = 2;
+
+export function reloadSeenNew(now: number): ReloadSeen {
+  return { t0: now, runtime: null, sentAt: 0, acked: 0, refused: false, started: 0, created: 0, closed: 0 };
+}
+
+// One CDP message, read into what it says about the reload. Nothing else is kept: the page streams
+// network events, bearer tokens included, and none of it is printed or stored. The context the
+// Runtime domain announces when it is enabled is the old one: only what follows the send counts.
+export function reloadSeenMessage(s: ReloadSeen, raw: string, now: number): void {
+  let d: { id?: number; error?: unknown; method?: string };
+  try {
+    d = JSON.parse(raw) as typeof d;
+  } catch {
+    return;
+  }
+  if (d.id === RUNTIME_ID) s.runtime = !d.error;
+  else if (d.id === RELOAD_ID) {
+    if (d.error) s.refused = true;
+    else if (!s.acked) s.acked = now;
+  } else if (!s.sentAt) return;
+  else if (d.method === 'Runtime.executionContextDestroyed' || d.method === 'Runtime.executionContextsCleared') {
+    if (!s.started) s.started = now;
+  } else if (d.method === 'Runtime.executionContextCreated' && s.started && !s.created) s.created = now;
+}
+
+// How long each phase may take before the reload is given up for a relaunch. The start: the proxy
+// round trip and the page's answer, well under a second on both platforms. The bundle: from the start
+// of the reload to Metro's « Bundled », about a second on a warm Metro; ten seconds leave room for an
+// edit Metro has to transform first on a loaded Mac. Past either, the relaunch is quicker than
+// waiting out the old 60 s for a bundle that is not coming.
+export const RELOAD_START_MS = 5000;
+export const RELOAD_BUNDLE_MS = 10000;
+// A page that cannot report its contexts (no Runtime domain) has Metro's line as its only proof, and
+// the budget the reload always had.
+export const RELOAD_BUDGET_MS = 60000;
+
+export type ReloadVerdict = { kind: 'wait' } | { kind: 'landed' } | { kind: 'fallback'; why: string };
+
+// `bundled`: Metro printed « <tag> Bundled » since the send. The lines are the ones `vysu mreload`
+// prints before it relaunches.
+export function reloadVerdict(s: ReloadSeen, now: number, bundled: boolean): ReloadVerdict {
+  const wait: ReloadVerdict = { kind: 'wait' };
+  const fallback = (why: string): ReloadVerdict => ({ kind: 'fallback', why });
+  // Does the page report its JS contexts? Without that, Metro's line is the only proof there is.
+  const tells = s.runtime === true;
+  if (s.refused || (s.closed && !s.sentAt)) return fallback('the inspector page refused the reload');
+  if (bundled && (s.started || !tells)) return { kind: 'landed' };
+  // The proxy drops a debugger when its device goes: the app was killed, crashed, or lost Metro.
+  if (s.closed) return fallback('the app left Metro during the reload (it closed or crashed)');
+  if (s.started) return now - s.started < RELOAD_BUNDLE_MS ? wait : fallback(`no new bundle ${RELOAD_BUNDLE_MS / 1000}s after the reload started`);
+  if (s.acked && !tells) return now - s.t0 < RELOAD_BUDGET_MS ? wait : fallback(`no bundle ${RELOAD_BUDGET_MS / 1000}s after the reload`);
+  if (now - s.t0 < RELOAD_START_MS) return wait;
+  return fallback(s.acked ? 'the page took the reload but the app never started it' : 'the inspector page refused the reload');
+}
+
+export interface ReloadWatch {
+  seen: ReloadSeen;
+  close(): void;
 }
 
 // The proxy only takes a debugger whose Origin is its own (http://127.0.0.1:<port>), which a browser
-// sends and a script has to. Nothing the page sends back is printed: it streams network events,
-// bearer tokens included. True when the page acknowledged the reload.
-export function metroPageReload(url: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const WS = (globalThis as { WebSocket?: new (u: string, o?: unknown) => WebSocket }).WebSocket;
-    if (!WS) return resolve(false);
-    let ws: WebSocket;
+// sends and a script has to. The socket stays open until the caller has its verdict: the proxy
+// allows one debugger per page, so this one also stands in for a DevTools window left open on it,
+// which the proxy disconnects, as it always did. Page.reload goes once Runtime.enable has answered,
+// or after a second without an answer (a page with no Runtime domain).
+export function metroPageReload(url: string): ReloadWatch | null {
+  const WS = (globalThis as { WebSocket?: new (u: string, o?: unknown) => WebSocket }).WebSocket;
+  if (!WS) return null;
+  const seen = reloadSeenNew(Date.now());
+  let ws: WebSocket;
+  try {
+    ws = new WS(url, { headers: { Origin: `http://127.0.0.1:${new URL(url).port}` } });
+  } catch {
+    return null;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const send = (): void => {
+    if (seen.sentAt || seen.closed) return;
+    clearTimeout(timer);
+    seen.sentAt = Date.now();
     try {
-      ws = new WS(url, { headers: { Origin: `http://127.0.0.1:${new URL(url).port}` } });
+      ws.send(JSON.stringify({ id: RELOAD_ID, method: 'Page.reload', params: {} }));
     } catch {
-      return resolve(false);
+      seen.closed = Date.now();
     }
-    const done = (ok: boolean): void => {
-      clearTimeout(t);
+  };
+  ws.onopen = () => {
+    try {
+      ws.send(JSON.stringify({ id: RUNTIME_ID, method: 'Runtime.enable', params: {} }));
+    } catch {
+      seen.closed = Date.now();
+      return;
+    }
+    timer = setTimeout(send, 1000);
+  };
+  ws.onmessage = (m: MessageEvent) => {
+    reloadSeenMessage(seen, String(m.data), Date.now());
+    if (seen.runtime !== null) send();
+  };
+  const gone = (): void => {
+    if (!seen.closed) seen.closed = Date.now();
+  };
+  ws.onerror = gone;
+  ws.onclose = gone;
+  return {
+    seen,
+    close() {
+      clearTimeout(timer);
+      ws.onclose = null;
+      ws.onerror = null;
       try {
         ws.close();
       } catch {
         // already closed
       }
-      resolve(ok);
-    };
-    const t = setTimeout(() => done(false), 5000);
-    ws.onopen = () => ws.send(JSON.stringify({ id: 1, method: 'Page.reload', params: {} }));
-    ws.onmessage = (m: MessageEvent) => {
-      let d: { id?: number; error?: unknown };
-      try {
-        d = JSON.parse(String(m.data)) as typeof d;
-      } catch {
-        return;
-      }
-      if (d.id === 1) done(!d.error);
-    };
-    ws.onerror = () => done(false);
-  });
+    },
+  };
 }
 
