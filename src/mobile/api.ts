@@ -27,8 +27,8 @@ export async function mobPressAny(platform: Platform, labels: string): Promise<b
   return launch.mobPressAny(platform, labels);
 }
 // Press each of them that is there, in order.
-export async function mobPressAll(platform: Platform, labels: string): Promise<void> {
-  await launch.mobPressAll(platform, labels);
+export async function mobPressAll(platform: Platform, labels: string): Promise<boolean> {
+  return launch.mobPressAll(platform, labels);
 }
 // Wait for a text to show up. True when it did.
 export async function mobWaitText(platform: Platform, text: string, ms = 8000): Promise<boolean> {

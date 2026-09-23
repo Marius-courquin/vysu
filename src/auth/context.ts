@@ -52,7 +52,7 @@ export function context(): AuthContext {
     mobTry: (platform, ...args) => mobile.mob(platform, args),
     mobPressIf: (platform, label) => mobile.mobPressIf(platform, label),
     mobPressAny: (platform, labels) => mobile.mobPressAny(platform, labels),
-    mobPressAll: (platform, labels) => mobile.mobPressAll(platform, labels),
+    mobPressAll: async (platform, labels) => void (await mobile.mobPressAll(platform, labels)),
     mobWaitText: (platform, text, ms = 8000) => mobile.mobWaitText(platform, text, ms),
     mobFields: async (platform: Platform) => parseBoxes(await mobile.mobFields(platform)),
     mobileApp: (platform) => mobile.mobileApp(platform),
