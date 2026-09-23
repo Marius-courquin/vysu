@@ -57,6 +57,9 @@ export async function run(args: string[]): Promise<void> {
   const dir = join(config().shots, name);
   mkdirSync(dir, { recursive: true });
   rmSync(join(dir, 'frames'), { recursive: true, force: true });
+  // The last take's motion report must not be read as this one's: take re-anchors the clock on the
+  // motion.txt it finds, and the web one is only written after it.
+  rmSync(join(dir, 'motion.txt'), { force: true });
   const video = join(dir, `web.${ext}`);
   await lockTake(resourceOf(persona));
   await webLangInit(persona);
