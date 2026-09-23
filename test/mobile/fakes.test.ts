@@ -22,3 +22,14 @@ test('mburst: a step that dies stops the capture loop before vysu gives the devi
   await sleep(800);
   assert.equal(screencaps(f.calls()), n, 'a capture after vysu ended');
 });
+
+// A bash connector's primitives are processes of their own: each must find its emulator by itself.
+test('__prim mobile_load_bundle android addresses the emulator of the AVD, two being attached', posix, async () => {
+  const f = fakeAndroid({ emulators: { 'emulator-5596': 'other_avd', 'emulator-5598': 'fake_avd' } });
+  Object.assign(f.env, { VYSU_ANDROID_AVD: 'fake_avd', VYSU_MOBILE_SCHEME: 'myapp', VYSU_MOBILE_KIND: 'expo' });
+  const r = await f.vysu(['__prim', 'mobile_load_bundle', 'android']);
+  assert.equal(r.code, 0, r.stderr);
+  const focus = f.calls().filter((l) => l.includes('dumpsys window'));
+  assert.equal(focus.length, 1, f.calls().join('\n'));
+  assert.match(focus[0]!, /-s emulator-5598 shell dumpsys window/);
+});
