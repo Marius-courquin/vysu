@@ -4,6 +4,7 @@
 // never know which: that is what lets the web and mobile code move before the last script does.
 import { join } from 'node:path';
 import { ENGINE } from '../core/config.ts';
+import { VysuError } from '../core/errors.ts';
 import { run, type RunResult } from '../core/proc.ts';
 
 export interface Io {
@@ -28,9 +29,24 @@ export type Tool =
 
 // name → the module, once it is ported.
 const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {
+  compare: () => import('./compare.ts'),
   diff: () => import('./diff.ts'),
   mark: () => import('./mark.ts'),
+  screencap: () => import('./screencap.ts'),
+  verdict: () => import('./verdict.ts'),
 };
+
+// What a Python traceback was: the helper failed on something it did not foresee (an unreadable
+// file, a disk full), exit 1 and the reason on stderr. A VysuError still crosses to the entry point.
+async function guarded(name: Tool, main: ToolMain, argv: string[], io: Io): Promise<number> {
+  try {
+    return await main(argv, io);
+  } catch (e) {
+    if (e instanceof VysuError) throw e;
+    io.err(`${name}: ${e instanceof Error ? e.message : String(e)}\n`);
+    return 1;
+  }
+}
 
 export async function tool(name: Tool, argv: string[], opts: { input?: Buffer | string } = {}): Promise<RunResult> {
   const load = ported[name];
@@ -42,7 +58,7 @@ export async function tool(name: Tool, argv: string[], opts: { input?: Buffer | 
     err: (s) => err.push(s),
     stdin: opts.input === undefined ? undefined : Buffer.isBuffer(opts.input) ? opts.input : Buffer.from(opts.input),
   };
-  const code = await (await load()).main(argv, io);
+  const code = await guarded(name, (await load()).main, argv, io);
   return { code, stdout: out.join(''), stderr: err.join('') };
 }
 
@@ -50,5 +66,5 @@ export async function tool(name: Tool, argv: string[], opts: { input?: Buffer | 
 export async function toolPassthrough(name: Tool, argv: string[]): Promise<number> {
   const load = ported[name];
   if (!load) return (await run('python3', [join(ENGINE, 'py', `${name}.py`), ...argv], { inherit: true })).code;
-  return (await load()).main(argv, { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) });
+  return guarded(name, (await load()).main, argv, { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) });
 }
