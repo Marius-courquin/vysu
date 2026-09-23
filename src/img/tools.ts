@@ -35,6 +35,7 @@ const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {
   fields: () => import('./fields.ts'),
   mark: () => import('./mark.ts'),
   motion: () => import('./motion.ts'),
+  screen: () => import('./screen.ts'),
   screencap: () => import('./screencap.ts'),
   stitch: () => import('./stitch.ts'),
   take: () => import('./take.ts'),
