@@ -2,7 +2,7 @@
 // batch a whole capture run is queued into. One session per persona (`<project>-<persona>`), its
 // cookies and storage restored on every call, the persona's `web-<persona>` lock taken on the first.
 import { spawn } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { config } from '../core/ctx.ts';
@@ -180,9 +180,6 @@ const queue: string[][] = [];
 export function bcmd(...args: string[]): void {
   queue.push(args);
 }
-export function bqueued(): number {
-  return queue.length;
-}
 // persona → the batch results as JSON, the queue emptied.
 export async function brun(persona: string): Promise<string> {
   await lockTake(webLockOf(persona));
@@ -242,6 +239,3 @@ export function lastResult(json: string): string {
     return '';
   }
 }
-
-export const agentBrowserHome = (): string => join(homedir(), '.agent-browser');
-export const agentBrowserInstalled = (): boolean => existsSync(abBinary()) || !!which('agent-browser');

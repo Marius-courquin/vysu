@@ -3,7 +3,7 @@
 import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
-import { die, exit } from '../core/errors.ts';
+import { die } from '../core/errors.ts';
 import { langCheck } from '../core/i18n.ts';
 import { metaWrite, repoBranch, repoSha } from '../core/meta.ts';
 import { tool } from '../img/tools.ts';
@@ -213,11 +213,3 @@ export async function shots(persona: string, name: string, args: string[], print
     else print(`changed: ${changed} viewport(s) → vysu sheet ${name}\n`);
   }
 }
-
-export function needTwo(args: string[], usage: string): [string, string] {
-  const [persona, name] = args;
-  if (!persona || !name) die(usage);
-  return [persona, name];
-}
-
-export { exit };

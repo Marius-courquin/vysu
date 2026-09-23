@@ -40,9 +40,6 @@ export async function webApi(persona: string): Promise<string> {
 
 // Read once per flow: only `click t:<key>` needs it.
 let webLang = '';
-export function currentLang(): string {
-  return webLang;
-}
 export async function webLangInit(persona: string): Promise<void> {
   if (webLang) return;
   const js = langReadJs();
