@@ -30,7 +30,19 @@ export type Parsed = Record<string, unknown>;
 class ArgError extends Error {}
 
 const negative = /^-\d+$|^-\d*\.\d+$/;
-const isOption = (s: string): boolean => s.startsWith('-') && s !== '-' && !negative.test(s) && !s.includes(' ');
+
+// Whether a token is an option, in argparse's order: a known option, a known one before `=`, or a
+// unique prefix of one comes first, and only then does a negative number or a space make it a
+// positional. `--title="Nouvelle annonce"` was read as a positional for its space.
+function isOption(spec: ParserSpec, s: string): boolean {
+  if (!s.startsWith('-') || s === '-') return false;
+  if (s in spec.opts || s === '-h' || s === '--help') return true;
+  if (s.startsWith('--')) {
+    const token = s.split('=', 1)[0]!;
+    if (['--help', ...Object.keys(spec.opts)].some((f) => f.startsWith(token))) return true;
+  }
+  return !negative.test(s) && !s.includes(' ');
+}
 
 const destOf = (flag: string, o: OptSpec): string => o.dest ?? flag.replace(/^-+/, '').replace(/-/g, '_');
 
@@ -73,7 +85,7 @@ function parseOrThrow(spec: ParserSpec, argv: string[]): Parsed | 'help' {
       runs.at(-1)!.push(...argv.slice(i + 1));
       break;
     }
-    if (!isOption(a)) {
+    if (!isOption(spec, a)) {
       runs.at(-1)!.push(a);
       continue;
     }
@@ -99,7 +111,7 @@ function parseOrThrow(spec: ParserSpec, argv: string[]): Parsed | 'help' {
     if (eq > 0) raw = a.slice(eq + 1);
     else {
       const next = argv[i + 1];
-      if (next === undefined || isOption(next)) throw new ArgError(`argument ${flag}: expected one argument`);
+      if (next === undefined || isOption(spec, next)) throw new ArgError(`argument ${flag}: expected one argument`);
       raw = next;
       i++;
     }
