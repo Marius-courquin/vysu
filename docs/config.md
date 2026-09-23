@@ -88,6 +88,7 @@ in [`connectors/auth/form.sh`](../connectors/auth/form.sh).
 | `VYSU_MOBILE_BUILD_ANDROID` | the same for `up android --build` | `npx expo run:android --device "<avd>" --no-bundler` in expo mode, empty in native mode | `./gradlew assembleDebug` |
 | `VYSU_MOBILE_ENV` | environment exported to Metro and to the native build, space-separated `k=v` | empty | `APP_ENV=staging` |
 | `VYSU_MOBILE_SCHEME` | the dev-client scheme handed to Metro's URL; empty skips the dev-launcher hand-off | empty | `exp+myapp` |
+| `VYSU_MOBILE_DEEPLINK` | what `vysu mopen <route>` appends a route to (a leading `/` of the route is dropped); an argument holding `://` is opened as it is, and without this key only full urls are | empty | `myapp:///` |
 | `VYSU_MOBILE_READY_TEXT` | texts that prove the app has booted, comma-separated: what `mrelaunch` waits for instead of a delay | empty (a fixed delay) | `Sign in,Welcome` |
 | `VYSU_IOS_DEVICE` | the recent simulator | the last one `vysu up ios --device` remembered, else `iPhone 17 Pro` | `iPhone 17 Pro` |
 | `VYSU_IOS_OLD_DEVICE` | the old simulator, created by `vysu setup` | `vysu iPhone SE (iOS 18)` | `my iPhone SE (iOS 18)` |

@@ -121,6 +121,8 @@ config_defaults() {
   : "${VYSU_MOBILE_DIR:=}"
   : "${VYSU_MOBILE_ENV:=}"
   : "${VYSU_MOBILE_SCHEME:=}"
+  # What `vysu mopen <route>` appends a route to (« myapp:/// »): only the app knows its scheme.
+  : "${VYSU_MOBILE_DEEPLINK:=}"
   # What kind of mobile app this is: an Expo dev-client served by Metro, or a native app (Swift,
   # Kotlin, Flutter, .NET) already built. A project that names an Expo folder means expo; anything
   # else — including no mobile app at all — means native, where `up` installs and launches, full stop.
@@ -524,6 +526,11 @@ vysu_reset() { # resource — back to the defaults, only what differs from them
   case "$1" in
     ios-*|android-*)
       local platform="${1%%-*}" args
+      # The network first: it needs no relaunch, and a device handed back offline fails the next
+      # agent's every request before it thinks of looking at airplane mode.
+      if [ "$(mstate_get "$platform" net)" = offline ]; then
+        vysu_mnet "$platform" online >/dev/null && echo "reset: $platform back online"
+      fi
       args="$(mreset_args "$platform")"
       [ -n "$args" ] || { echo "reset: $platform already in its defaults"; return; }
       [ "$(mobile_kind)" != expo ] || listening 8081 \
