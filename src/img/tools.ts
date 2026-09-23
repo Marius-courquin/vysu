@@ -29,11 +29,12 @@ export type Tool =
 
 // name → the module, once it is ported.
 const ported: Partial<Record<Tool, () => Promise<{ main: ToolMain }>>> = {
-  compare: () => import('./compare.ts'),
   burst: () => import('./burst.ts'),
+  compare: () => import('./compare.ts'),
   diff: () => import('./diff.ts'),
   fields: () => import('./fields.ts'),
   mark: () => import('./mark.ts'),
+  motion: () => import('./motion.ts'),
   screencap: () => import('./screencap.ts'),
   stitch: () => import('./stitch.ts'),
   verdict: () => import('./verdict.ts'),
