@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bboxes, evalValue, lastLine, lastResult, quiet } from '../../src/web/ab.ts';
+import { abCandidates, bboxes, evalValue, lastLine, lastResult, quiet } from '../../src/web/ab.ts';
 import { chromeJs, ignoreJs, pyJsonList, pyJsonString } from '../../src/web/js.ts';
 import { shellWords, StepSyntax } from '../../src/web/words.ts';
 import { wh } from '../../src/web/shots.ts';
@@ -112,4 +112,25 @@ test('prune: one level deep, old and named, never a file', () => {
   assert.deepEqual(names('30', ['rv-*', 'tv-*']), ['rv-old', 'tv-x']);
   // -mtime +31: 31.5 days is 31 whole days, not more than 31.
   assert.deepEqual(names('31', ['tv-*']), []);
+});
+
+// npm on Windows: the shim in the prefix, the binaries in the package's bin folder, and no arm64 build
+// published — the x64 one runs under emulation there.
+test('where the native agent-browser is looked for', () => {
+  const shim = 'C:\\Users\\me\\AppData\\Roaming\\npm\\agent-browser.cmd';
+  const bin = 'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\agent-browser\\bin';
+  assert.deepEqual(abCandidates(shim, shim, 'agent-browser-win32-x64.exe', true), [
+    'C:\\Users\\me\\AppData\\Roaming\\npm\\agent-browser-win32-x64.exe',
+    `${bin}\\agent-browser-win32-x64.exe`,
+  ]);
+  assert.deepEqual(abCandidates(shim, shim, 'agent-browser-win32-arm64.exe', true).slice(-2), [
+    'C:\\Users\\me\\AppData\\Roaming\\npm\\agent-browser-win32-x64.exe',
+    `${bin}\\agent-browser-win32-x64.exe`,
+  ]);
+  const js = '/usr/local/lib/node_modules/agent-browser/bin/agent-browser.js';
+  assert.deepEqual(abCandidates('/usr/local/bin/agent-browser', js, 'agent-browser-darwin-arm64', false), [
+    '/usr/local/lib/node_modules/agent-browser/bin/agent-browser-darwin-arm64',
+  ]);
+  const patched = '/usr/local/lib/node_modules/agent-browser/bin/agent-browser-linux-x64';
+  assert.equal(abCandidates('/usr/local/bin/agent-browser', patched, 'agent-browser-linux-x64', false)[0], patched);
 });
