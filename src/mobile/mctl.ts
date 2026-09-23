@@ -633,34 +633,36 @@ export async function mburst(p: string, args: string[]): Promise<boolean> {
   const stop = { now: false };
   // The loop's own deadline covers a step that hangs: the burst plus a minute, then it stops anyway.
   const loop = burstLoop(p, raw, Number(every), target, Number(seconds) + 60, stop);
-  const times = join(raw, 'times.tsv');
-  const firstRow = (): string => {
-    try {
-      return readFileSync(times, 'utf8').split('\n')[0] ?? '';
-    } catch {
-      return '';
+  // A step that dies (an i18n key that does not exist, a lock given up) must end the loop too, and
+  // before the locks go: 0.5.1's loop watched vysu's pid, this one lives in vysu and kept capturing a
+  // device already handed to the next agent for up to a minute.
+  let failed = false;
+  try {
+    const times = join(raw, 'times.tsv');
+    const firstRow = (): string => {
+      try {
+        return readFileSync(times, 'utf8').split('\n')[0] ?? '';
+      } catch {
+        return '';
+      }
+    };
+    for (let i = 0; i < 200 && !firstRow(); i++) await sleep(50);
+    if (!firstRow()) return mctlWhy(`${p}: the first capture never came back`);
+    const tFirst = Number(firstRow().split('\t')[2]);
+    for (const step of steps) {
+      if (!(await quiet(() => mobileStep(p, name, step)))) {
+        failed = true;
+        mctlWhy(`mburst: step failed: ${step}`);
+      }
     }
-  };
-  for (let i = 0; i < 200 && !firstRow(); i++) await sleep(50);
-  if (!firstRow()) {
+    // The burst lasts --seconds from its first frame, or until the step is done if that is later:
+    // what the step causes is the point of the burst.
+    const left = tFirst + Number(seconds) - Number(now());
+    if (left > 0) await sleep(left * 1000);
+  } finally {
     stop.now = true;
     await loop;
-    return mctlWhy(`${p}: the first capture never came back`);
   }
-  const tFirst = Number(firstRow().split('\t')[2]);
-  let failed = false;
-  for (const step of steps) {
-    if (!(await quiet(() => mobileStep(p, name, step)))) {
-      failed = true;
-      mctlWhy(`mburst: step failed: ${step}`);
-    }
-  }
-  // The burst lasts --seconds from its first frame, or until the step is done if that is later: what
-  // the step causes is the point of the burst.
-  const left = tFirst + Number(seconds) - Number(now());
-  if (left > 0) await sleep(left * 1000);
-  stop.now = true;
-  await loop;
   const r = await tool('burst', [raw, '--out-dir', dir, '--platform', p, '--scale', scale]);
   const out = `${r.stdout}${r.stderr}`.replace(/\n+$/, '');
   if (r.code !== 0) return mctlWhy(`burst: ${lines(out).pop() ?? ''}`);
