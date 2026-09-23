@@ -1,0 +1,18 @@
+{
+ "kind": "web",
+ "persona": "-",
+ "url": "https://example.com/",
+ "baseline": null,
+ "baseline_url": null,
+ "lang": "en",
+ "schemes": [
+  "light"
+ ],
+ "sizes": [
+  "360x800",
+  "1440x900"
+ ],
+ "full": false,
+ "api": "unknown",
+ "date": "2026-09-23T10:12:00+02:00"
+}
