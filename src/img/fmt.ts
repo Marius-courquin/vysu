@@ -289,3 +289,48 @@ export function pyJsonParse(text: string): unknown {
 
 // A float read by pyJsonParse, as a number.
 export const num = (v: unknown): number | null => (typeof v === 'number' ? v : isFloat(v) ? v[FLOAT] : null);
+
+// shlex.split(s): POSIX words, quotes joined to what touches them, a backslash escaping outside single
+// quotes (inside double ones only before « " » or « \ »). Throws on an open quote or a final backslash,
+// as shlex did.
+export function shlexSplit(s: string): string[] {
+  const words: string[] = [];
+  let token = '';
+  let inToken = false;
+  let quote: '' | "'" | '"' = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    if (quote === "'") {
+      if (c === "'") quote = '';
+      else token += c;
+      continue;
+    }
+    if (quote === '"') {
+      if (c === '"') quote = '';
+      else if (c === '\\') {
+        if (i + 1 >= s.length) throw new Error('No closing quotation');
+        const n = s[++i]!;
+        token += n === '"' || n === '\\' ? n : `\\${n}`;
+      } else token += c;
+      continue;
+    }
+    if (' \t\r\n'.includes(c)) {
+      if (inToken) words.push(token);
+      token = '';
+      inToken = false;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+      inToken = true;
+    } else if (c === '\\') {
+      if (i + 1 >= s.length) throw new Error('No escaped character');
+      token += s[++i]!;
+      inToken = true;
+    } else {
+      token += c;
+      inToken = true;
+    }
+  }
+  if (quote) throw new Error('No closing quotation');
+  if (inToken) words.push(token);
+  return words;
+}
