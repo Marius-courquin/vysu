@@ -23,7 +23,7 @@ import sharp, { type OverlayOptions } from 'sharp';
 import { pyRound } from '../core/py.ts';
 import { parseArgs, type ParserSpec } from './args.ts';
 import { byCodePoint, pyPath, pySplitlines, pyStrip } from './fmt.ts';
-import { readRgb, resizeFast, sharpOf, type Raster } from './raster.ts';
+import { imageSize, readRgb, resizeFast, sharpOf } from './raster.ts';
 import { inkBox, svgText } from './text.ts';
 import type { Io } from './tools.ts';
 
@@ -129,15 +129,59 @@ function inkText(text: string, x: number, y: number, size: number, fill: string,
   return svgText(text, left - x0, y - y0, size, fill);
 }
 
+interface Thumb {
+  input: Buffer;
+  w: number;
+  h: number;
+}
+
+// A cell's thumbnail as the PNG the page composites: its image decoded, shrunk into the cell, dropped.
+async function thumbnail(path: string, colW: number, height: number): Promise<Thumb> {
+  let thumb = await readRgb(path);
+  const scale = Math.min(1, (colW - 2) / thumb.width, (height - 2) / thumb.height);
+  if (scale < 1) thumb = await resizeFast(thumb, Math.max(1, pyRound(thumb.width * scale)), Math.max(1, pyRound(thumb.height * scale)));
+  return { input: await sharpOf(thumb).png({ compressionLevel: 0 }).toBuffer(), w: thumb.width, h: thumb.height };
+}
+
+// Cells decoded side by side up to this many pixels at once, one at a time past it: a page of phone
+// captures goes as fast as before, a full-page capture of 1440×30000 alone. Every image of a page
+// decoded at once and kept until the page was written took 909 MB for two such pairs (compare.py:
+// 381 MB).
+const DECODE_PX = 16_000_000;
+
+export async function thumbnails<T>(jobs: Array<{ px: number; run: () => Promise<T> }>, budget = DECODE_PX): Promise<T[]> {
+  const out: T[] = [];
+  const running = new Set<Promise<void>>();
+  let used = 0;
+  let next = 0;
+  while (next < jobs.length || running.size) {
+    while (next < jobs.length && (!used || used + jobs[next]!.px <= budget)) {
+      const k = next++;
+      const { px, run } = jobs[k]!;
+      used += px;
+      const p: Promise<void> = run()
+        .then((t) => {
+          out[k] = t;
+        })
+        .finally(() => {
+          used -= px;
+          running.delete(p);
+        });
+      running.add(p);
+    }
+    await Promise.race(running);
+  }
+  return out;
+}
+
 // One triptych page: three columns per pair, scaled so the long side stays inside `edge`.
 async function compose(page: Array<Array<[string, string]>>, labels: string[], edge: number, out: string): Promise<string> {
-  const cache = new Map<string, Promise<Raster>>();
-  const load = (p: string): Promise<Raster> => {
-    if (!cache.has(p)) cache.set(p, readRgb(p));
-    return cache.get(p)!;
+  const known = new Map<string, Promise<Size>>();
+  const sizeOf = (p: string): Promise<Size> => {
+    if (!known.has(p)) known.set(p, imageSize(p));
+    return known.get(p)!;
   };
-  const images = await Promise.all(page.map((cells) => Promise.all(cells.map(([p]) => load(p)))));
-  const sizes: Size[][] = images.map((row) => row.map((im) => [im.width, im.height] as Size));
+  const sizes: Size[][] = await Promise.all(page.map((cells) => Promise.all(cells.map(([p]) => sizeOf(p)))));
   const widest = Math.max(...sizes.flat().map(([w]) => w));
   let width = Math.min(edge, 2 * PAD + 2 * GAP + 3 * widest);
   for (let i = 0; i < 4; i++) {
@@ -150,6 +194,20 @@ async function compose(page: Array<Array<[string, string]>>, labels: string[], e
   const under: string[] = [];
   const over: string[] = [];
   const layers: OverlayOptions[] = [];
+  // One thumbnail per image and row: the unmarked « zones » cell repeats the « après » one.
+  const keyOf = (r: number, i: number): string => `${r}\0${page[r]![i]![0]}`;
+  const keys: string[] = [];
+  const jobs: Array<{ px: number; run: () => Promise<Thumb> }> = [];
+  for (let r = 0; r < page.length; r++) {
+    for (let i = 0; i < 3; i++) {
+      if (keys.includes(keyOf(r, i))) continue;
+      keys.push(keyOf(r, i));
+      const [w, h] = sizes[r]![i]!;
+      jobs.push({ px: w * h, run: () => thumbnail(page[r]![i]![0], colW, heights[r]!) });
+    }
+  }
+  const made = await thumbnails(jobs);
+  const thumbs = new Map(keys.map((k, j) => [k, made[j]!]));
   let y = PAD;
   for (let r = 0; r < page.length; r++) {
     const height = heights[r]!;
@@ -158,13 +216,11 @@ async function compose(page: Array<Array<[string, string]>>, labels: string[], e
     for (let i = 0; i < 3; i++) {
       const x = PAD + i * (colW + GAP);
       under.push(`<rect x="${x}" y="${y}" width="${colW}" height="${height}" fill="${CELL}"/>`);
-      let thumb = images[r]![i]!;
-      const scale = Math.min(1, (colW - 2) / thumb.width, (height - 2) / thumb.height);
-      if (scale < 1) thumb = await resizeFast(thumb, Math.max(1, pyRound(thumb.width * scale)), Math.max(1, pyRound(thumb.height * scale)));
+      const thumb = thumbs.get(keyOf(r, i))!;
       layers.push({
-        input: await sharpOf(thumb).png({ compressionLevel: 0 }).toBuffer(),
-        left: x + Math.floor((colW - thumb.width) / 2),
-        top: y + Math.floor((height - thumb.height) / 2),
+        input: thumb.input,
+        left: x + Math.floor((colW - thumb.w) / 2),
+        top: y + Math.floor((height - thumb.h) / 2),
       });
       over.push(`<rect x="${x + 0.5}" y="${y + 0.5}" width="${colW - 1}" height="${height - 1}" fill="none" stroke="${LINE}" stroke-width="1"/>`);
       over.push(inkText(page[r]![i]![1], x + Math.floor(colW / 2), y + height + 4, 12, SOFT, true));
