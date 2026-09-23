@@ -12,7 +12,7 @@ import { die, exit, onCleanup } from '../core/errors.ts';
 import { which } from '../core/host.ts';
 import { devices, type Platform } from '../core/hold.ts';
 import { metaWrite, repoSha } from '../core/meta.ts';
-import { clipNormalize, ev, evLog, evStart, evStop, now } from '../core/rec.ts';
+import { clipNormalize, evLog, evStart, evStep, evStop, now } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
 import { tool } from '../img/tools.ts';
 import { adb, androidSelect, iosUdid, mobileScale, serial } from './device.ts';
@@ -91,8 +91,7 @@ export async function mrec(argv: string[]): Promise<number> {
   evStart(rows);
   for (const step of steps) {
     say(`▸ ${step}`);
-    ev.target = '';
-    ev.label = '';
+    evStep();
     const t0 = now();
     // A step that fails — a label that is not on screen — is worth saying, not worth losing the take
     // for: the rest is played, and the clip is read back as usual.

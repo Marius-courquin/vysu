@@ -9,7 +9,7 @@ import { config } from '../core/ctx.ts';
 import { die, exit, onCleanup } from '../core/errors.ts';
 import { lockTake, resourceOf } from '../core/hold.ts';
 import { which } from '../core/host.ts';
-import { clipNormalize, ev, evLog, evStart, evStop, now } from '../core/rec.ts';
+import { clipNormalize, evLog, evStart, evStep, evStop, now } from '../core/rec.ts';
 import { tool } from '../img/tools.ts';
 import { ab, lastLine } from '../web/ab.ts';
 import { isFile, readLines } from '../web/lines.ts';
@@ -75,8 +75,7 @@ export async function run(args: string[]): Promise<void> {
   const print = (s: string): void => void process.stdout.write(s);
   for (const step of steps) {
     print(`▸ ${step}\n`);
-    ev.target = '';
-    ev.label = '';
+    evStep();
     const t0 = now();
     // A failed step must not leave ffmpeg recording for good: the clip is stopped either way.
     const ok = await webStep(persona, name, step, print);

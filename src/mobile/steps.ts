@@ -6,7 +6,7 @@ import { config } from '../core/ctx.ts';
 import { die, VysuError } from '../core/errors.ts';
 import type { Platform } from '../core/hold.ts';
 import { i18nLabel } from '../core/i18n.ts';
-import { ev, now } from '../core/rec.ts';
+import { ev, evTouch, now } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
 import { ad, adCall, calls, parseAnswer, type Answer, type Call } from './agent.ts';
 import { lines, quiet, say, tell, why } from './io.ts';
@@ -31,6 +31,7 @@ const firstLine = (s: unknown): string => (typeof s === 'string' && s ? (s.split
 // only place a tap's coordinates ever exist, and a recording needs them to draw its ripple. The human
 // line stays what it was — agent-device's own « Tapped label="…" (166, 822) ».
 async function adPress(p: Platform, call: Call): Promise<string | null> {
+  evTouch();
   const a = await adCall(p, call);
   if (!a.ok) return null;
   ev.target = target(a.data);
@@ -52,11 +53,14 @@ function said(a: Answer): Said {
   ev.target = target(a.data);
   return { ok: true, line: firstLine(a.data.message) };
 }
+const TOUCHES = ['press', 'longpress', 'click', 'tap', 'fill', 'find'];
 export async function adJson(p: Platform, call: Call): Promise<Said> {
+  if (TOUCHES.includes(call.cli[0] ?? '')) evTouch();
   return said(await adCall(p, call));
 }
 // The same for a verb given in agent-device's own words (`press 173 822`, `longpress @e3 800`).
 async function adJsonRaw(p: Platform, args: string[]): Promise<Said> {
+  if (TOUCHES.includes(args[0] ?? '')) evTouch();
   const r = await ad(p, [...args, '--json']);
   return said(parseAnswer(r.stdout, r.code));
 }

@@ -4,6 +4,7 @@
 // `vysu flow` and `vysu mflow` pay nothing and write nothing.
 import { appendFileSync, renameSync, rmSync } from 'node:fs';
 import { run } from './proc.ts';
+import { config } from './ctx.ts';
 import { die } from './errors.ts';
 
 export const ev = {
@@ -13,13 +14,21 @@ export const ev = {
   target: '',
   // The label a « t:<i18n.key> » step resolved to, which the raw line no longer holds.
   label: '',
+  // The clock when the step's first touch was sent: a tap reads the screen before it presses.
+  at: '',
 };
 
 export function evStart(rowsFile: string): void {
   ev.rows = rowsFile;
   ev.i = 0;
+  evStep();
+}
+
+// What a step knows is its own: cleared before each one.
+export function evStep(): void {
   ev.target = '';
   ev.label = '';
+  ev.at = '';
 }
 
 export function evStop(): void {
@@ -29,11 +38,32 @@ export function evStop(): void {
 // Seconds since the epoch to the millisecond, the clock every row is written in.
 export const now = (): string => (Date.now() / 1000).toFixed(3);
 
+// The instant a step touches the screen: each press, click or fill it sends overwrites it, so a search
+// that tries a label, then a text, then a point keeps the attempt that landed. Typing into a field
+// already focused is not a touch.
+export function evTouch(): void {
+  if (ev.rows) ev.at = now();
+}
+
+// A recorded take types at a person's pace (img/pace.ts): a field that fills in a blink reads as a
+// paste on screen. Everything else fills at once. VYSU_TYPING says otherwise: `fast` for a take that
+// must not wait, `human` for a flow someone watches live.
+export function typingHuman(): boolean {
+  const how = config().get('TYPING');
+  if (how === 'fast') return false;
+  if (how === 'human') return true;
+  return ev.rows !== '';
+}
+
+export function evRow(line: string, start: string, end: string, ok: boolean): string {
+  const text = line.replace(/[\t\n]/g, ' ');
+  return `${ev.i}\t${start}\t${end}\t${ok}\t${ev.target}\t${ev.label}\t${text}\t${ev.at}\n`;
+}
+
 export function evLog(line: string, start: string, end: string, ok: boolean): void {
   if (!ev.rows) return;
   ev.i++;
-  const text = line.replace(/[\t\n]/g, ' ');
-  appendFileSync(ev.rows, `${ev.i}\t${start}\t${end}\t${ok}\t${ev.target}\t${ev.label}\t${text}\n`);
+  appendFileSync(ev.rows, evRow(line, start, end, ok));
 }
 
 // One transcode at the end of a take, so every consumer reads the same clip: H.264 yuv420p (what

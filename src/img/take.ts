@@ -14,7 +14,7 @@ import { config } from '../core/ctx.ts';
 import { run } from '../core/proc.ts';
 import { pyRound } from '../core/py.ts';
 import { parseArgs, type ParserSpec } from './args.ts';
-import { float, num, pyFixed, pyFloat, pyG, pyJson, pyJsonParse, pySplit, pySplitlines, pyStrip, pyStrRepr, shlexSplit, type PyFloat } from './fmt.ts';
+import { float, num, pyFixed, pyFloat, pyG, pyJson, pyJsonParse, pyRoundTo, pySplit, pySplitlines, pyStrip, pyStrRepr, shlexSplit, type PyFloat } from './fmt.ts';
 import type { Io } from './tools.ts';
 
 const ACTIONS = ['tap', 'fill', 'key', 'go', 'relaunch'];
@@ -120,6 +120,51 @@ export function isoMillis(t: number): string {
   );
 }
 
+// Seconds between sending a touch and the touch landing: agent-device's round trip to the device,
+// the browser's to its page.
+const TOUCH_LATENCY: Record<string, number> = { mobile: 0.15, web: 0.05 };
+
+// A step's seconds in the clip, kept as numbers beside the step that prints them as floats.
+export interface Timed {
+  start: number;
+  end: number;
+  at?: number;
+}
+export interface Row {
+  step: Record<string, unknown>;
+  t: Timed;
+}
+
+// The raw rows a take appended, one step each: « i start end ok target label line at », tab-separated,
+// in the clock the take ran on; `t0` is the clip's first frame in that clock.
+export function readRows(text: string, t0: number, kind: string, platform: string): Row[] {
+  const rows: Row[] = [];
+  for (const raw of pySplitlines(text)) {
+    if (!pyStrip(raw)) continue;
+    const cells = raw.split('\t');
+    while (cells.length < 8) cells.push('');
+    const [i, start, end, ok, target, override, line, at] = cells as [string, string, string, string, string, string, string, string];
+    const { verb, label, extra } = parseStep(line, kind, platform, override);
+    const step: Record<string, unknown> = { i: Number(pyStrip(i)), line, verb };
+    if (label) step.label = label;
+    const t: Timed = { start: pyRoundTo(pyFloat(start)! - t0, 2), end: pyRoundTo(pyFloat(end)! - t0, 2) };
+    step.start = float(t.start);
+    step.end = float(t.end);
+    // When the step touched the screen: the clock it sent its first press at, plus the driver's own
+    // round trip before the touch lands. A tap reads the screen first, so its start is not it.
+    if (at) {
+      t.at = pyRoundTo(pyFloat(at)! - t0 + (TOUCH_LATENCY[kind] ?? 0), 2);
+      step.at = float(t.at);
+    }
+    step.ok = ok !== 'false';
+    Object.assign(step, extra);
+    const box = targetOf(target);
+    if (box) step.target = box;
+    rows.push({ step, t });
+  }
+  return rows;
+}
+
 export interface EventsArgs {
   dir: string;
   rows: string;
@@ -158,23 +203,8 @@ export async function takeEvents(a: EventsArgs): Promise<string> {
     unit = 'pt';
   }
 
-  const steps: Array<Record<string, unknown>> = [];
-  for (const raw of pySplitlines(readFileSync(a.rows, 'utf8'))) {
-    if (!pyStrip(raw)) continue;
-    const cells = raw.split('\t');
-    while (cells.length < 7) cells.push('');
-    const [i, start, end, ok, target, override, line] = cells as [string, string, string, string, string, string, string];
-    const { verb, label, extra } = parseStep(line, a.kind, a.platform, override);
-    const step: Record<string, unknown> = { i: Number(pyStrip(i)), line, verb };
-    if (label) step.label = label;
-    step.start = float(Number(pyFixed(pyFloat(start)! - t0, 2)));
-    step.end = float(Number(pyFixed(pyFloat(end)! - t0, 2)));
-    step.ok = ok !== 'false';
-    Object.assign(step, extra);
-    const box = targetOf(target);
-    if (box) step.target = box;
-    steps.push(step);
-  }
+  const rows = readRows(readFileSync(a.rows, 'utf8'), t0, a.kind, a.platform);
+  const steps = rows.map((r) => r.step);
 
   const events = {
     version: 1,
