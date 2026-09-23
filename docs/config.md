@@ -90,6 +90,9 @@ in [`connectors/auth/form.sh`](../connectors/auth/form.sh).
 | `VYSU_MOBILE_SCHEME` | the dev-client scheme handed to Metro's URL; empty skips the dev-launcher hand-off | empty | `exp+myapp` |
 | `VYSU_MOBILE_DEEPLINK` | what `vysu mopen <route>` appends a route to (a leading `/` of the route is dropped); an argument holding `://` is opened as it is, and without this key only full urls are | empty | `myapp:///` |
 | `VYSU_MOBILE_READY_TEXT` | texts that prove the app has booted, comma-separated: what `mrelaunch` waits for instead of a delay | empty (a fixed delay) | `Sign in,Welcome` |
+| `VYSU_MOBILE_DISMISS_LABELS` | expo: the buttons that close Expo's dev menu and its first-run intro, comma-separated, in the simulator's language; `mrelaunch` presses them only while the menu's own texts are on screen | `Continue,Close` | `Continuer,Continue,Fermer,Close` |
+| `VYSU_METRO_PORT` | expo: the port of the Metro every session shares. An owner with an isolated Metro (`vysu up <platform> --isolated`) uses its own port instead, unless this key is exported in the environment, which wins over both | `8081` | `8081` |
+| `VYSU_MLOG_IGNORE` | lines `vysu mlog` drops, as extended regexes separated by `\|` (one ERE); the reading ends with how many were dropped | empty | `\[boot \|i18next is made possible` |
 | `VYSU_IOS_DEVICE` | the recent simulator: what an owner's commands drive until it chooses another one. A choice (`vysu claim ios --device` / `--any`, `vysu up ios --device`) is remembered per owner and wins over this key; the environment wins over both | the machine's last remembered choice, else `iPhone 17 Pro` | `iPhone 17 Pro` |
 | `VYSU_IOS_OLD_DEVICE` | the old simulator, created by `vysu setup` | `vysu iPhone SE (iOS 18)` | `my iPhone SE (iOS 18)` |
 | `VYSU_IOS_DEVICES` | the iOS pool `vysu claim ios --any` picks from, comma-separated; the clones vysu makes of them (`<name> (vysu N)`) join it | `VYSU_IOS_DEVICE`, `VYSU_IOS_OLD_DEVICE` | `iPhone 17 Pro,my iPhone SE (iOS 18),iPhone 17 Pro B` |
@@ -113,6 +116,15 @@ so the filter survives a relaunch). There is no Metro, no `adb reverse` and no b
 `vysu mrelaunch` terminates, applies text size / appearance / language, launches, and waits for
 `VYSU_MOBILE_READY_TEXT` — or five seconds when the project names nothing. `vysu mlog` reads that
 app log instead of `metro.log`, and `vysu down applog [ios|android]` stops the tails.
+
+In **expo mode** Metro's log is `logs/metro.log` for port 8081 and `logs/metro-<port>.log` for any
+other. `vysu mrelaunch` starts the dev-client straight into the Metro of its owner (iOS: the
+`--initialUrl` launch argument; Android: the dev-client deep link), sets Expo's dev-menu
+preferences so its first-run intro never opens, and starts a tail of that device's JS console
+(`logs/<platform>-js-<device>.log`, read by `vysu mlog <platform> --device`). Several sessions share
+one Metro by default; `vysu up <platform> --isolated [--port <n>] [--dir <folder>]` starts one for
+the calling owner from its own checkout (`logs/metro-<port>.log`, remembered in
+`$VYSU_STATE/metro-port.<owner>`), and `vysu down metro` stops it again.
 
 `vysu setup` also writes `~/.vysu/devices.env` with `VYSU_IOS_DEVICE`, `VYSU_IOS_OLD_DEVICE` and
 `VYSU_ANDROID_AVDS`: a machine says which devices it has, and a project config still wins over it.

@@ -368,7 +368,7 @@ pool_android_start() {
   done
   [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] || return 1
   # Metro reachable as localhost from the emulator: an expo concern only.
-  [ "$(mobile_kind)" != expo ] || adb reverse tcp:8081 tcp:8081 >/dev/null 2>&1 || true
+  [ "$(mobile_kind)" != expo ] || adb reverse "tcp:$(metro_port)" "tcp:$(metro_port)" >/dev/null 2>&1 || true
 }
 
 # --- clones ------------------------------------------------------------------------------------

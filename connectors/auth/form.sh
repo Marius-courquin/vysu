@@ -126,7 +126,7 @@ auth_mobile_login() { # platform persona
   local app; app="$(mobile_app "$platform")"
   [ -n "$app" ] || die "mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set"
   [ "$platform" != ios ] || ios_lock
-  [ "$platform" != android ] || { android_select; adb reverse tcp:8081 tcp:8081 >/dev/null 2>&1; }
+  [ "$platform" != android ] || { android_select; adb reverse "tcp:$(metro_port)" "tcp:$(metro_port)" >/dev/null 2>&1; }
   mob "$platform" open "$app" --foreground --relaunch --timeout 600000 >/dev/null 2>&1 \
     || die "$platform: cannot open the app (vysu up $platform --build?)"
   mobile_load_bundle "$platform"

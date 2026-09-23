@@ -69,13 +69,22 @@ mobile_kind() {
   local kind; kind="$(cfg MOBILE_KIND expo)"
   case "$kind" in expo|native) printf '%s' "$kind";; *) die "VYSU_MOBILE_KIND must be expo or native (got « $kind »)";; esac
 }
-# The app's own log in native mode, one file per platform, written by the tail `vysu up` starts.
-mobile_applog_file() { printf '%s/%s-app.log' "$LOGS" "$1"; }
-mobile_applog_pid() { printf '%s/applog-%s.pid' "$STATE" "$1"; }
+# The app's own log in native mode, one file per platform, written by the tail `vysu up` starts. In
+# expo mode, `js`: the JS console of ONE device (`vysu mlog <platform> --device`), one file per
+# device, since Metro's log mixes every device that bundles from it.
+mobile_device_slug() { if [ "$1" = android ]; then slug "$ANDROID_AVD"; else slug "$IOS_DEVICE"; fi; }
+mobile_applog_file() { # platform [js]
+  if [ "${2:-}" = js ]; then printf '%s/%s-js-%s.log' "$LOGS" "$1" "$(mobile_device_slug "$1")"
+  else printf '%s/%s-app.log' "$LOGS" "$1"; fi
+}
+mobile_applog_pid() { # platform [js]
+  if [ "${2:-}" = js ]; then printf '%s/jslog-%s-%s.pid' "$STATE" "$1" "$(mobile_device_slug "$1")"
+  else printf '%s/applog-%s.pid' "$STATE" "$1"; fi
+}
 # The pid file holds one pid per line: the tail is a single process on iOS and on a recent Android,
 # and an « adb logcat | grep » pair on an older one. The first line is the one whose death means the
 # tail is over, and `applog_stop` kills them all.
-mobile_applog_alive() { local f; f="$(mobile_applog_pid "$1")"; [ -s "$f" ] && kill -0 "$(head -1 "$f")" 2>/dev/null; }
+mobile_applog_alive() { local f; f="$(mobile_applog_pid "$1" "${2:-}")"; [ -s "$f" ] && kill -0 "$(head -1 "$f")" 2>/dev/null; }
 # `vysu mlog` with no platform: the one that was last written to, iOS when neither exists yet.
 mobile_applog_platform() {
   local newest="" p
@@ -107,19 +116,30 @@ android_app_uid() { # package
 # 2291) » — and the same filter is applied here, which survives a relaunch exactly as --uid does.
 android_logcat_has_uid() { adb -s "$ANDROID_SERIAL" shell logcat --help 2>&1 | grep -q -- '--uid'; }
 # The tail `vysu up <platform>` starts in native mode: the app's own log, from now on, into
-# logs/<platform>-app.log, which `vysu mlog` then reads exactly as it reads Metro's.
-applog_start() { # platform
-  local platform="$1" log pidf
-  log="$(mobile_applog_file "$platform")"; pidf="$(mobile_applog_pid "$platform")"
-  mobile_applog_alive "$platform" && { echo "$platform: app log already tailing ($log)"; return 0; }
+# logs/<platform>-app.log, which `vysu mlog` then reads exactly as it reads Metro's. With `js` (expo
+# mode, started by `vysu mrelaunch` and `vysu mlog <platform> --device|mark`), the JS console of this
+# device only: React Native writes it to os_log under com.facebook.react.log / javascript on iOS (a
+# console.log at the info level, which `log stream` hides unless asked), and to logcat under the
+# ReactNativeJS tag on Android. Both filters outlive a relaunch, as the native ones do.
+applog_start() { # platform [js]
+  local platform="$1" kind="${2:-}" log pidf
+  log="$(mobile_applog_file "$platform" "$kind")"; pidf="$(mobile_applog_pid "$platform" "$kind")"
+  mobile_applog_alive "$platform" "$kind" && { echo "$platform: ${kind:+JS }log already tailing ($log)"; return 0; }
   mkdir -p "$LOGS" "$STATE"
   local bundle; bundle="$(cfg MOBILE_BUNDLE)"
+  if [ "$kind" = js ] && [ "$platform" = android ]; then
+    ( nohup adb -s "$ANDROID_SERIAL" logcat -v time -T 1 -s ReactNativeJS:V >"$log" 2>&1 </dev/null & echo $! >"$pidf" )
+    echo "$platform: JS log → $log (vysu mlog $platform --device)"
+    return 0
+  fi
   if [ "$platform" = ios ]; then
     local exe; exe="$(ios_app_executable "$bundle" || true)"
-    [ -n "$exe" ] || { echo "ios: $bundle is not installed — no app log (vysu up ios --reinstall)"; return 0; }
-    ( nohup xcrun simctl spawn "$(ios_udid)" log stream --style compact \
-        --predicate "processImagePath ENDSWITH \"/$exe\" AND eventType == \"logEvent\" AND messageType != debug" \
-        >"$log" 2>&1 </dev/null & echo $! >"$pidf" )
+    [ -n "$exe" ] || { echo "ios: $bundle is not installed, no ${kind:+JS }log (vysu up ios --reinstall)"; return 0; }
+    local predicate="processImagePath ENDSWITH \"/$exe\" AND eventType == \"logEvent\" AND messageType != debug" level=()
+    [ "$kind" != js ] || { predicate="processImagePath ENDSWITH \"/$exe\" AND subsystem == \"com.facebook.react.log\" AND category == \"javascript\""; level=(--level info); }
+    ( nohup xcrun simctl spawn "$(ios_udid)" log stream --style compact ${level[@]+"${level[@]}"} \
+        --predicate "$predicate" >"$log" 2>&1 </dev/null & echo $! >"$pidf" )
+    [ "$kind" != js ] || { echo "ios: JS log → $log (vysu mlog ios --device)"; return 0; }
   else
     # `|| true`, like the iOS side: no uid is an answer — the app is not there, or the system
     # services are not back yet — and under pipefail the empty grep would end `up` on the spot,
@@ -139,14 +159,16 @@ applog_start() { # platform
   fi
   echo "$platform: app log → $log (vysu mlog)"
 }
-applog_stop() { # platform… — what `vysu down applog` calls
-  local platform pidf pid stopped=0
+applog_stop() { # platform…: what `vysu down applog` calls, the app tails and every device's JS tail
+  local platform pidf pid what stopped=0
   for platform in "$@"; do
-    pidf="$(mobile_applog_pid "$platform")"
-    [ -s "$pidf" ] || continue
-    while read -r pid; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || true; done <"$pidf"
-    rm -f "$pidf"
-    echo "$platform: app log stopped"; stopped=1
+    for pidf in "$(mobile_applog_pid "$platform")" "$STATE/jslog-$platform-"*.pid; do
+      [ -s "$pidf" ] || continue
+      while read -r pid; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || true; done <"$pidf"
+      rm -f "$pidf"
+      case "$pidf" in */jslog-*) what="JS log of $(basename "$pidf" .pid | sed "s/^jslog-$platform-//")";; *) what="app log";; esac
+      echo "$platform: $what stopped"; stopped=1
+    done
   done
   [ "$stopped" = 1 ] || echo "applog: nothing was tailing"
 }
@@ -158,9 +180,8 @@ applog_stop() { # platform… — what `vysu down applog` calls
 # open …`), and without it every snapshot is an immediate error: a wait that polls it would only
 # burn its fifteen tries.
 mobile_session_open() { # platform
-  local dev="$ANDROID_AVD"; [ "$1" = android ] || dev="$IOS_DEVICE"
   local sessions; sessions="$(agent-device session list 2>/dev/null || true)"
-  case "$sessions" in *"\"$(cfg PROJECT)-$1-$(slug "$dev")\""*) return 0;; esac
+  case "$sessions" in *"\"$(mobile_session_name "$1")\""*) return 0;; esac
   return 1
 }
 mobile_installed() { # platform bundle
@@ -171,6 +192,77 @@ mobile_installed() { # platform bundle
     case "$pkgs" in *"package:$2"*) return 0;; esac
     return 1
   fi
+}
+mobile_session_name() { printf '%s-%s-%s' "$(cfg PROJECT)" "$1" "$(mobile_device_slug "$1")"; }
+# The session a snapshot needs, reopened quietly when it is gone (a daemon restart, a `close`): agents
+# used to re-run `open --foreground` by hand after every relaunch. `open` without --relaunch only
+# brings the running app forward; the first one on a new runtime builds agent-device's runner.
+mobile_session_ensure() { # platform
+  mobile_session_open "$1" && return 0
+  ad "$1" open "$(mobile_app "$1")" --timeout "$(mobile_open_timeout "$1")" >/dev/null 2>&1
+}
+# Every agent-device call a wait makes is bounded, or a thrashing emulator turns a 60 s budget into
+# eight minutes (seen: a relaunch that took 486 s). An iOS open may have to build the XCTest runner
+# first, which is minutes on a loaded Mac; an Android open has nothing to build.
+mobile_open_timeout() { [ "$1" = ios ] && printf 180000 || printf 60000; }
+MOBILE_SNAPSHOT_TIMEOUT=15000
+# A session bound to another device. An emulator restarted while another one held its port comes back
+# on a new serial, and the session named after it still points at the old one: every command then
+# fails with « already bound to … ». `agent-device close` with no app ends the session and closes no
+# app (it only closes an app it is named), so dropping it and reopening is safe. When the serial is
+# held by a session named after ANOTHER AVD of this project, that one is the same leftover seen from
+# the other side (vysu binds a session to the serial of the AVD it is named after, and to nothing
+# else), and it is dropped too.
+mobile_session_repair() { # platform "<the error agent-device answered>"
+  local platform="$1" name out other
+  name="$(mobile_session_name "$platform")"
+  case "$2" in *"is already bound to"*) agent-device close --session "$name" >/dev/null 2>&1 || true;; esac
+  out="$(ad "$platform" open "$(mobile_app "$platform")" --timeout "$(mobile_open_timeout "$platform")" 2>&1 >/dev/null)" && return 0
+  [ "$platform" = android ] || return 1
+  other="$(printf '%s\n' "$out" | sed -n 's/.*in use by session "\([^"]*\)".*/\1/p' | head -1 || true)"
+  case "$other" in "$(cfg PROJECT)-android-"*) [ "$other" != "$name" ] || return 1;; *) return 1;; esac
+  agent-device close --session "$other" >/dev/null 2>&1 || true
+  log "android: dropped the session $other, left over on $ANDROID_SERIAL from an emulator restart"
+  ad "$platform" open "$(mobile_app "$platform")" --timeout "$(mobile_open_timeout "$platform")" >/dev/null 2>&1
+}
+# Does this text hold a line matching this ERE? `grep -c` reads everything it is given, where a
+# `printf | grep -q` leaves early and the SIGPIPE it leaves behind reads as « no » under pipefail.
+text_has() { [ "$(printf '%s\n' "$1" | grep -cE "$2" || true)" != 0 ]; }
+
+# Expo's dev menu opens on top of the app at launch until its first-run intro has been seen once, on
+# every fresh install and on every simulator that never had it dismissed: 27 times in one audit.
+# Its two preferences are set before the launch instead (expo-dev-menu 56: `EXDevMenuIsOnboardingFinished`
+# / `EXDevMenuShowsAtLaunch` in the app's standard user defaults on iOS; `isOnboardingFinished` /
+# `showsAtLaunch` in shared_prefs/expo.modules.devmenu.sharedpreferences.xml on Android). Written with
+# the app stopped, since the app keeps its own copy while it runs. iOS goes through the simulator's
+# own `defaults` on the container's plist path: its cfprefsd is the one the app reads from, where a
+# plain write to the file could be overwritten by that daemon's cache. Android needs a debuggable build
+# for `run-as`, which a dev-client is; a release build answers « not debuggable » and is left alone.
+mobile_quiet_dev_menu() { # platform bundle
+  local platform="$1" bundle="$2"
+  if [ "$platform" = ios ]; then
+    local data plist; data="$(xcrun simctl get_app_container "$(ios_udid)" "$bundle" data 2>/dev/null)" || return 0
+    plist="$data/Library/Preferences/$bundle"
+    [ "$(plutil -extract EXDevMenuIsOnboardingFinished raw "$plist.plist" 2>/dev/null)" != true ] \
+      || [ "$(plutil -extract EXDevMenuShowsAtLaunch raw "$plist.plist" 2>/dev/null)" != false ] || return 0
+    sim spawn defaults write "$plist" EXDevMenuIsOnboardingFinished -bool YES >/dev/null 2>&1 || true
+    sim spawn defaults write "$plist" EXDevMenuShowsAtLaunch -bool NO >/dev/null 2>&1 || true
+    return 0
+  fi
+  local prefs=shared_prefs/expo.modules.devmenu.sharedpreferences.xml cur
+  cur="$(adb shell run-as "$bundle" cat "$prefs" 2>/dev/null | tr -d '\r' || true)"
+  case "$cur" in *"run-as:"*) return 0;; esac   # not debuggable, or not installed
+  case "$cur" in *'name="isOnboardingFinished" value="true"'*) case "$cur" in *'name="showsAtLaunch" value="false"'*) return 0;; esac;; esac
+  case "$cur" in *"<map"*) ;; *) cur="<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+</map>";; esac
+  local tmp; tmp="$STATE/.devmenu-$$.xml"; mkdir -p "$STATE"
+  printf '%s\n' "$cur" | grep -vE 'name="(isOnboardingFinished|showsAtLaunch)"' \
+    | sed 's#</map>#    <boolean name="isOnboardingFinished" value="true" />\
+    <boolean name="showsAtLaunch" value="false" />\
+</map>#' >"$tmp"
+  adb shell "run-as $bundle sh -c 'mkdir -p shared_prefs && cat > $prefs'" <"$tmp" >/dev/null 2>&1 || true
+  rm -f "$tmp"
 }
 
 mobile_app() { [ "$1" = ios ] && printf '%s' "$(cfg IOS_APP)" || printf '%s' "$(cfg MOBILE_BUNDLE)"; }
@@ -312,36 +404,63 @@ mobile_ready_grep() {
   [ -n "$texts" ] || return 1
   printf '%s' "$texts" | tr ',' '\n' | sed 's/^/"/; s/$/"/' | paste -sd'|' -
 }
-# A freshly installed dev-client shows Expo's launcher until it is handed the Metro bundle URL.
-mobile_load_bundle() {
-  local scheme; scheme="$(cfg MOBILE_SCHEME)"
-  [ -n "$scheme" ] || return 0
-  local on_launcher=0
+# Expo's launcher (« Development Build » and its server list) or its error page (« There was a problem
+# loading the project »: the load timed out on a busy Mac, or Metro was down): either way the app
+# never got its bundle, and handing it the URL again is the fix for both.
+MOBILE_LAUNCHER_GREP='"Development Build"|There was a problem loading the project'
+mobile_on_launcher() { # platform [snapshot text already read]
   if [ "$1" = android ]; then
-    adb shell dumpsys window 2>/dev/null | grep -q "DevLauncherActivity" && on_launcher=1
+    local focus; focus="$(adb shell dumpsys window 2>/dev/null | grep mCurrentFocus || true)"
+    case "$focus" in *DevLauncher*) return 0;; esac
+    return 1
+  fi
+  local snap="${2:-}"
+  [ -n "$snap" ] || snap="$(ad ios snapshot -i --timeout "$MOBILE_SNAPSHOT_TIMEOUT" 2>/dev/null || true)"
+  text_has "$snap" "$MOBILE_LAUNCHER_GREP"
+}
+# The dev-client, started straight into this owner's Metro: the launcher never shows, so nothing has
+# to be handed to it afterwards. iOS reads `--initialUrl <url>` from its launch arguments
+# (expo-dev-launcher's initialUrlFromProcessInfo), which also spares the « Open in … ? » confirmation
+# iOS 18 puts in front of a custom-scheme URL sent by simctl. Android takes the dev-client deep link as
+# a VIEW intent, the one way in: its launcher never reloads the last app by itself (a plain launch sat
+# on it for the ten seconds the old relaunch waited before handing the URL over).
+MOBILE_HANDED_AT=0
+mobile_hand_bundle() { # platform [lang]
+  local platform="$1" lang="${2:-}" bundle port url
+  MOBILE_HANDED_AT="$(date +%s)"
+  bundle="$(cfg MOBILE_BUNDLE)"; port="$(metro_port)"; url="$(metro_url "$port")"
+  if [ "$platform" = android ]; then
+    adb reverse "tcp:$port" "tcp:$port" >/dev/null 2>&1 || true
+    adb shell am start -a android.intent.action.VIEW \
+      -d "$(cfg MOBILE_SCHEME)://expo-development-client/?url=$(printf '%s' "$url" | sed 's/:/%3A/g; s#/#%2F#g')" \
+      "$bundle" >/dev/null 2>&1
   else
-    ad ios snapshot -i 2>/dev/null | grep -q '"Development Build"' && on_launcher=1
+    sim terminate "$bundle" >/dev/null 2>&1 || true
+    if [ -n "$lang" ]; then
+      sim launch "$bundle" --initialUrl "$url" -AppleLanguages "($lang)" -AppleLocale "$(ios_locale_of "$lang")" >/dev/null
+    else
+      sim launch "$bundle" --initialUrl "$url" >/dev/null
+    fi
   fi
-  if [ "$on_launcher" = 1 ]; then
-    local metro="localhost:8081"
-    local url="$scheme://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
-    # Which Metro this dev-client is bound to: an agent taking the device over needs it to know
-    # whether the bundle on screen is the one its own branch serves.
-    mstate_set "$1" metro "$metro"
-    if [ "$1" = ios ]; then
-      sim openurl "$url" >/dev/null
-      sleep 2; mob_press_any ios "Ouvrir,Open" || true   # iOS 18 confirms a custom-scheme URL from simctl
-    else adb shell am start -a android.intent.action.VIEW -d "$url" >/dev/null 2>&1; fi
-    # First bundle of a fresh Metro takes a while; poll the window instead of guessing a delay.
-    local ready; ready="$(mobile_ready_grep || true)"
-    local i; for i in $(seq 1 30); do
-      sleep 3
-      if [ "$1" = android ]; then adb shell dumpsys window 2>/dev/null | grep -q "MainActivity" && break
-      elif [ -n "$ready" ]; then ad ios snapshot -i 2>/dev/null | grep -qE "$ready" && break
-      else break; fi
-    done
-    sleep 5
-  fi
+  mobile_record_metro "$platform" "$port"
+}
+# Which Metro this dev-client is bound to: an agent taking the device over needs it to know whether
+# the bundle on screen is the one its own branch serves, and whose isolated Metro that is.
+mobile_record_metro() { # platform port
+  local iso=""; ! metro_is_isolated || iso="$(vysu_owner)"
+  mstate_set "$1" metro "localhost:$2"
+  [ "$(mstate_get "$1" metro_isolated)" = "$iso" ] || mstate_set "$1" metro_isolated "$iso"
+}
+# A dev-client sitting on Expo's launcher (a fresh install, a load that timed out) is handed this
+# owner's Metro URL, then waited for: the bundle served, the first screen up. A no-op anywhere else.
+# The primitive a connector calls right after its own `open`.
+mobile_load_bundle() { # platform
+  [ -n "$(cfg MOBILE_SCHEME)" ] || return 0
+  mobile_on_launcher "$1" || return 0
+  local log from; log="$(metro_log)"; from="$(metro_lines "$log")"
+  mobile_hand_bundle "$1"
+  mobile_wait_bundled "$1" "$log" "$from" 120 "vysu: $1"
+  mobile_wait_ready "$1" 40 || true
 }
 
 # Press by accessible label, else by visible text, else by the first element whose label contains
@@ -447,13 +566,17 @@ android_locale_of() {
 }
 ios_locale_of() { printf '%s' "$(android_locale_of "$1")" | tr '-' '_'; }
 
-# Start the app. Android goes through the launcher intent (`am start` needs the activity name,
-# which only the app knows); iOS takes the language per launch, which is why `--lang` is its own
-# pair of arguments here and a system setting on the other platform.
+# Start the app. In expo mode with a dev-client scheme, straight into this owner's Metro
+# (mobile_hand_bundle). Otherwise Android goes through the launcher intent (`am start` needs the
+# activity name, which only the app knows); iOS takes the language per launch, which is why `--lang`
+# is its own pair of arguments here and a system setting on the other platform.
 mobile_launch() { # platform bundle [lang]
+  if [ "$(mobile_kind)" = expo ] && [ -n "$(cfg MOBILE_SCHEME)" ]; then
+    mobile_hand_bundle "$1" "${3:-}"; return
+  fi
   if [ "$1" = android ]; then
-    # Metro is reachable as localhost from the emulator — an expo concern, and adbd restarts drop it.
-    [ "$(mobile_kind)" != expo ] || adb reverse tcp:8081 tcp:8081 >/dev/null 2>&1
+    # Metro is reachable as localhost from the emulator: an expo concern, and adbd restarts drop it.
+    if [ "$(mobile_kind)" = expo ]; then local port; port="$(metro_port)"; adb reverse "tcp:$port" "tcp:$port" >/dev/null 2>&1 || true; fi
     adb shell monkey -p "$2" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
   elif [ -n "${3:-}" ]; then
     sim launch "$2" -AppleLanguages "($3)" -AppleLocale "$(ios_locale_of "$3")" >/dev/null
@@ -462,10 +585,111 @@ mobile_launch() { # platform bundle [lang]
   fi
 }
 
+# Metro says when it has handed the bundle over (« iOS Bundled … » / « Android Bundled … »): cheaper
+# and surer than reading the tree, which a dev-client shows nothing of until then. A « Bundling
+# failed » for the same platform ends the wait at once, with the error: an edit that broke the build
+# (maybe another session's, on the same checkout) otherwise reads as a two-minute timeout. A launcher
+# or its error page is handed the URL again from the first look, not after a guessed delay.
+mobile_wait_bundled() { # platform log from seconds "<who, for the error>"
+  local platform="$1" log="$2" from="$3" budget="$4" who="$5" tag last t0 looked=0 handed=0 err
+  tag="$(metro_tag "$platform")"; t0="$(date +%s)"
+  while :; do
+    last="$(tail -n "+$((from + 1))" "$log" 2>/dev/null | grep -E "(^|[^A-Za-z])$tag (Bundled|Bundling failed) [0-9]" | tail -1 || true)"
+    case "$last" in
+      *"$tag Bundled "*) MOBILE_BUNDLED_AT="$(date +%s)"; mobile_record_metro "$platform" "$(metro_port)"; return 0;;
+      *"$tag Bundling failed "*)
+        err="$(metro_bundle_error_since "$from" "$log" || true)"
+        die "$who: Metro could not bundle for $tag: ${err:-see $log}" \
+          "fix it (the edit may be another session's on the same checkout), then vysu mrelaunch $platform";;
+    esac
+    [ $(( $(date +%s) - t0 )) -lt "$budget" ] || die "$who: Metro never served the $tag bundle in ${budget}s (see $log)"
+    # Every few seconds, not on every turn: a look costs a snapshot on iOS. And not in the first 20 s
+    # after a hand-off: the Android launcher holds the focus for as long as it fetches the manifest,
+    # and on a loaded Mac that is many seconds of a load going well, which a new hand-off would
+    # restart. Twice at most, then the budget decides.
+    if [ -n "$(cfg MOBILE_SCHEME)" ] && [ "$handed" -lt 2 ] && [ $(( $(date +%s) - MOBILE_HANDED_AT )) -ge 20 ] \
+      && [ $(( $(date +%s) - looked )) -ge 5 ]; then
+      looked="$(date +%s)"
+      if [ "$platform" = android ] || mobile_session_open ios; then
+        mobile_on_launcher "$platform" && { mobile_hand_bundle "$platform" "${MOBILE_LAUNCH_LANG:-}"; handed=$((handed + 1)); }
+      fi
+    fi
+    sleep 0.5
+  done
+}
+
+# The screens that prove the app has booted come from the project (VYSU_MOBILE_READY_TEXT). On the way
+# there, what stands between a launch and the app is cleared from the first look: Expo's dev menu and
+# its first-run intro, pressed away by VYSU_MOBILE_DISMISS_LABELS only while the menu's own texts are
+# on screen (an app button that happens to say « Close » is never pressed), and the launcher, handed
+# the URL again. The session the snapshots need is reopened when it is gone or bound elsewhere.
+# Answers 1 when the ready text never showed within the budget.
+MOBILE_DEVMENU_GREP='Runtime version|This is the developer menu'
+MOBILE_NOT_READY=""   # why mobile_wait_ready answered 1, for the caller's one line
+MOBILE_BUNDLED_AT=0   # when the last « Bundled » line was seen, for the time split the caller prints
+# React Native's red box: a JS error the app cannot render past. Nothing will get ready behind it,
+# and its first line is what the agent needs to read.
+# Its two buttons, together: « DISMISS (ESC) » and « RELOAD (R, R) » (the label may break a line).
+mobile_redbox() { text_has "$1" '\[button\] "(DISMISS|Dismiss)' && text_has "$1" '\[button\] "(RELOAD|Reload)'; }
+mobile_redbox_message() { # snapshot text → the error, cut at 160 characters
+  printf '%s\n' "$1" | grep -E '\[[a-z-]+\] "[^"]{25,}' | grep -vE '"(DISMISS|Dismiss|RELOAD|Reload)' \
+    | head -1 | sed 's/^[^"]*"//; s/"$//' | cut -c1-160 || true
+}
+mobile_wait_ready() { # platform seconds
+  local platform="$1" budget="$2" ready snap t0 dismissed=0 handed=0 repaired=0
+  MOBILE_NOT_READY="ready text not seen (vysu $platform snapshot -i)"
+  ready="$(mobile_ready_grep || true)"
+  # Without them, a fixed delay is all there is.
+  [ -n "$ready" ] || { sleep 5; return 0; }
+  mobile_session_ensure "$platform" || { MOBILE_NOT_READY="screen not checked, no agent-device session (vysu $platform open …)"; return 1; }
+  t0="$(date +%s)"
+  while [ $(( $(date +%s) - t0 )) -lt "$budget" ]; do
+    # The whole tree, not -i: the dev menu's texts are no controls, and Android's -i leaves them out.
+    # --force-full: a repeated unchanged Android snapshot otherwise answers with a bare « unchanged ».
+    snap="$(ad "$platform" snapshot --force-full --timeout "$MOBILE_SNAPSHOT_TIMEOUT" 2>&1 || true)"
+    case "$snap" in
+      *SESSION_NOT_FOUND*|*"is already bound to"*|*DEVICE_IN_USE*)
+        [ "$repaired" = 0 ] || return 1
+        repaired=1; mobile_session_repair "$platform" "$snap" || return 1
+        continue;;
+    esac
+    if [ "$dismissed" -lt 3 ] && text_has "$snap" "$MOBILE_DEVMENU_GREP"; then
+      dismissed=$((dismissed + 1))
+      # The intro has a button; the Android menu behind it is a bottom sheet with none, which the
+      # back key closes (on iOS the menu has its close button, one of the labels).
+      mob_press_any "$platform" "$(cfg MOBILE_DISMISS_LABELS 'Continue,Close')" \
+        || { [ "$platform" != android ] || ad android back >/dev/null 2>&1 || true; }
+      continue
+    fi
+    if mobile_redbox "$snap"; then
+      MOBILE_NOT_READY="red box: $(mobile_redbox_message "$snap")"
+      return 2
+    fi
+    text_has "$snap" "$ready" && return 0
+    # A process that died on the way (a native crash under memory pressure was seen) leaves the home
+    # screen up, and the budget would be spent waiting for an app that is not there. One `pidof`.
+    if [ "$platform" = android ] && [ -z "$(adb shell pidof "$(cfg MOBILE_BUNDLE)" 2>/dev/null | tr -d '\r')" ]; then
+      MOBILE_NOT_READY="the app is not running, it crashed or was closed (adb logcat -b crash)"
+      return 1
+    fi
+    if [ "$handed" -lt 2 ] && [ -n "$(cfg MOBILE_SCHEME)" ] && [ $(( $(date +%s) - MOBILE_HANDED_AT )) -ge 20 ] \
+      && mobile_on_launcher "$platform" "$snap"; then
+      handed=$((handed + 1))
+      local log from; log="$(metro_log)"; from="$(metro_lines "$log")"
+      mobile_hand_bundle "$platform" "${MOBILE_LAUNCH_LANG:-}"
+      mobile_wait_bundled "$platform" "$log" "$from" 90 "vysu: $platform"
+      continue
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 # Kill and relaunch the app, then wait for the bundle: a fast refresh after files moved or
 # a provider changed leaves ghosts (stale contexts, cold caches) that a screenshot cannot tell from a
-# bug — behaviour is judged on a clean launch. Text size and appearance are applied in between,
-# since both take effect on launch.
+# bug: behaviour is judged on a clean launch. Text size and appearance are applied in between,
+# since both take effect on launch. No fixed sleep on the way: every wait is a condition with a bound.
+MOBILE_LAUNCH_LANG=""
 vysu_mrelaunch() {
   local platform="${1:-}"; [ -n "$platform" ] || die "usage: vysu mrelaunch ios|android [--textsize normal|large|xl] [--appearance light|dark] [--lang <l>]"
   shift
@@ -481,8 +705,10 @@ vysu_mrelaunch() {
   lang_check "$lang"
   local bundle; bundle="$(need_cfg MOBILE_BUNDLE "the app id on both platforms")"
   local kind; kind="$(mobile_kind)"
+  local start; start="$(date +%s)"
   [ "$platform" != android ] || android_select
-  [ "$kind" != expo ] || listening 8081 || die "vysu mrelaunch: Metro is not running (vysu up $platform)"
+  [ "$platform" != ios ] || ios_lock
+  [ "$kind" != expo ] || metro_need "vysu mrelaunch" "$platform"
   if [ "$platform" = android ]; then adb shell am force-stop "$bundle" >/dev/null 2>&1
   else sim terminate "$bundle" >/dev/null 2>&1 || true; fi
   [ -z "$textsize" ] || vysu_textsize "$platform" "$textsize" >/dev/null
@@ -501,41 +727,24 @@ vysu_mrelaunch() {
     fi
   fi
   [ -z "$lang" ] || mstate_set "$platform" lang "$lang"
-  sleep 1
+  MOBILE_LAUNCH_LANG="$lang"
   if [ "$kind" = expo ]; then
-    # Metro says when it has handed the bundle over (« iOS Bundled … » / « Android Bundled … »):
-    # cheaper and surer than reading the tree, which a dev-client shows nothing of until then.
-    local log="$LOGS/metro.log" from; from="$(wc -l <"$log" 2>/dev/null | tr -d ' ')"; from="${from:-0}"
-    local tag="iOS"; [ "$platform" = android ] && tag="Android"
+    mobile_quiet_dev_menu "$platform" "$bundle"
+    local log from; log="$(metro_log)"; from="$(metro_lines "$log")"
     mobile_launch "$platform" "$bundle" "$lang"
-    local i; for i in $(seq 1 45); do
-      sleep 2
-      tail -n "+$((from + 1))" "$log" 2>/dev/null | grep -q "$tag Bundled" && { mstate_set "$platform" metro localhost:8081; break; }
-      # A fresh install sits on Expo's launcher until it is handed the bundle URL. Retried every 10
-      # iterations: after a zygote restart the dev-client comes up late, and a single early attempt
-      # finds no launcher on screen to hand the URL to. It is a no-op when the launcher is not there.
-      case "$i" in 5|15|25|35) mobile_load_bundle "$platform";; esac
-    done
-    [ "$i" -lt 45 ] || die "vysu mrelaunch: Metro never served the $tag bundle (see $log)"
+    mobile_wait_bundled "$platform" "$log" "$from" 180 "vysu mrelaunch"
+    # This device's own JS console, for `vysu mlog <platform> --device`: started once, it follows
+    # the app through every later relaunch.
+    applog_start "$platform" js >/dev/null 2>&1 || true
   else
     # Native: nothing sits between the launch and the first frame, so there is nothing to wait for
-    # but the app itself — VYSU_MOBILE_READY_TEXT below, or the fixed delay when it names nothing.
+    # but the app itself: VYSU_MOBILE_READY_TEXT below, or the fixed delay when it names nothing.
     mobile_launch "$platform" "$bundle" "$lang"
   fi
-  # The bundle is served, the JS boot (providers, first queries, the tab shell) is not over: wait for
-  # a screen rather than for a guessed delay. Those labels are the app's first screens, which only
-  # the project can name (VYSU_MOBILE_READY_TEXT) — without them, a fixed delay is all there is.
-  local ready; ready="$(mobile_ready_grep || true)"
-  local j booted=0
-  if [ -n "$ready" ] && mobile_session_open "$platform"; then
-    # shellcheck disable=SC2034  # the counter only bounds the loop
-    for j in $(seq 1 15); do
-      ad "$platform" snapshot -i 2>/dev/null | grep -qE "$ready" && { booted=1; break; }
-      sleep 1
-    done
-  fi
-  [ "$booted" = 1 ] || sleep 5
-  echo "$platform: relaunched${textsize:+ (text size $textsize)}${appearance:+ ($appearance)}${lang:+ ($lang)}"
+  local note="" split=""
+  mobile_wait_ready "$platform" 60 || note=", $MOBILE_NOT_READY"
+  [ "$MOBILE_BUNDLED_AT" = 0 ] || split=" (bundled after $(( MOBILE_BUNDLED_AT - start ))s)"
+  echo "$platform: relaunched in $(( $(date +%s) - start ))s$split${textsize:+ (text size $textsize)}${appearance:+ ($appearance)}${lang:+ ($lang)}$note"
 }
 
 # One line of a flow / a recording: vysu's own verbs, then anything agent-device accepts.
@@ -599,35 +808,134 @@ mobile_step() {
   esac
 }
 
-# The app's log, from the last mark: `vysu mlog mark` before an action, `vysu mlog` after it — the
-# console.error / warnings of that window only. In expo mode that log is Metro's; in native mode it
-# is the platform tail `vysu up` started (logs/<platform>-app.log), and `vysu mlog ios|android` says
-# which one when both are running.
+# The app's log, from the last mark: `vysu mlog mark` before an action, `vysu mlog` after it: the
+# console.error / warnings of that window only. In expo mode that log is Metro's (the port this owner
+# talks to), which mixes every device bundling from it; `--device` reads this device's own JS console
+# instead (mobile_applog_file … js). In native mode it is the platform tail `vysu up` started
+# (logs/<platform>-app.log), and `vysu mlog ios|android` says which one when both are running.
+# Marks are per owner: two sessions marking the same Metro log no longer move each other's window.
+mlog_mark_file() { printf '%s/marks/%s/%s' "$STATE" "$(slug "$(vysu_owner)")" "$(basename "$1")"; }
+mlog_mark() { # log → « <name> at line N »
+  local f; f="$(mlog_mark_file "$1")"; mkdir -p "$(dirname "$f")"
+  wc -l <"$1" | tr -d ' ' >"$f"
+  printf '%s at line %s' "$(basename "$1" .log)" "$(cat "$f")"
+}
+mlog_since() { # log → the first line after this owner's mark (a mark past the end: a restarted tail)
+  local f from=0; f="$(mlog_mark_file "$1")"
+  [ -s "$f" ] && from="$(cat "$f")"
+  [ "$from" -le "$(wc -l <"$1" | tr -d ' ')" ] || from=0
+  printf '%s' "$from"
+}
+# What an agent reads: ANSI colours out, VYSU_MLOG_IGNORE's lines dropped and counted (one ERE, its
+# alternatives `|`-separated), and with --errors only the error and warning lines plus the first line
+# of each stack, each cut at 200 characters, a line seen N times printed once with « ×N ».
+mlog_filter() { # errors(0|1): stdin → stdout
+  local ign; ign="$(cfg MLOG_IGNORE)"
+  local text ignored=0
+  text="$(sed $'s/\033\\[[0-9;]*m//g')"
+  if [ -n "$ign" ]; then
+    ignored="$(printf '%s\n' "$text" | grep -cE "$ign" || true)"
+    text="$(printf '%s\n' "$text" | grep -vE "$ign" || true)"
+  fi
+  if [ "$1" = 1 ]; then
+    text="$(printf '%s\n' "$text" | LC_ALL=C awk '
+      # A device log stamps every line (time, pid): the stamp goes, the level stays, so that the
+      # same error seen twice reads as one line « ×2 ».
+      function bare(l,   lvl) {
+        if (l ~ /^[0-9]+-[0-9]+-[0-9]+ [0-9:.]+ +[A-Za-z]+ +[^ ]+\[[0-9a-fx:]+\] /) {
+          split(l, f, " "); lvl = f[3]
+          sub(/^[0-9]+-[0-9]+-[0-9]+ [0-9:.]+ +[A-Za-z]+ +[^ ]+\[[0-9a-fx:]+\] (\[[^]]*\] )?/, "", l)
+          return lvl " " l
+        }
+        if (l ~ /^[0-9]+-[0-9]+ [0-9:.]+ [VDIWEF]\/[^(]*\( *[0-9]+\): /) {
+          lvl = substr(l, index(l, "/") - 1, 1)
+          sub(/^[0-9]+-[0-9]+ [0-9:.]+ [VDIWEF]\/[^(]*\( *[0-9]+\): /, "", l)
+          return lvl " " l
+        }
+        return l
+      }
+      function keep(l,   o) {
+        l = bare(l); o = l; l = substr(l, 1, 200)
+        # A cut inside a multi-byte character would leave invalid UTF-8 behind.
+        if (length(o) > 200) sub(/[\200-\377]+$/, "", l)
+        if (!(l in count)) order[++n] = l
+        count[l]++
+      }
+      /^[ \t]+at / { if (stack) { keep($0); stack = 0 }; next }
+      /^ *(ERROR|WARN|error|warn)[ :]/ || /Bundling failed/ || /^Error[ :[]/ || /[A-Za-z]*(Error|Exception):/ ||
+      /Unable to resolve/ || / [EWF]\/[^ ]/ || /^[0-9-]+ [0-9:.]+ +(E|F|W) / || /(Warning|WARNING):/ {
+        keep($0); stack = 1; next
+      }
+      /^ *(LOG|INFO|DEBUG) / || / Bundled [0-9]/ { stack = 0 }
+      END { for (i = 1; i <= n; i++) print order[i] (count[order[i]] > 1 ? " \303\227" count[order[i]] : "") }
+    ')"
+  fi
+  [ -z "$text" ] || printf '%s\n' "$text"
+  [ "$ignored" = 0 ] || echo "($ignored lines ignored by VYSU_MLOG_IGNORE)"
+}
 vysu_mlog() {
-  local platform=""
-  case "${1:-}" in ios|android) platform="$1"; shift;; esac
-  local log markfile name
-  if [ "$(mobile_kind)" = expo ]; then
-    log="$LOGS/metro.log"; markfile="$STATE/metro.mark"; name=metro
+  local platform="" device=0 errors=0 action="" n=40
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      ios|android) platform="$1"; shift;;
+      --device) device=1; shift;;
+      --errors) errors=1; shift;;
+      mark) action="mark"; shift;;
+      --tail) action="tail"; shift; case "${1:-}" in ''|*[!0-9]*) ;; *) n="$1"; shift;; esac;;
+      *) die "usage: vysu mlog [ios|android] [--device] [--errors] [mark | --tail N]";;
+    esac
+  done
+  local kind; kind="$(mobile_kind)"
+  local log name metro=""
+  if [ "$kind" = expo ]; then
+    metro="$(metro_log)"
+    if [ "$device" = 1 ] || { [ "$action" = mark ] && [ -n "$platform" ]; }; then
+      platform="${platform:-ios}"
+      [ "$platform" != android ] || android_select
+      # This device's JS console: started on first use, and said so, since what came before it
+      # is not in it.
+      if ! mobile_applog_alive "$platform" js; then
+        applog_start "$platform" js >/dev/null
+        [ "$action" = mark ] || echo "$platform: JS log started now, nothing before this line (vysu mlog $platform --device after the action)"
+      fi
+    fi
+    if [ "$device" = 1 ]; then log="$(mobile_applog_file "$platform" js)"; name="$platform JS"
+    else log="$metro"; name="metro :$(metro_port)"; fi
   else
+    # A native app's log is already its own device's: --device changes nothing here.
+    device=0
     platform="${platform:-$(mobile_applog_platform)}"
-    log="$(mobile_applog_file "$platform")"; markfile="$STATE/$platform-app.mark"; name="$platform"
-    # A dead tail and a quiet app read the same on screen — an empty answer — and the difference
+    log="$(mobile_applog_file "$platform")"; name="$platform"
+    # A dead tail and a quiet app read the same on screen (an empty answer) and the difference
     # matters: a tail dies with the adbd it was attached to (`adb root`, an emulator restart), and
     # every line after that is simply not in the file.
     mobile_applog_alive "$platform" \
-      || echo "vysu: $platform: the app log is no longer tailing — it stops at $(date -r "$log" +%H:%M) (vysu up $platform)" >&2
+      || echo "vysu: $platform: the app log is no longer tailing, it stops at $(date -r "$log" +%H:%M) (vysu up $platform)" >&2
   fi
+  [ "$device" = 0 ] || mobile_applog_alive "$platform" js \
+    || echo "vysu: $platform: the JS log is no longer tailing (vysu mlog $platform --device restarts it)" >&2
   [ -f "$log" ] || die "no $log (vysu up ${platform:-ios|android} starts it)"
-  case "${1:-}" in
-    mark) wc -l <"$log" | tr -d ' ' >"$markfile"; echo "$name: marked at line $(cat "$markfile")";;
-    --tail) tail -n "${2:-40}" "$log";;
-    '') local from=0; [ -f "$markfile" ] && from="$(cat "$markfile")"
-        # A restarted tail starts a fresh log: a mark past its end means « since the start ».
-        [ "$from" -le "$(wc -l <"$log" | tr -d ' ')" ] || from=0
-        local since; since="$(tail -n "+$((from + 1))" "$log" || true)"
-        [ -n "$since" ] && printf '%s\n' "$since" || echo "(nothing since the mark)";;
-    *) die "usage: vysu mlog [ios|android] [mark | --tail N]  (reads $log)";;
+  case "$action" in
+    # Every log this owner may read next: Metro's, each device's JS console, each native app tail.
+    mark)
+      local f out=""
+      for f in "$metro" "$LOGS"/*-js-*.log "$LOGS"/ios-app.log "$LOGS"/android-app.log; do
+        [ -n "$f" ] && [ -f "$f" ] || continue
+        out="$out · $(mlog_mark "$f")"
+      done
+      echo "marked: ${out# · }";;
+    tail) tail -n "$((n * 20))" "$log" | mlog_filter "$errors" | tail -n "$n";;
+    '')
+      # A broken bundle first: the screen may be stale because an edit (maybe another session's,
+      # on the same checkout) no longer compiles, and nothing else in the log says it that plainly.
+      if [ -n "$metro" ] && [ -f "$metro" ]; then
+        local err; err="$(metro_bundle_error_since "$(mlog_since "$metro")" "$metro" || true)"
+        [ -z "$err" ] || echo "metro: bundle failed since the mark: $err"
+      fi
+      local since; since="$(tail -n "+$(( $(mlog_since "$log") + 1 ))" "$log" | mlog_filter "$errors")"
+      if [ -n "$since" ]; then printf '%s\n' "$since"
+      elif [ "$errors" = 1 ]; then echo "($name: no error or warning since the mark)"
+      else echo "($name: nothing since the mark)"; fi;;
   esac
 }
 
@@ -639,9 +947,16 @@ mstate_line() { # state file [device] → « state: … », only the keys that a
   for k in textsize appearance lang persona net; do
     v="$(mstate_field "$f" "$k")"; [ -z "$v" ] || out="$out · $k $v"
   done
-  # Metro is an expo notion: a native app has no bundler behind the screen to name.
+  # Metro is an expo notion: a native app has no bundler behind the screen to name. Whose isolated
+  # Metro it is, when it is one, and whether it still answers: a device bound to a stopped Metro
+  # shows the last screen it had, which is not the branch it claims to show.
   if [ "$(mobile_kind)" = expo ]; then
-    v="$(mstate_field "$f" metro)"; [ -z "$v" ] || out="$out · metro ${v#localhost}"
+    v="$(mstate_field "$f" metro)"
+    if [ -n "$v" ]; then
+      local iso; iso="$(mstate_field "$f" metro_isolated)"
+      out="$out · metro ${v#localhost}${iso:+ (isolated, $iso)}"
+      listening "${v##*:}" || out="$out (not running)"
+    fi
   fi
   v="$(mstate_field "$f" by)"; [ -z "$v" ] || out="$out · by $v"
   v="$(mstate_field "$f" at)"; [ -z "$v" ] || out="$out at $(date -r "$v" +%H:%M)"
@@ -937,6 +1252,6 @@ mstep_wait() { # platform "<rest>"
 # only when this engine has them, and says so otherwise.
 mctl_step() { # function verb platform args…
   local fn="$1" verb="$2"; shift 2
-  declare -F "$fn" >/dev/null || { echo "vysu: $1: needs vysu $verb (lot 4)" >&2; return 1; }
+  declare -F "$fn" >/dev/null || { echo "vysu: $1: needs vysu $verb, missing from this engine" >&2; return 1; }
   "$fn" "$@"
 }

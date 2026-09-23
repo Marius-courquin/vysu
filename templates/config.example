@@ -102,6 +102,14 @@ VYSU_AUTH='none'
 # VYSU_MOBILE_SCHEME='exp+myapp'
 # Texts that prove the app has booted, comma-separated: what `mrelaunch` waits for instead of a delay.
 # VYSU_MOBILE_READY_TEXT='Se connecter,Bienvenue,Sign in,Welcome'
+# Expo: the buttons that close Expo's dev menu and its first-run intro, in the simulator's language.
+# Default: Continue,Close
+# VYSU_MOBILE_DISMISS_LABELS='Continuer,Continue,Fermer,Close'
+# Expo: the port of the Metro every session shares (an isolated one, `vysu up <platform> --isolated`,
+# takes its own). Default: 8081
+# VYSU_METRO_PORT='8081'
+# Log lines `vysu mlog` drops: extended regexes, « | » apart. Default: none
+# VYSU_MLOG_IGNORE='\[boot |i18next is made possible'
 # The simulators, recent and old. Defaults: iPhone 17 Pro · vysu iPhone SE (iOS 18)
 # VYSU_IOS_DEVICE='iPhone 17 Pro'
 # VYSU_IOS_OLD_DEVICE='vysu iPhone SE (iOS 18)'
