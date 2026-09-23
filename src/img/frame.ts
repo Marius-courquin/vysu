@@ -23,10 +23,12 @@
 // A video in gives an H.264 mp4 out at `--fps`: the frame is drawn once as two PNGs (the background,
 // then the bezel with the screen punched out) and ffmpeg overlays the scaled video between them. A
 // folder in frames every capture and clip it holds into `<folder>/demo/`.
+import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import sharp, { type Sharp } from 'sharp';
+import { onCleanup } from '../core/errors.ts';
 import { which } from '../core/host.ts';
 import { run } from '../core/proc.ts';
 import { pyRound } from '../core/py.ts';
@@ -355,6 +357,18 @@ async function probeVideo(path: string): Promise<[number, number]> {
   return [Number(w), Number(h)];
 }
 
+// ffmpeg run to its end, like run() of core/proc.ts, with the process handed out while it runs.
+function encode(args: string[], started: (c: ChildProcess) => void): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    started(child);
+    const err: Buffer[] = [];
+    child.stderr.on('data', (b: Buffer) => err.push(b));
+    child.on('error', (e) => resolve({ code: 127, stderr: String(e.message) }));
+    child.on('close', (code, signal) => resolve({ code: code ?? (signal ? 128 + 9 : 1), stderr: Buffer.concat(err).toString('utf8') }));
+  });
+}
+
 export async function renderVideo(src: string, out: string, o: FrameOptions, io: Io): Promise<string> {
   if (!which('ffmpeg') || !which('ffprobe')) throw new FrameError('frame: ffmpeg/ffprobe missing (brew install ffmpeg)');
   const fps = o.fps ?? 30;
@@ -384,6 +398,13 @@ export async function renderVideo(src: string, out: string, o: FrameOptions, io:
     screen = [overlay.g.margins[0], overlay.g.margins[1], w, h];
   }
   const tmp = mkdtempSync(join(tmpdir(), 'vysu-frame-'));
+  let child: ChildProcess | null = null;
+  // A signal ends vysu through its cleanups, never through the finally below: the encoder went on
+  // writing the clip after vysu was gone, and its temporary folder stayed.
+  const forget = onCleanup(() => {
+    if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    rmSync(tmp, { recursive: true, force: true });
+  }, true);
   try {
     const backPng = join(tmp, 'back.png');
     const bezelPng = join(tmp, 'bezel.png');
@@ -393,13 +414,17 @@ export async function renderVideo(src: string, out: string, o: FrameOptions, io:
     // `shortest=1` on the overlay that carries the video: without it the looped background never
     // ends and ffmpeg encodes for ever (`-shortest` does not reach inside filter_complex).
     const chain = `[1:v]fps=${pyG(fps)},scale=${sw}:${sh}[v];[0:v][v]overlay=${sx}:${sy}:shortest=1[a];[a][2:v]overlay=0:0[o]`;
-    const r = await run('ffmpeg', [
-      '-v', 'error', '-y', '-loop', '1', '-framerate', pyG(fps), '-i', backPng, '-i', src, '-i', bezelPng, '-filter_complex', chain,
-      '-map', '[o]', '-an', '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-shortest', out,
-    ]);
+    const r = await encode(
+      [
+        '-v', 'error', '-y', '-loop', '1', '-framerate', pyG(fps), '-i', backPng, '-i', src, '-i', bezelPng, '-filter_complex', chain,
+        '-map', '[o]', '-an', '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-shortest', out,
+      ],
+      (c) => (child = c),
+    );
     if (r.stderr) io.err(r.stderr);
     if (r.code !== 0) throw new Error(`Command 'ffmpeg' returned non-zero exit status ${r.code}.`);
   } finally {
+    forget();
     rmSync(tmp, { recursive: true, force: true });
   }
   return `${pyPath(out)} ${size[0]}x${size[1]} ${device}`;

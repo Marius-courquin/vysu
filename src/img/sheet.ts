@@ -18,7 +18,7 @@
 import { readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp, { type OverlayOptions } from 'sharp';
-import { die } from '../core/errors.ts';
+import { die, log } from '../core/errors.ts';
 import { fnmatch, htmlEscape, pyRound } from '../core/py.ts';
 import { stamp } from '../core/text.ts';
 import { ellipsize, svgText } from './text.ts';
@@ -109,21 +109,34 @@ export function layout(sizes: Size[], cols: number, edge: number): { cols: numbe
   return { cols: best.cols, scales: best.scales };
 }
 
+// A capture that cannot be decoded: an empty file (a capture that failed half way), a truncated one.
+class Unreadable extends Error {
+  file: string;
+  constructor(file: string, cause: unknown) {
+    super(String(cause instanceof Error ? cause.message : cause).split('\n')[0]);
+    this.file = file;
+  }
+}
+
 async function compose(dir: string, names: string[], scales: number[], cols: number, title: string, edge: number, out: string): Promise<void> {
   const thumbs = await Promise.all(
     names.map(async (name, i) => {
-      const img = sharp(join(dir, name)).removeAlpha();
-      const meta = await sharp(join(dir, name)).metadata();
-      const s = scales[i]!;
-      let w = meta.width ?? 1;
-      let h = meta.height ?? 1;
-      let pipe = img;
-      if (s < 1) {
-        w = Math.max(1, pyRound(w * s));
-        h = Math.max(1, pyRound(h * s));
-        pipe = img.resize(w, h, { kernel: 'lanczos3', fit: 'fill' });
+      try {
+        const img = sharp(join(dir, name)).removeAlpha();
+        const meta = await sharp(join(dir, name)).metadata();
+        const s = scales[i]!;
+        let w = meta.width ?? 1;
+        let h = meta.height ?? 1;
+        let pipe = img;
+        if (s < 1) {
+          w = Math.max(1, pyRound(w * s));
+          h = Math.max(1, pyRound(h * s));
+          pipe = img.resize(w, h, { kernel: 'lanczos3', fit: 'fill' });
+        }
+        return { input: await pipe.png({ compressionLevel: 0 }).toBuffer(), w, h };
+      } catch (e) {
+        throw new Unreadable(name, e);
       }
-      return { input: await pipe.png({ compressionLevel: 0 }).toBuffer(), w, h };
     }),
   );
   const rows = Math.ceil(thumbs.length / cols);
@@ -188,9 +201,10 @@ export interface SheetOptions {
   strip?: boolean;
 }
 
-// The files written, in the order they have always been printed: index.html first for a grid.
+// The files written, in the order they have always been printed: index.html first for a grid. A
+// capture that cannot be read (an empty or cut PNG) is left out with one line on stderr: it ended the
+// sheet, and the one at the end of an mdo, on a stack trace.
 export async function sheet(dir: string, o: SheetOptions): Promise<string[]> {
-  const edge = o.edge ?? 1568;
   const onlyRaw = o.only ?? '';
   const only = onlyRaw
     .split(',')
@@ -199,13 +213,40 @@ export async function sheet(dir: string, o: SheetOptions): Promise<string[]> {
   const names = pick(dir, only);
   if (!names.length) die(`no capture ${only.length ? `matches « ${onlyRaw} » ` : ''}in ${dir}`);
   const title = `${o.name || dir.replace(/[/\\]+$/, '').split(/[/\\]/).pop()} · ${stamp()}`;
-  const sizes: Size[] = await Promise.all(
-    names.map(async (f) => {
-      const m = await sharp(join(dir, f)).metadata();
-      return [m.width ?? 1, m.height ?? 1] as Size;
+  const skip = (e: Unreadable): void => {
+    log(`sheet: ${e.file} left out, unreadable (${e.message})`);
+    names.splice(names.indexOf(e.file), 1);
+  };
+  const sizes = new Map<string, Size>();
+  const read = await Promise.all(
+    names.map(async (f): Promise<[string, Size | Unreadable]> => {
+      try {
+        const m = await sharp(join(dir, f)).metadata();
+        return [f, [m.width ?? 1, m.height ?? 1]];
+      } catch (e) {
+        return [f, new Unreadable(f, e)];
+      }
     }),
   );
+  for (const [f, r] of read) {
+    if (r instanceof Unreadable) skip(r);
+    else sizes.set(f, r);
+  }
+  // A header can read fine over a cut body: that capture fails in compose, and the pages are laid out
+  // again without it.
+  for (;;) {
+    if (!names.length) die(`no readable capture in ${dir}`);
+    try {
+      return await compile(dir, names, names.map((f) => sizes.get(f)!), title, o);
+    } catch (e) {
+      if (!(e instanceof Unreadable)) throw e;
+      skip(e);
+    }
+  }
+}
 
+async function compile(dir: string, names: string[], sizes: Size[], title: string, o: SheetOptions): Promise<string[]> {
+  const edge = o.edge ?? 1568;
   if (o.strip) {
     // One scale for all: a before and an after of one screen stay the same size, and a smaller phone
     // still reads smaller. The row is fitted inside the square like any page.
@@ -227,7 +268,9 @@ export async function sheet(dir: string, o: SheetOptions): Promise<string[]> {
   const pages: string[][] = [];
   for (let i = 0; i < names.length; i += per) pages.push(names.slice(i, i + per));
   const written = [writeHtml(dir, title, pages, edge)];
-  const outs = await Promise.all(
+  // Every page settled before an unreadable capture is answered: the pages are then written again, and
+  // one still being written must not land over them.
+  const outs = await Promise.allSettled(
     pages.map(async (page, i) => {
       const l = layout(
         page.map((f) => sizes[names.indexOf(f)]!),
@@ -239,5 +282,7 @@ export async function sheet(dir: string, o: SheetOptions): Promise<string[]> {
       return out;
     }),
   );
-  return [...written, ...outs];
+  const failed = outs.find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
+  return [...written, ...outs.map((r) => (r as PromiseFulfilledResult<string>).value)];
 }

@@ -45,7 +45,10 @@ export class MotionError extends Error {}
 // 0-based frame index → the f00001 name the report and the dumps use.
 export const frameName = (index: number): string => `f${String(index + 1).padStart(5, '0')}`;
 
-const videoFilter = (fps: number, crop: string): string => `fps=${pyG(fps)}${crop ? `,crop=${crop}` : ''}`;
+// `exact=1`: on yuv420p ffmpeg otherwise rounds an odd crop down to even (1179 px wide on a 3x iPhone
+// → 1178) while the frames are read at the size asked, each one a row further off than the last: a
+// still clip read as moving.
+export const videoFilter = (fps: number, crop: string): string => `fps=${pyG(fps)}${crop ? `,crop=${crop}:exact=1` : ''}`;
 
 async function videoSize(path: string, crop: string): Promise<[number, number]> {
   if (crop) {

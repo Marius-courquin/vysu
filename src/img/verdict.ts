@@ -13,9 +13,10 @@
 // `new` (nothing to compare with) and `skipped` (--no-prev) only record. The record is the capture's
 // latest verdict, under `verdicts` in the folder's meta.json: `vysu report` reads it back, one line
 // per capture, and names the marked image of the latest change as the one to open.
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isoLocal } from '../core/text.ts';
+import { pidAlive } from '../core/host.ts';
+import { isoLocal, sleep } from '../core/text.ts';
 import { parseArgs, type ParserSpec } from './args.ts';
 import { pyJson, pyJsonParse, pySplitlines, pyStrip } from './fmt.ts';
 import type { Io } from './tools.ts';
@@ -54,10 +55,57 @@ export function parseDiffText(text: string): DiffSummary {
   return out;
 }
 
+// A turn each at a folder's meta.json: two mshots into one folder (an iPhone and an Android at once)
+// each read it, changed it and wrote it back, and one verdict was lost, or the rename found the
+// other's temporary file already gone. The lock is a directory beside it holding its pid, taken by
+// mkdir; one whose process is gone, or older than a read-modify-write could ever take, is taken over.
+const STALE_MS = 5000;
+let tmpSeq = 0;
+
+function lockHolder(lock: string): { pid: number; age: number } | null {
+  try {
+    const age = Date.now() - statSync(lock).mtimeMs;
+    let pid = 0;
+    try {
+      pid = Number(readFileSync(join(lock, 'pid'), 'utf8').trim()) || 0;
+    } catch {
+      pid = 0;
+    }
+    return { pid, age };
+  } catch {
+    return null;
+  }
+}
+
+export async function withMetaLock<T>(dir: string, fn: () => T): Promise<T> {
+  const lock = join(dir, '.meta.json.lock');
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+    const h = lockHolder(lock);
+    if (h && (h.age > STALE_MS || (h.pid && !pidAlive(h.pid)))) rmSync(lock, { recursive: true, force: true });
+    else await sleep(10);
+  }
+  try {
+    writeFileSync(join(lock, 'pid'), String(process.pid));
+    return fn();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
 // The capture's entry under `verdicts` in meta.json, written through a temporary file so a reader
 // never sees half of it. Floats already there stay floats: the file keeps the spelling (« 30.0 ») it
 // was written with.
-export function recordVerdict(dir: string, capture: string, entry: Record<string, unknown>): void {
+export function recordVerdict(dir: string, capture: string, entry: Record<string, unknown>): Promise<void> {
+  return withMetaLock(dir, () => recordVerdictNow(dir, capture, entry));
+}
+
+function recordVerdictNow(dir: string, capture: string, entry: Record<string, unknown>): void {
   const path = join(dir, 'meta.json');
   let meta: Record<string, unknown> = {};
   if (existsSync(path)) {
@@ -72,7 +120,7 @@ export function recordVerdict(dir: string, capture: string, entry: Record<string
   const verdicts = meta.verdicts && typeof meta.verdicts === 'object' && !Array.isArray(meta.verdicts) ? (meta.verdicts as Record<string, unknown>) : {};
   meta.verdicts = verdicts;
   verdicts[capture] = entry;
-  const tmp = `${path}.tmp`;
+  const tmp = `${path}.${process.pid}-${++tmpSeq}.tmp`;
   writeFileSync(tmp, pyJson(meta, { indent: 1, ascii: false }));
   renameSync(tmp, path);
 }
@@ -88,12 +136,12 @@ export interface VerdictArgs {
 }
 
 // The line printed (null when there is none), or an Error for a `vs` it does not know.
-export function verdict(a: VerdictArgs): string | null | Error {
+export async function verdict(a: VerdictArgs): Promise<string | null | Error> {
   const entry: Record<string, unknown> = a.device ? { device: a.device } : {};
   if (a.vs === 'new' || a.vs === 'skipped') {
     entry.vs = null;
     entry.verdict = a.vs === 'new' ? 'new' : 'not compared (--no-prev)';
-    recordVerdict(a.shots, a.capture, entry);
+    await recordVerdict(a.shots, a.capture, entry);
     return null;
   }
   if (a.vs !== 'previous' && !a.vs.startsWith('baseline:')) return new Error(`verdict: vs must be previous, baseline:<name>, new or skipped (got ${a.vs})`);
@@ -108,7 +156,7 @@ export function verdict(a: VerdictArgs): string | null | Error {
   } else verdictText = detail = 'unchanged';
   if (size) detail = `size ${size}, ${detail}`;
   Object.assign(entry, { vs, verdict: verdictText, zones: zones.slice(0, ZONES_SHOWN), more: Math.max(0, count - ZONES_SHOWN), size, marked: count ? marked : null });
-  recordVerdict(a.shots, a.capture, entry);
+  await recordVerdict(a.shots, a.capture, entry);
   if (a.quiet) return null;
   return `  vs ${vs}: ${detail}${count && marked ? ` · ${marked}` : ''}`;
 }
@@ -138,7 +186,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       return 1;
     }
   }
-  const r = verdict({ shots: a.shots as string, capture: a.capture as string, vs, diffText, device: a.device as string, quiet: a.quiet as boolean });
+  const r = await verdict({ shots: a.shots as string, capture: a.capture as string, vs, diffText, device: a.device as string, quiet: a.quiet as boolean });
   if (r instanceof Error) {
     io.err(`${r.message}\n`);
     return 1;

@@ -42,16 +42,22 @@ const helpers: Record<Tool, () => Promise<{ main: ToolMain }>> = {
   verdict: () => import('./verdict.ts'),
 };
 
+// The helpers whose exit 1 is an answer (diff: zones found, screen: not there, fields: no field) and
+// 2 their error.
+const ANSWER_ONE = new Set<Tool>(['diff', 'fields', 'screen']);
+
 // A helper that fails on something it did not foresee (an unreadable file, a disk full) exits 1 with
-// the reason on stderr, prefixed with its name, and its caller reads that like any other failure. A
-// VysuError still crosses to the entry point.
+// the reason on stderr, prefixed with its name, and its caller reads that like any other failure —
+// 2 for a helper whose 1 is an answer: a diff that could not write its mark exited 1, « zones
+// found », and mshot recorded « vs previous: unchanged » from the error text. A VysuError still
+// crosses to the entry point.
 async function guarded(name: Tool, main: ToolMain, argv: string[], io: Io): Promise<number> {
   try {
     return await main(argv, io);
   } catch (e) {
     if (e instanceof VysuError) throw e;
     io.err(`${name}: ${e instanceof Error ? e.message : String(e)}\n`);
-    return 1;
+    return ANSWER_ONE.has(name) ? 2 : 1;
   }
 }
 
