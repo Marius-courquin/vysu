@@ -43,8 +43,9 @@
 #   vysu appearance ios|android light|dark      system appearance of the running simulator or emulator
 #   vysu mopen ios|android <route|url> [--wait "<text>"] [--timeout <s>]   a deep link, in the running app: a route
 #                                           is appended to VYSU_MOBILE_DEEPLINK, a url goes as is; a cold app is launched
-#                                           first (a raw cold link lands on the dev-client launcher), iOS's « Open in … ? »
-#                                           is pressed; answers « opened <url> · screen: <labels> »
+#                                           first (a raw cold link lands on the dev-client launcher), an « Open in … ? »
+#                                           alert is pressed if iOS shows one; answers « opened <url> · screen: <labels> »
+#                                           (--wait: a text only the target screen has, the surest and quickest check)
 #   vysu mnet ios|android offline|online    airplane mode on the emulator, read back (`release --reset` turns it off);
 #                                           iOS has no per-simulator network: exit 1, with what to do instead
 #   vysu mperm ios|android <permission> grant|deny|reset   notifications · camera · photos · location · microphone ·
