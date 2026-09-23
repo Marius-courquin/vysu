@@ -60,8 +60,9 @@ first word up in `commands`:
 
 A `die` anywhere (a `VysuError`) prints its message and the command that fixes it, and ends with its
 code; `exit(code)` ends quietly. Either way, and on SIGINT / SIGTERM / SIGHUP, the cleanups run: locks
-given back, a recorder stopped. A reader that closes the pipe early (`vysu doctor | head`) is an end,
-not an error.
+given back, a recorder stopped. A project command runs in vysu's place: a signal vysu receives is
+passed on to it (`forwardSignals`), and its status is vysu's. A reader that closes the pipe early
+(`vysu doctor | head`) is an end, not an error.
 
 **Adding a command**: a module `src/cmd/<name>.ts` exporting `run(args: string[])`, one line in
 `src/commands.ts`, its lines in `src/usage.txt`, and where users will look for it (README, the skill's

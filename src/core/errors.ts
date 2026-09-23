@@ -79,6 +79,19 @@ export async function runCleanups(): Promise<void> {
   }
 }
 
+// A command that runs another in its place — a project command, which 0.5.1 exec'ed — hands it the
+// signals vysu receives and ends with its status, instead of ending first and leaving it running with
+// no parent.
+let signalTarget: ((signal: NodeJS.Signals) => void) | undefined;
+export function forwardSignals(to: ((signal: NodeJS.Signals) => void) | undefined): void {
+  signalTarget = to;
+}
+export function signalForwarded(signal: NodeJS.Signals): boolean {
+  if (!signalTarget) return false;
+  signalTarget(signal);
+  return true;
+}
+
 process.on('exit', () => {
   for (const c of order()) {
     if (c.done || !c.sync) continue;

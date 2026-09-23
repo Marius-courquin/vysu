@@ -2,11 +2,12 @@
 // `.vysu/commands/`, with everything vysu resolved exported so the command reads the same values the
 // engine does. On Windows a file has no executable bit: its shebang, or its extension, says what runs it.
 import { spawn } from 'node:child_process';
-import { accessSync, constants, readFileSync, statSync } from 'node:fs';
+import { constants } from 'node:os';
+import { accessSync, constants as fsConstants, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from './ctx.ts';
 import { ENGINE } from './config.ts';
-import { die } from './errors.ts';
+import { die, forwardSignals } from './errors.ts';
 import { bashPath, isWindows, toolArgv, which } from './host.ts';
 
 const EXTENSIONS = ['', '.mjs', '.js', '.ts', '.py', '.sh', '.cmd', '.bat', '.ps1'];
@@ -18,7 +19,7 @@ export function projectCommandPath(name: string): string {
     const p = join(dir, 'commands', name + ext);
     try {
       if (!statSync(p).isFile()) continue;
-      if (!isWindows && ext === '') accessSync(p, constants.X_OK);
+      if (!isWindows && ext === '') accessSync(p, fsConstants.X_OK);
       return p;
     } catch {
       // not this one
@@ -66,8 +67,14 @@ export function execProjectCommand(file: string, args: string[]): Promise<number
   const argv = argvFor(file, args);
   return new Promise((resolve) => {
     const child = spawn(argv.file, argv.args, { stdio: 'inherit', env, windowsVerbatimArguments: argv.verbatim });
-    child.on('close', (code, signal) => resolve(code ?? (signal ? 1 : 0)));
+    forwardSignals((signal) => child.kill(signal));
+    // Ended by a signal: the status a shell gives it (143 for SIGTERM), as when it ran in vysu's place.
+    child.on('close', (code, signal) => {
+      forwardSignals(undefined);
+      resolve(code ?? (signal ? 128 + (constants.signals[signal] ?? 0) : 0));
+    });
     child.on('error', (e) => {
+      forwardSignals(undefined);
       process.stderr.write(`vysu: ${file}: ${e.message}\n`);
       resolve(127);
     });
