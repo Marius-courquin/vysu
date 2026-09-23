@@ -694,10 +694,16 @@ msnap_file() { # platform → this device's last snapshot
   printf '%s/.snap-%s-%s.json' "$STATE" "$1" "$(slug "$dev")"
 }
 # A fresh snapshot of the device into msnap_file; 1 when agent-device answered nothing readable
-# (the file is then emptied, so no reader mistakes the previous screen for this one).
+# (the file is then emptied, so no reader mistakes the previous screen for this one). Asked twice:
+# a capture now and then comes back unreadable on a screen that is fine, and « nothing readable »
+# after a step would send the agent looking for a problem that is not there.
 msnap() { # platform
   local f; f="$(msnap_file "$1")"; mkdir -p "$STATE"
-  ad "$1" snapshot -i --json --timeout 20000 >"$f" 2>/dev/null && return 0
+  local try
+  for try in 1 2; do
+    # An error comes back as JSON too, with no « nodes » in it.
+    ad "$1" snapshot -i --json --timeout 20000 >"$f" 2>/dev/null && grep -q '"nodes"' "$f" && return 0
+  done
   : >"$f"; return 1
 }
 # The snapshot a verb just took is the screen after it: the runner then reads that one instead of

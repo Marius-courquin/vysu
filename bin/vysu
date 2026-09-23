@@ -32,7 +32,8 @@
 #   vysu mdo ios|android [--shots <name>] [--keep-going] [--devices "<a>,<b>"] [--textsize "normal,xl"]
 #            -- "<step>" … | <file|->       drive a screen in one call: per step one ✓ / ✗ line, then
 #                                           « screen: <≤ 6 labels> (<n> nodes, +added −removed, keyboard) »;
-#                                           stops on the first ✗ (exit 1) unless --keep-going. Steps:
+#                                           stops on the first ✗ (exit 1) unless --keep-going. Steps (a
+#                                           <text> is found in any label holding it, in any case):
 #                                           tap "<label>" [--wait "<text>"] · wait "<text>" [<s>] · wait gone
 #                                           "<text>" [<s>] · wait idle [<s>] · fill "<label>" "<value>" · type
 #                                           "<text>" · key return|dismiss|back · scroll-to "<label>" [<max>] ·
