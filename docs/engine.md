@@ -181,8 +181,9 @@ no shell pipelines, a tool found with `which()`, a config's command line run wit
   `src/cmd/video.ts`).
 - `VYSU_AGENT_DEVICE=cli` — every device call goes through the `agent-device` command instead of its
   library client. The client is loaded from the package the `agent-device` on the PATH runs, so it
-  talks to the same daemon, and falls back to the command on its own when it is missing or older
-  than `tools.env` asks (`src/mobile/agent.ts`).
+  talks to the same daemon, and falls back to the command on its own when it is missing, older than
+  `tools.env` asks, or when vysu runs on Bun (the client would start the shared daemon on bun)
+  (`src/mobile/agent.ts`).
 - `VYSU_DEBUG=mobile` — on stderr, stamped from the start of the command: when a relaunch handed the
   bundle over, what each look at Metro's log and at the screen found, and when it decided the app
   was on the launcher (`src/mobile/io.ts`).

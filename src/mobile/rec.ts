@@ -10,7 +10,7 @@ import { config } from '../core/ctx.ts';
 import { CLIP_FPS } from '../core/config.ts';
 import { die, exit, onCleanup } from '../core/errors.ts';
 import { which } from '../core/host.ts';
-import { devices, type Platform } from '../core/hold.ts';
+import { devices, iosLock, type Platform } from '../core/hold.ts';
 import { metaWrite, repoSha } from '../core/meta.ts';
 import { clipNormalize, evLog, evStart, evStep, evStop, now } from '../core/rec.ts';
 import { run } from '../core/proc.ts';
@@ -78,8 +78,13 @@ export async function mrec(argv: string[]): Promise<number> {
     } else die(`vysu mrec: unknown option ${a} (steps go after --)`);
   }
   if (!sawSteps || !steps.length) die('vysu mrec: no step after -- (e.g. "press 173 822" "sleep 1.5")');
-  const platform = p as Platform;
+  if (p !== 'ios' && p !== 'android') die(MREC_USAGE);
+  const platform: Platform = p;
+  // The device is locked (and a guess between two of this owner's refused) before anything touches
+  // it, the recorder above all. On iOS the lock used to come from whichever call went first: with the
+  // scale remembered, 0.5.1 started the take on a simulator another owner was driving.
   if (platform === 'android') await androidSelect();
+  else await iosLock();
   if (!which('ffmpeg')) die('ffmpeg missing (brew install ffmpeg)');
   const dir = join(config().shots, name);
   mkdirSync(dir, { recursive: true });

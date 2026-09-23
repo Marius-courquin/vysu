@@ -277,6 +277,9 @@ async function busyReport(p: Platform, why: string): Promise<void> {
 }
 
 export async function claimAny(p: Platform, minutes: number, note: string, nowait: boolean, report: (p: Platform, r: string, done: string) => Promise<void>): Promise<void> {
+  // Elsewhere the iOS pool reads as empty, which would be waited on for VYSU_LOCK_WAIT, then said as
+  // « every pool device is booted ».
+  if (p === 'ios') needMac('vysu claim ios --any');
   const start = Date.now();
   const wait = config().lockWait;
   let said = false;

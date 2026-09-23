@@ -190,9 +190,14 @@ export class Config {
   get mobileDir(): string {
     return this.projectPath(this.get('MOBILE_DIR'));
   }
+  // A settings file may set it (machine.env for a machine whose SDK lives elsewhere, the config for a
+  // project that pins one). Sourced under `set -a`, its value is the one 0.5.1 saw over the
+  // environment's, and the one childEnv() hands to every process vysu starts.
   get androidSdk(): string {
-    if (process.env.ANDROID_HOME) return process.env.ANDROID_HOME;
-    if (process.env.ANDROID_SDK_ROOT) return process.env.ANDROID_SDK_ROOT;
+    for (const k of ['ANDROID_HOME', 'ANDROID_SDK_ROOT']) {
+      const v = this.fileVars.get(k) || process.env[k];
+      if (v) return v;
+    }
     if (process.platform === 'darwin') return join(HOME, 'Library', 'Android', 'sdk');
     if (process.platform === 'win32') return join(process.env.LOCALAPPDATA ?? join(HOME, 'AppData', 'Local'), 'Android', 'Sdk');
     return join(HOME, 'Android', 'Sdk');

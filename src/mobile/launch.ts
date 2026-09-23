@@ -260,6 +260,9 @@ export async function waitBundled(p: Platform, log: string, from: number, budget
 // The primitive a connector calls right after its own `open`.
 export async function mobileLoadBundle(p: Platform): Promise<void> {
   if (!config().get('MOBILE_SCHEME')) return;
+  // A bash connector calls this as `vysu __prim`, a process of its own that has addressed no
+  // emulator yet: every adb call below would go to « the » device, or fail once two are attached.
+  if (p === 'android') await androidSelect();
   if (!(await mobileOnLauncher(p))) return;
   const log = metroLog();
   const from = metroLines(log);
