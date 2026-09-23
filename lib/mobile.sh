@@ -184,6 +184,15 @@ mobile_session_open() { # platform
   case "$sessions" in *"\"$(mobile_session_name "$1")\""*) return 0;; esac
   return 1
 }
+mobile_installed() { # platform bundle
+  if [ "$1" = ios ]; then
+    xcrun simctl get_app_container "$(ios_udid)" "$2" app >/dev/null 2>&1
+  else
+    local pkgs; pkgs="$(adb shell pm list packages "$2" 2>/dev/null | tr -d '\r')"
+    case "$pkgs" in *"package:$2"*) return 0;; esac
+    return 1
+  fi
+}
 mobile_session_name() { printf '%s-%s-%s' "$(cfg PROJECT)" "$1" "$(mobile_device_slug "$1")"; }
 # The session a snapshot needs, reopened quietly when it is gone (a daemon restart, a `close`): agents
 # used to re-run `open --foreground` by hand after every relaunch. `open` without --relaunch only
@@ -237,7 +246,7 @@ mobile_quiet_dev_menu() { # platform bundle
   fi
   local prefs=shared_prefs/expo.modules.devmenu.sharedpreferences.xml cur
   cur="$(adb shell run-as "$bundle" cat "$prefs" 2>/dev/null | tr -d '\r' || true)"
-  case "$cur" in *"not debuggable"*|*"Unknown package"*) return 0;; esac
+  case "$cur" in *"run-as:"*) return 0;; esac   # not debuggable, or not installed
   case "$cur" in *'name="isOnboardingFinished" value="true"'*) case "$cur" in *'name="showsAtLaunch" value="false"'*) return 0;; esac;; esac
   case "$cur" in *"<map"*) ;; *) cur="<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
@@ -249,15 +258,6 @@ mobile_quiet_dev_menu() { # platform bundle
 </map>#' >"$tmp"
   adb shell "run-as $bundle sh -c 'mkdir -p shared_prefs && cat > $prefs'" <"$tmp" >/dev/null 2>&1 || true
   rm -f "$tmp"
-}
-mobile_installed() { # platform bundle
-  if [ "$1" = ios ]; then
-    xcrun simctl get_app_container "$(ios_udid)" "$2" app >/dev/null 2>&1
-  else
-    local pkgs; pkgs="$(adb shell pm list packages "$2" 2>/dev/null | tr -d '\r')"
-    case "$pkgs" in *"package:$2"*) return 0;; esac
-    return 1
-  fi
 }
 
 mobile_app() { [ "$1" = ios ] && printf '%s' "$(cfg IOS_APP)" || printf '%s' "$(cfg MOBILE_BUNDLE)"; }
@@ -419,8 +419,10 @@ mobile_on_launcher() { # platform [snapshot text already read]
 # iOS 18 puts in front of a custom-scheme URL sent by simctl. Android takes the dev-client deep link as
 # a VIEW intent, the one way in: its launcher never reloads the last app by itself (a plain launch sat
 # on it for the ten seconds the old relaunch waited before handing the URL over).
+MOBILE_HANDED_AT=0
 mobile_hand_bundle() { # platform [lang]
   local platform="$1" lang="${2:-}" bundle port url
+  MOBILE_HANDED_AT="$(date +%s)"
   bundle="$(cfg MOBILE_BUNDLE)"; port="$(metro_port)"; url="$(metro_url "$port")"
   if [ "$platform" = android ]; then
     adb reverse "tcp:$port" "tcp:$port" >/dev/null 2>&1 || true
@@ -450,8 +452,7 @@ mobile_record_metro() { # platform port
 mobile_load_bundle() { # platform
   [ -n "$(cfg MOBILE_SCHEME)" ] || return 0
   mobile_on_launcher "$1" || return 0
-  local log from; log="$(metro_log)"
-  from="$(wc -l <"$log" 2>/dev/null | tr -d ' ')"; from="${from:-0}"
+  local log from; log="$(metro_log)"; from="$(metro_lines "$log")"
   mobile_hand_bundle "$1"
   mobile_wait_bundled "$1" "$log" "$from" 120 "vysu: $1"
   mobile_wait_ready "$1" 40 || true
@@ -576,9 +577,12 @@ mobile_wait_bundled() { # platform log from seconds "<who, for the error>"
           "fix it (the edit may be another session's on the same checkout), then vysu mrelaunch $platform";;
     esac
     [ $(( $(date +%s) - t0 )) -lt "$budget" ] || die "$who: Metro never served the $tag bundle in ${budget}s (see $log)"
-    # Every few seconds, not on every turn: a look costs a snapshot on iOS. Twice at most, then the
-    # budget decides.
-    if [ -n "$(cfg MOBILE_SCHEME)" ] && [ "$handed" -lt 2 ] && [ $(( $(date +%s) - looked )) -ge 4 ]; then
+    # Every few seconds, not on every turn: a look costs a snapshot on iOS. And not in the first 20 s
+    # after a hand-off: the Android launcher holds the focus for as long as it fetches the manifest,
+    # and on a loaded Mac that is many seconds of a load going well, which a new hand-off would
+    # restart. Twice at most, then the budget decides.
+    if [ -n "$(cfg MOBILE_SCHEME)" ] && [ "$handed" -lt 2 ] && [ $(( $(date +%s) - MOBILE_HANDED_AT )) -ge 20 ] \
+      && [ $(( $(date +%s) - looked )) -ge 5 ]; then
       looked="$(date +%s)"
       if [ "$platform" = android ] || mobile_session_open ios; then
         mobile_on_launcher "$platform" && { mobile_hand_bundle "$platform" "${MOBILE_LAUNCH_LANG:-}"; handed=$((handed + 1)); }
@@ -603,7 +607,9 @@ mobile_wait_ready() { # platform seconds
   mobile_session_ensure "$platform" || { log "$platform: no agent-device session (vysu $platform open …), the screen was not checked"; return 1; }
   t0="$(date +%s)"
   while [ $(( $(date +%s) - t0 )) -lt "$budget" ]; do
-    snap="$(ad "$platform" snapshot -i 2>&1 || true)"
+    # The whole tree, not -i: the dev menu's texts are no controls, and Android's -i leaves them out.
+    # --force-full: a repeated unchanged Android snapshot otherwise answers with a bare « unchanged ».
+    snap="$(ad "$platform" snapshot --force-full 2>&1 || true)"
     case "$snap" in
       *SESSION_NOT_FOUND*|*"is already bound to"*|*DEVICE_IN_USE*)
         [ "$repaired" = 0 ] || return 1
@@ -612,15 +618,19 @@ mobile_wait_ready() { # platform seconds
     esac
     if [ "$dismissed" -lt 3 ] && text_has "$snap" "$MOBILE_DEVMENU_GREP"; then
       dismissed=$((dismissed + 1))
-      mob_press_any "$platform" "$(cfg MOBILE_DISMISS_LABELS 'Continue,Close')" || true
+      # The intro has a button; the Android menu behind it is a bottom sheet with none, which the
+      # back key closes (on iOS the menu has its close button, one of the labels).
+      mob_press_any "$platform" "$(cfg MOBILE_DISMISS_LABELS 'Continue,Close')" \
+        || { [ "$platform" != android ] || ad android back >/dev/null 2>&1 || true; }
       continue
     fi
     text_has "$snap" "$ready" && return 0
-    if [ "$handed" -lt 2 ] && [ -n "$(cfg MOBILE_SCHEME)" ] && mobile_on_launcher "$platform" "$snap"; then
+    if [ "$handed" -lt 2 ] && [ -n "$(cfg MOBILE_SCHEME)" ] && [ $(( $(date +%s) - MOBILE_HANDED_AT )) -ge 20 ] \
+      && mobile_on_launcher "$platform" "$snap"; then
       handed=$((handed + 1))
-      local log from; log="$(metro_log)"; from="$(wc -l <"$log" 2>/dev/null | tr -d ' ')"
+      local log from; log="$(metro_log)"; from="$(metro_lines "$log")"
       mobile_hand_bundle "$platform" "${MOBILE_LAUNCH_LANG:-}"
-      mobile_wait_bundled "$platform" "$log" "${from:-0}" 90 "vysu: $platform"
+      mobile_wait_bundled "$platform" "$log" "$from" 90 "vysu: $platform"
       continue
     fi
     sleep 1
@@ -673,7 +683,7 @@ vysu_mrelaunch() {
   MOBILE_LAUNCH_LANG="$lang"
   if [ "$kind" = expo ]; then
     mobile_quiet_dev_menu "$platform" "$bundle"
-    local log from; log="$(metro_log)"; from="$(wc -l <"$log" 2>/dev/null | tr -d ' ')"; from="${from:-0}"
+    local log from; log="$(metro_log)"; from="$(metro_lines "$log")"
     mobile_launch "$platform" "$bundle" "$lang"
     mobile_wait_bundled "$platform" "$log" "$from" 120 "vysu mrelaunch"
     # This device's own JS console, for `vysu mlog <platform> --device`: started once, it follows
@@ -685,7 +695,7 @@ vysu_mrelaunch() {
     mobile_launch "$platform" "$bundle" "$lang"
   fi
   local note=""
-  mobile_wait_ready "$platform" 45 || note=", ready text not seen (vysu $platform snapshot -i)"
+  mobile_wait_ready "$platform" 60 || note=", ready text not seen (vysu $platform snapshot -i)"
   echo "$platform: relaunched in $(( $(date +%s) - start ))s${textsize:+ (text size $textsize)}${appearance:+ ($appearance)}${lang:+ ($lang)}$note"
 }
 
@@ -832,7 +842,9 @@ vysu_mlog() {
         [ -z "$err" ] || echo "metro: bundle failed since the mark: $err"
       fi
       local since; since="$(tail -n "+$(( $(mlog_since "$log") + 1 ))" "$log" | mlog_filter "$errors")"
-      [ -n "$since" ] && printf '%s\n' "$since" || echo "($name: nothing since the mark)";;
+      if [ -n "$since" ]; then printf '%s\n' "$since"
+      elif [ "$errors" = 1 ]; then echo "($name: no error or warning since the mark)"
+      else echo "($name: nothing since the mark)"; fi;;
   esac
 }
 

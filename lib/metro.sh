@@ -23,6 +23,9 @@ metro_port() {
   if [ -n "$p" ]; then printf '%s' "$p"; else metro_shared_port; fi
 }
 metro_is_isolated() { [ "$(config_origin METRO_PORT)" != env ] && [ -n "$(metro_isolated_port)" ]; }
+# The line count a « since » is measured from: `from="$(metro_lines)"` before an action, then
+# `metro_bundle_error_since "$from"` after it.
+metro_lines() { local n; n="$(wc -l <"${1:-$(metro_log)}" 2>/dev/null | tr -d ' ')"; printf '%s' "${n:-0}"; }
 # 8081 keeps the path it always had: every reader written before ports existed still finds it.
 metro_log() { # [port]
   local p="${1:-$(metro_port)}"
@@ -98,6 +101,7 @@ metro_isolated_up() { # platform port dir menv…: start this owner's Metro and 
     fi
     port="$current"
   fi
+  case "$port" in *[!0-9]*) die "vysu up $platform --isolated: --port takes a number (got « $port »)";; esac
   [ -n "$port" ] || port="$(metro_free_port)" || die "vysu up $platform --isolated: no free port between 8082 and 8099"
   ! listening "$port" || die "vysu up $platform --isolated: :$port is taken (another --port)"
   [ -d "$dir" ] || die "vysu up $platform --isolated: no such folder $dir"
@@ -244,7 +248,7 @@ vysu_mreload() {
   metro_need "vysu mreload" "$platform"
   local port log from start ws
   port="$(metro_port)"; log="$(metro_log "$port")"; start="$(date +%s)"
-  from="$(wc -l <"$log" 2>/dev/null | tr -d ' ')"; from="${from:-0}"
+  from="$(metro_lines "$log")"
   ws="$(metro_page_ws "$platform" "$port")"
   if [ -z "$ws" ] || ! metro_page_reload "$ws"; then
     # No page of its own (the app is on the launcher, crashed, or shares its name with another
