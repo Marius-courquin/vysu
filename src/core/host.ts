@@ -123,6 +123,35 @@ export function which(cmd: string): string {
   return found;
 }
 
+export function isExecutable(p: string): boolean {
+  try {
+    if (!statSync(p).isFile()) return false;
+    if (!isWindows) accessSync(p, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The suffix an npm package shipping one native binary per platform names its files with
+// (« darwin-arm64 », « linux-musl-x64 », « win32-x64.exe »): agent-browser's own naming, which its
+// node wrapper computes the same way on every call.
+export function nativeTarget(): string {
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  if (isWindows) return `win32-${arch}.exe`;
+  if (isLinux) {
+    const musl = ['/lib/ld-musl-x86_64.so.1', '/lib/ld-musl-aarch64.so.1'].some((f) => {
+      try {
+        return statSync(f).isFile();
+      } catch {
+        return false;
+      }
+    });
+    return `${musl ? 'linux-musl' : 'linux'}-${arch}`;
+  }
+  return `darwin-${arch}`;
+}
+
 // Is something accepting connections on this port of this machine? A connection is a millisecond,
 // where asking lsof cost a process.
 export async function isListening(port: number, timeoutMs = 400): Promise<boolean> {
