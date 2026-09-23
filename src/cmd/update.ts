@@ -72,8 +72,9 @@ export async function run(): Promise<void> {
   const lockMoved = !!beforeSha && beforeSha !== afterSha && (await git(['diff', '--quiet', beforeSha, afterSha, '--', 'package-lock.json'])).code === 1;
   if (lockMoved || !engineDepsVersion()) {
     info(`engine: ${lockMoved ? 'package-lock.json changed' : 'dependencies missing'} — npm ci --omit=dev…`);
-    if (await npmCiEngine()) ok(`engine: dependencies installed (sharp ${engineDepsVersion()})`);
-    else miss('engine: npm ci --omit=dev failed', `cd ${ENGINE} && npm ci --omit=dev`);
+    const failed = await npmCiEngine();
+    if (!failed) ok(`engine: dependencies installed (sharp ${engineDepsVersion()})`);
+    else miss(`engine: ${failed}`, `cd ${ENGINE} && npm ci --omit=dev`);
   }
   head('tools');
   await toolsCheck('install');

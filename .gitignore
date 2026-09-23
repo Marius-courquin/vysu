@@ -5,3 +5,5 @@ remotion/public/takes/
 node_modules/
 .bench/
 .install-lock/
+.install-stage/
+.node_modules.old/
