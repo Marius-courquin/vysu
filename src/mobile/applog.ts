@@ -158,7 +158,11 @@ export async function applogStart(p: Platform, kind: Kind = ''): Promise<void> {
       writeFileSync(pidf, `${pid}\n`);
     } else {
       writeFileSync(pidf, '');
-      const pid = spawnDetached(process.execPath, ['-e', UID_FILTER, adbPath(), serial.value, uid, pidf], { log, env });
+      // A file, not `-e`: on Windows a detached process starts from a cmd.exe line, which ends at the
+      // script's first newline. `.cjs` whatever package.json sits above the state folder.
+      const filter = join(config().state, 'applog-uid-filter.cjs');
+      writeFileSync(filter, UID_FILTER);
+      const pid = spawnDetached(process.execPath, [filter, adbPath(), serial.value, uid, pidf], { log, env });
       writeFileSync(pidf, `${pid}\n`);
       // The filter notes its logcat's pid a beat later, beside its own.
       await sleep(1000);

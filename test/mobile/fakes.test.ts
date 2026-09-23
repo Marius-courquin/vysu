@@ -2,7 +2,7 @@
 // doing it, with no device at all.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fakeAndroid } from './fake-adb.ts';
@@ -67,4 +67,28 @@ test('mwait: a die inside the wait is said with its next line, not as an interna
   const r = await f.vysu(['mwait', 'android', 'Home']);
   assert.equal(r.code, 1, r.stderr);
   assert.match(r.stderr, /^vysu: agent-device is not installed\nnext: vysu setup\n$/);
+});
+
+// An API 30 image has no `logcat --uid`: the app log goes through vysu's own filter, run from a file
+// (a detached process starts from a cmd.exe line on Windows, where `node -e` stopped at a newline).
+test('up android, native, API 30: the app log is filtered by uid from a script file', posix, async () => {
+  const f = fakeAndroid({
+    extra: `  *"getprop sys.boot_completed"*) echo 1;;
+  *"pm list packages"*) echo "package:com.example";;
+  *"dumpsys package"*) echo "    userId=10166";;
+  *"logcat --help"*) echo "Usage: logcat [options]";;
+  *"logcat -v time -v uid -T 1"*) printf '01-01 00:00:00.000 I/App( 10166: 2291): from the app\\n01-01 00:00:00.000 I/Sys( 1000: 99): from the system\\n';;`,
+  });
+  Object.assign(f.env, { VYSU_MOBILE_BUNDLE: 'com.example', VYSU_MOBILE_KIND: 'native' });
+  const r = await f.vysu(['up', 'android']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /app log → /);
+  const log = join(f.state, 'logs', 'android-app.log');
+  let text = '';
+  for (let i = 0; i < 30 && !text.includes('from the app'); i++) {
+    await sleep(100);
+    text = readFileSync(log, 'utf8');
+  }
+  assert.equal(text, '01-01 00:00:00.000 I/App( 10166: 2291): from the app\n');
+  assert.ok(existsSync(join(f.state, 'applog-uid-filter.cjs')));
 });
