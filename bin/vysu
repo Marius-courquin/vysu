@@ -61,6 +61,19 @@
 #   vysu push <persona> <preset> [--platform ios|android] [--field k=v…]   a real push to the persona's devices
 #   vysu textsize ios|android normal|large|xl   Dynamic Type / font scale of the running simulator or emulator
 #   vysu appearance ios|android light|dark      system appearance of the running simulator or emulator
+#   vysu mopen ios|android <route|url> [--wait "<text>"] [--timeout <s>]   a deep link, in the running app: a route
+#                                           is appended to VYSU_MOBILE_DEEPLINK, a url goes as is; a cold app is launched
+#                                           first (a raw cold link lands on the dev-client launcher), an « Open in … ? »
+#                                           alert is pressed if iOS shows one; answers « opened <url> · screen: <labels> »
+#                                           (--wait: a text only the target screen has, the surest and quickest check)
+#   vysu mnet ios|android offline|online    airplane mode on the emulator, read back (`release --reset` turns it off);
+#                                           iOS has no per-simulator network: exit 1, with what to do instead
+#   vysu mperm ios|android <permission> grant|deny|reset   notifications · camera · photos · location · microphone ·
+#                                           contacts · calendar, or the platform's own name; read back (dumpsys, TCC.db)
+#                                           before it answers; reset = never asked, the app's next request prompts
+#   vysu mburst ios|android <name> [--seconds 3] [--every 0.3] [-- "<step>" …]   screenshots as fast as the device
+#                                           gives them while the step runs: the distinct ones at 1x, a one-row strip,
+#                                           and one line of when each changed (a skeleton, a sheet, a toast)
 #   vysu shots <persona> <name> [--url <url>] [--sizes WxH,…] [--dark] [--full] [--no-expand] [--no-warm]
 #              [--lang <l>] [--freeze]
 #                                           one capture per viewport, and the diff of each against:
@@ -199,6 +212,8 @@ export VYSU_ENGINE
 . "$VYSU_ENGINE/lib/mobile.sh"
 # shellcheck source=lib/pool.sh
 . "$VYSU_ENGINE/lib/pool.sh"
+# shellcheck source=lib/mctl.sh
+. "$VYSU_ENGINE/lib/mctl.sh"
 # shellcheck source=lib/shots.sh
 . "$VYSU_ENGINE/lib/shots.sh"
 # shellcheck source=lib/flow.sh
@@ -249,6 +264,10 @@ case "$cmd" in
   mwait) vysu_mwait "$@";;
   mrec) vysu_mrec "$@";;
   mlog) vysu_mlog "$@";;
+  mopen) vysu_mopen "$@";;
+  mnet) vysu_mnet "$@";;
+  mperm) vysu_mperm "$@";;
+  mburst) vysu_mburst "$@";;
   push) vysu_push "$@";;
   textsize) vysu_textsize "$@";;
   appearance) vysu_appearance "$@";;

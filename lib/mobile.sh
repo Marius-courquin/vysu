@@ -635,7 +635,8 @@ vysu_mlog() {
 
 mstate_line() { # state file [device] → « state: … », only the keys that are set
   local f="$1" k v out=""
-  for k in textsize appearance lang persona; do
+  # net: `vysu mnet` cut the network (airplane mode), which `release --reset` turns back on.
+  for k in textsize appearance lang persona net; do
     v="$(mstate_field "$f" "$k")"; [ -z "$v" ] || out="$out · $k $v"
   done
   # Metro is an expo notion: a native app has no bundler behind the screen to name.
