@@ -4,10 +4,9 @@
 // and nothing in frames or coordinates.
 import { existsSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ENGINE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
-import { isPorted, tool } from '../img/tools.ts';
+import { tool } from '../img/tools.ts';
 
 const isDir = (p: string): boolean => {
   try {
@@ -32,10 +31,8 @@ export async function run(args: string[]): Promise<number> {
   if (!isDir(dir)) die(`no shots folder ${dir}`);
   if (!draft) die(`vysu cut: --draft is the only mode (write the rest of ${dir}/cut.json by hand)`);
   if (!existsSync(join(dir, 'events.json'))) die(`vysu cut: no ${dir}/events.json — record the take with vysu rec / vysu mrec`);
-  const script = join(ENGINE, 'py', 'take.py');
-  if (!isPorted('take') && !existsSync(script)) die(`take.py missing (${script})`);
   // The draft names the project's theme and language: the helper reads them from the environment,
-  // where bash had exported every value of the config.
+  // so every value of the config is exported to it first.
   Object.assign(process.env, c.childEnv({ VYSU_LANG: c.get('LANG') || undefined }));
   const out = join(dir, 'cut.json');
   const r = await tool('take', ['draft', '--dir', dir, '--take', name]);

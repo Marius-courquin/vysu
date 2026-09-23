@@ -15,7 +15,6 @@ import { androidSection, avdSpecs, iosProbe, iosSection } from '../setup/devices
 import { engineDepsCheck, ffmpegReport, ffmpegVersion, nodeCheck, nodeVersion, toolsCheck } from '../setup/engine.ts';
 import { installHint } from '../setup/hints.ts';
 import { ask, interactive } from '../setup/prompt.ts';
-import { pythonProbe, pythonReport } from '../setup/python.ts';
 
 export async function run(args: string[]): Promise<number> {
   let iosDevice = '';
@@ -55,8 +54,7 @@ export async function run(args: string[]): Promise<number> {
   mkdirSync(c.logs, { recursive: true });
   mkdirSync(join(HOME, '.vysu'), { recursive: true });
 
-  // The slow questions (an interpreter, the simulators) run while the quick lines are printed.
-  const python = pythonProbe();
+  // The slow questions (ffmpeg, the simulators) run while the quick lines are printed.
   const ffmpeg = ffmpegVersion();
   const ios = iosProbe();
 
@@ -65,7 +63,6 @@ export async function run(args: string[]): Promise<number> {
   if (await nodeVersion()) await toolsCheck(dry ? 'report' : 'install');
   else miss('agent-browser / agent-device: no node to install them on', `${installHint('node')} && npm i -g agent-browser agent-device`);
   engineDepsCheck();
-  pythonReport(await python, true);
   ffmpegReport(await ffmpeg);
 
   head('browser');
