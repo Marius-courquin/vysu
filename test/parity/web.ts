@@ -3,7 +3,7 @@
 // files a case names are normalized (paths, dates, durations) and compared. Images are compared by
 // size only: a live page is not the same picture twice.
 //
-//   node test/parity/web.ts [--project <dir>] [--a "<bash engine>"] [--only <case,…>] [--list]
+//   node test/parity/web-cases.ts [--project <dir>] [--a "<bash engine>"] [--only <case,…>] [--skip <case,…>] [--list]
 //
 // Cases that log in or touch a real session are marked; `--only` picks some. Nothing here writes
 // into the project's own shots folder.
@@ -23,6 +23,7 @@ const project = opt('--project', join(process.env.HOME ?? '', 'Documents/Project
 const engineA = opt('--a', `bash ${join(ENGINE, 'legacy', 'vysu')}`);
 const engineB = join(ENGINE, 'bin', 'vysu');
 const only = opt('--only', '').split(',').filter(Boolean);
+const skip = opt('--skip', '').split(',').filter(Boolean);
 const scratch = opt('--scratch', join(process.env.VYSU_PARITY_DIR ?? tmpdir(), `vysu-parity-${process.pid}`));
 
 export interface Case {
@@ -41,6 +42,8 @@ export interface Case {
   // Commands run by the same engine before the case (their output dropped): the session put back
   // where the case expects it, since the engine that ran first left it elsewhere.
   setup?: string[][];
+  // Files laid out before each engine's run (a scratch state folder for `cache clear`).
+  prepare?: () => void;
 }
 
 const q = (s: string): string => `'${s.replaceAll("'", `'"'"'`)}'`;
@@ -58,6 +61,7 @@ function normalize(text: string, shots: string, extra: RegExp[] = []): string {
 function runOne(engine: 'a' | 'b', c: Case): { out: string; err: string; code: number; shots: string; ms: number } {
   const shots = join(scratch, engine, 'shots');
   mkdirSync(shots, { recursive: true });
+  c.prepare?.();
   const bin = engine === 'a' ? engineA : q(engineB);
   const env = { ...process.env, VYSU_SHOTS: shots, VYSU_NO_COLOR: '1', ...c.env };
   for (const s of c.setup ?? []) spawnSync('/bin/sh', ['-c', `${bin} ${s.map(q).join(' ')}`], { cwd: c.cwd ?? project, env, stdio: 'ignore' });
@@ -135,7 +139,8 @@ export async function main(cases: Case[]): Promise<void> {
   console.log(`A: ${engineA}\nB: ${engineB}\nproject: ${project}\nscratch: ${scratch}`);
   let failed = 0;
   for (const c of cases) {
-    if (only.length && !only.some((o) => c.name === o || c.name.startsWith(`${o}/`))) continue;
+    const hit = (o: string): boolean => c.name === o || c.name.startsWith(`${o}/`);
+    if ((only.length && !only.some(hit)) || skip.some(hit)) continue;
     if (!(await compare(c))) failed++;
   }
   console.log(failed ? `${failed} case(s) differ — outputs in ${join(scratch, 'out')}` : 'all cases match');

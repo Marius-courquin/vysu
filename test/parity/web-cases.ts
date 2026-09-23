@@ -1,7 +1,18 @@
 // The cases of the web parity run (test/parity/web.ts): `node test/parity/web-cases.ts [--only …]`.
 // `-` and `lotweb` are sessions nobody else uses for these pages; `tb_resident` is a Nidz persona
 // already logged in on the local web and on prep, read from and never logged in here.
-import { main, type Case } from './web.ts';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { main, scratch, type Case } from './web.ts';
+
+// Never the project's own state: `cache clear` empties whatever state folder it is pointed at.
+const cacheState = join(scratch, 'cache-state');
+const cacheFiles = (): void => {
+  mkdirSync(cacheState, { recursive: true });
+  for (const f of ['ios-udid-iphone-17-pro', 'android-serial-pixel', 'scale-ios-x', 'state-ios-x.env', 'state-', 'keep-me', '.state-hidden']) {
+    writeFileSync(join(cacheState, f), 'x');
+  }
+};
 
 const PUBLIC = 'https://example.com/';
 const LOCAL = 'http://localhost:8100';
@@ -25,6 +36,7 @@ const cases: Case[] = [
   { name: 'pass/title', args: ['lotweb', 'get', 'title'] },
   { name: 'pass/fail', args: ['lotweb', 'find', 'role', 'button', 'click', '--name', 'Nope'] },
   { name: 'pass/anon', args: ['-', 'get', 'url'] },
+  { name: 'pass/stdin-batch', args: ['lotweb', 'batch', '--json'], stdin: '[["get","title"]]', ignore: [/"lifecycle"/] },
   { name: 'check/plain', args: ['check', 'lotweb'] },
   { name: 'check/save', args: ['check', 'lotweb', '--save', 'chk'], shots: 'chk', files: ['check.txt'] },
   { name: 'box/css', args: ['box', 'lotweb', 'h1'] },
@@ -59,9 +71,30 @@ const cases: Case[] = [
     files: ['meta.json'],
   },
   {
+    name: 'shots/vs-folder',
+    args: ['shots', 'lotweb', 's5', '--url', PUBLIC, '--sizes', '360x800,1440x900,1024x768', '--baseline', 's1'],
+    shots: 's5',
+    files: ['meta.json', 'diff.txt'],
+  },
+  {
+    name: 'shots/lang-ignore-full',
+    args: ['shots', 'lotweb', 's6', '--url', PUBLIC, '--sizes', '360x800', '--lang', 'fr', '--full', '--no-warm', '--ignore', 'p', '--dark'],
+    shots: 's6',
+    files: ['meta.json'],
+    images: ['360x800.png', '360x800-dark.png'],
+  },
+  { name: 'shots/no-lang-key', args: ['lang', 'lotweb', 'en'], env: { VYSU_LANG_STORAGE_KEY: '' } },
+  { name: 'shots/bad-browser', args: ['lotweb', 'get', 'url'], env: { VYSU_BROWSER_PATH: '/nonexistent/chrome' } },
+  {
     name: 'walk/public',
     args: ['walk', 'lotweb', 'w1', '--url', PUBLIC, '--sizes', '360x800,1440x900', '--baseline-url', PUBLIC, '--check'],
     shots: 'w1',
+    files: ['meta.json', 'diff.txt', 'check.txt'],
+  },
+  {
+    name: 'walk/vs-folder',
+    args: ['walk', 'lotweb', 'w2', '--url', PUBLIC, '--sizes', '360x800', '--baseline', 'w1'],
+    shots: 'w2',
     files: ['meta.json', 'diff.txt', 'check.txt'],
   },
   {
@@ -79,6 +112,22 @@ const cases: Case[] = [
     stdin: `go ${PUBLIC}\nclick "No such thing"\nshot never\n`,
   },
   {
+    name: 'flow/go-fail',
+    args: ['flow', 'lotweb', '-'],
+    stdin: 'go https://no-such-host.invalid/\nshot never\n',
+  },
+  {
+    name: 'flow/bad-shot-option',
+    args: ['flow', 'lotweb', '-', '--shots', 'f2'],
+    stdin: `go ${PUBLIC}\nshot x --wide\n`,
+  },
+  {
+    name: 'flow/i18n-no-locales',
+    args: ['flow', 'lotweb', '-'],
+    stdin: 'click t:common.close\n',
+    env: { VYSU_LOCALES: '' },
+  },
+  {
     name: 'flow/shot-no-shots',
     args: ['flow', 'lotweb', '-'],
     stdin: 'shot x\n',
@@ -93,11 +142,25 @@ const cases: Case[] = [
     ignore: [/^events\.json: /, /^\d+ frames @/, /^f\d+–f\d+: /, /^dumped \d+ frames/, /"(start|end|t0|duration)":/],
   },
   // A persona of the project, already logged in: the local web read against prep.
+  // The same page twice, a few seconds apart: the feed moves between the two on either engine.
   {
     name: 'nidz/walk-prep',
     args: ['walk', 'tb_resident', 'nw', '--url', `${PREP}/community/news`, '--sizes', '1440x900,360x800', '--baseline-url', '@', '--full'],
     shots: 'nw',
     files: ['meta.json'],
+    ignore: [/: changed /, /^ {2}\S+ \d+\. x /, /^read: /, /^identical, do not read: /],
+  },
+  {
+    name: 'nidz/shots-prep-lang',
+    args: ['shots', 'tb_resident', 'np', '--url', `${PREP}/community/news`, '--sizes', '768x1024', '--lang', 'fr'],
+    shots: 'np',
+    files: ['meta.json'],
+  },
+  {
+    name: 'nidz/auth0-test',
+    args: ['auth', 'test', 'tb_resident'],
+    env: { VYSU_ORIGIN: PREP },
+    ignore: [/^step: auth token \(\d+ characters\) ok$/],
   },
   {
     name: 'nidz/walk-local',
@@ -113,6 +176,8 @@ const cases: Case[] = [
   { name: 'nidz/token-length', args: ['auth', 'token', 'tb_resident'], ignore: [/^eyJ/] },
   { name: 'nidz/describe', args: ['auth', 'describe'] },
   { name: 'nidz/token-alias', args: ['token', 'tb_resident'], ignore: [/^eyJ/] },
+  { name: 'cache/clear', args: ['cache', 'clear'], env: { VYSU_STATE: cacheState }, prepare: cacheFiles },
+  { name: 'cache/empty', args: ['cache', 'clear'], env: { VYSU_STATE: join(scratch, 'no-such-state') } },
   { name: 'prune/dry', args: ['prune', '--dry-run', '--days', '30'], env: { VYSU_SHOTS: `${process.env.HOME}/.nidz/visual/shots` } },
   { name: 'prune/dry-match', args: ['prune', '--dry-run', '--match', 'rv-* tv-*'], env: { VYSU_SHOTS: `${process.env.HOME}/.nidz/visual/shots` } },
 ];
