@@ -35,6 +35,10 @@ export function wh(size: string): [string, string] {
   return [last < 0 ? size : size.slice(0, last), first < 0 ? size : size.slice(first + 1)];
 }
 
+// diff's --ignore for the boxes a selector resolved to, one `--ignore=<box>` each: a box starting left
+// of the page (-5,0,…) read as an option otherwise, and diff's exit 2 ended the whole command.
+export const ignoreArgs = (boxes: string): string[] => boxes.split(' ').filter(Boolean).map((b) => `--ignore=${b}`);
+
 export async function shots(persona: string, name: string, args: string[], print: (s: string) => void): Promise<void> {
   const c = config();
   let url = '';
@@ -166,8 +170,7 @@ export async function shots(persona: string, name: string, args: string[], print
         print(`  (no baseline for ${label})\n`);
         continue;
       }
-      const ign = bx.split(' ').filter(Boolean).flatMap((b) => ['--ignore', b]);
-      const r = await tool('diff', [base, cur, '--mark', join(dir, `${label}-changed.png`), ...ign]);
+      const r = await tool('diff', [base, cur, '--mark', join(dir, `${label}-changed.png`), ...ignoreArgs(bx)]);
       const out = (r.stdout + r.stderr).replace(/\n+$/, '');
       if (r.code > 1) die(`diff: ${out}`);
       const lines = out.split('\n');
