@@ -249,14 +249,31 @@ vysu_mreload() {
   local port log from start ws
   port="$(metro_port)"; log="$(metro_log "$port")"; start="$(date +%s)"
   from="$(metro_lines "$log")"
-  ws="$(metro_page_ws "$platform" "$port")"
-  if [ -z "$ws" ] || ! metro_page_reload "$ws"; then
-    # No page of its own (the app is on the launcher, crashed, or shares its name with another
-    # emulator), or the proxy refused: a relaunch is the one reload that is surely this device's.
+  # The page comes back a moment after the app reconnects to the proxy (a Metro under load drops
+  # it): a few looks before giving up on it.
+  local i
+  # shellcheck disable=SC2034  # the counter only bounds the loop
+  for i in 1 2 3 4 5; do
+    ws="$(metro_page_ws "$platform" "$port")"
+    [ -z "$ws" ] || break
+    sleep 1
+  done
+  if [ -z "$ws" ]; then
+    # No page of its own: the app is on the launcher, crashed, or shares its name with another
+    # emulator. A relaunch is the one reload that is surely this device's.
     echo "$platform: no inspector page of its own on :$port, relaunching instead"
     vysu_mrelaunch "$platform"; return
   fi
+  metro_page_reload "$ws" || { echo "$platform: the inspector page refused the reload, relaunching instead"; vysu_mrelaunch "$platform"; return; }
   mobile_wait_bundled "$platform" "$log" "$from" 60 "vysu mreload"
-  local note=""; mobile_wait_ready "$platform" 30 || note=", ready text not seen (vysu $platform snapshot -i)"
-  echo "$platform: reloaded in $(( $(date +%s) - start ))s$note"
+  local note="" rc=0; mobile_wait_ready "$platform" 30 || rc=$?
+  # A reload that ends on a red box may be the reload's own fault (react-native-screens on Android
+  # was seen failing to find Fabric's UI manager after one): a clean launch tells it from a real
+  # error in the code, which the relaunch then reports the same way.
+  if [ "$rc" = 2 ]; then
+    echo "$platform: the reload ended on a $MOBILE_NOT_READY, relaunching"
+    vysu_mrelaunch "$platform"; return
+  fi
+  [ "$rc" = 0 ] || note=", $MOBILE_NOT_READY"
+  echo "$platform: reloaded in $(( $(date +%s) - start ))s (bundled after $(( MOBILE_BUNDLED_AT - start ))s)$note"
 }

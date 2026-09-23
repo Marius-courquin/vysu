@@ -199,8 +199,13 @@ mobile_session_name() { printf '%s-%s-%s' "$(cfg PROJECT)" "$1" "$(mobile_device
 # brings the running app forward; the first one on a new runtime builds agent-device's runner.
 mobile_session_ensure() { # platform
   mobile_session_open "$1" && return 0
-  ad "$1" open "$(mobile_app "$1")" --timeout 600000 >/dev/null 2>&1
+  ad "$1" open "$(mobile_app "$1")" --timeout "$(mobile_open_timeout "$1")" >/dev/null 2>&1
 }
+# Every agent-device call a wait makes is bounded, or a thrashing emulator turns a 60 s budget into
+# eight minutes (seen: a relaunch that took 486 s). An iOS open may have to build the XCTest runner
+# first, which is minutes on a loaded Mac; an Android open has nothing to build.
+mobile_open_timeout() { [ "$1" = ios ] && printf 180000 || printf 60000; }
+MOBILE_SNAPSHOT_TIMEOUT=15000
 # A session bound to another device. An emulator restarted while another one held its port comes back
 # on a new serial, and the session named after it still points at the old one: every command then
 # fails with « already bound to … ». `agent-device close` with no app ends the session and closes no
@@ -212,13 +217,13 @@ mobile_session_repair() { # platform "<the error agent-device answered>"
   local platform="$1" name out other
   name="$(mobile_session_name "$platform")"
   case "$2" in *"is already bound to"*) agent-device close --session "$name" >/dev/null 2>&1 || true;; esac
-  out="$(ad "$platform" open "$(mobile_app "$platform")" --timeout 600000 2>&1 >/dev/null)" && return 0
+  out="$(ad "$platform" open "$(mobile_app "$platform")" --timeout "$(mobile_open_timeout "$platform")" 2>&1 >/dev/null)" && return 0
   [ "$platform" = android ] || return 1
   other="$(printf '%s\n' "$out" | sed -n 's/.*in use by session "\([^"]*\)".*/\1/p' | head -1)"
   case "$other" in "$(cfg PROJECT)-android-"*) [ "$other" != "$name" ] || return 1;; *) return 1;; esac
   agent-device close --session "$other" >/dev/null 2>&1 || true
   log "android: dropped the session $other, left over on $ANDROID_SERIAL from an emulator restart"
-  ad "$platform" open "$(mobile_app "$platform")" --timeout 600000 >/dev/null 2>&1
+  ad "$platform" open "$(mobile_app "$platform")" --timeout "$(mobile_open_timeout "$platform")" >/dev/null 2>&1
 }
 # Does this text hold a line matching this ERE? `grep -c` reads everything it is given, where a
 # `printf | grep -q` leaves early and the SIGPIPE it leaves behind reads as « no » under pipefail.
@@ -410,7 +415,7 @@ mobile_on_launcher() { # platform [snapshot text already read]
     return 1
   fi
   local snap="${2:-}"
-  [ -n "$snap" ] || snap="$(ad ios snapshot -i 2>/dev/null || true)"
+  [ -n "$snap" ] || snap="$(ad ios snapshot -i --timeout "$MOBILE_SNAPSHOT_TIMEOUT" 2>/dev/null || true)"
   text_has "$snap" "$MOBILE_LAUNCHER_GREP"
 }
 # The dev-client, started straight into this owner's Metro: the launcher never shows, so nothing has
@@ -570,7 +575,7 @@ mobile_wait_bundled() { # platform log from seconds "<who, for the error>"
   while :; do
     last="$(tail -n "+$((from + 1))" "$log" 2>/dev/null | grep -E "(^|[^A-Za-z])$tag (Bundled|Bundling failed) [0-9]" | tail -1 || true)"
     case "$last" in
-      *"$tag Bundled "*) mobile_record_metro "$platform" "$(metro_port)"; return 0;;
+      *"$tag Bundled "*) MOBILE_BUNDLED_AT="$(date +%s)"; mobile_record_metro "$platform" "$(metro_port)"; return 0;;
       *"$tag Bundling failed "*)
         err="$(metro_bundle_error_since "$from" "$log" || true)"
         die "$who: Metro could not bundle for $tag: ${err:-see $log}" \
@@ -599,17 +604,28 @@ mobile_wait_bundled() { # platform log from seconds "<who, for the error>"
 # the URL again. The session the snapshots need is reopened when it is gone or bound elsewhere.
 # Answers 1 when the ready text never showed within the budget.
 MOBILE_DEVMENU_GREP='Runtime version|This is the developer menu'
+MOBILE_NOT_READY=""   # why mobile_wait_ready answered 1, for the caller's one line
+MOBILE_BUNDLED_AT=0   # when the last « Bundled » line was seen, for the time split the caller prints
+# React Native's red box: a JS error the app cannot render past. Nothing will get ready behind it,
+# and its first line is what the agent needs to read.
+# Its two buttons, together: « DISMISS (ESC) » and « RELOAD (R, R) » (the label may break a line).
+mobile_redbox() { text_has "$1" '\[button\] "(DISMISS|Dismiss)' && text_has "$1" '\[button\] "(RELOAD|Reload)'; }
+mobile_redbox_message() { # snapshot text → the error, cut at 160 characters
+  printf '%s\n' "$1" | grep -E '\[[a-z-]+\] "[^"]{25,}' | grep -vE '"(DISMISS|Dismiss|RELOAD|Reload)' \
+    | head -1 | sed 's/^[^"]*"//; s/"$//' | cut -c1-160 || true
+}
 mobile_wait_ready() { # platform seconds
   local platform="$1" budget="$2" ready snap t0 dismissed=0 handed=0 repaired=0
+  MOBILE_NOT_READY="ready text not seen (vysu $platform snapshot -i)"
   ready="$(mobile_ready_grep || true)"
   # Without them, a fixed delay is all there is.
   [ -n "$ready" ] || { sleep 5; return 0; }
-  mobile_session_ensure "$platform" || { log "$platform: no agent-device session (vysu $platform open …), the screen was not checked"; return 1; }
+  mobile_session_ensure "$platform" || { MOBILE_NOT_READY="screen not checked, no agent-device session (vysu $platform open …)"; return 1; }
   t0="$(date +%s)"
   while [ $(( $(date +%s) - t0 )) -lt "$budget" ]; do
     # The whole tree, not -i: the dev menu's texts are no controls, and Android's -i leaves them out.
     # --force-full: a repeated unchanged Android snapshot otherwise answers with a bare « unchanged ».
-    snap="$(ad "$platform" snapshot --force-full 2>&1 || true)"
+    snap="$(ad "$platform" snapshot --force-full --timeout "$MOBILE_SNAPSHOT_TIMEOUT" 2>&1 || true)"
     case "$snap" in
       *SESSION_NOT_FOUND*|*"is already bound to"*|*DEVICE_IN_USE*)
         [ "$repaired" = 0 ] || return 1
@@ -624,7 +640,17 @@ mobile_wait_ready() { # platform seconds
         || { [ "$platform" != android ] || ad android back >/dev/null 2>&1 || true; }
       continue
     fi
+    if mobile_redbox "$snap"; then
+      MOBILE_NOT_READY="red box: $(mobile_redbox_message "$snap")"
+      return 2
+    fi
     text_has "$snap" "$ready" && return 0
+    # A process that died on the way (a native crash under memory pressure was seen) leaves the home
+    # screen up, and the budget would be spent waiting for an app that is not there. One `pidof`.
+    if [ "$platform" = android ] && [ -z "$(adb shell pidof "$(cfg MOBILE_BUNDLE)" 2>/dev/null | tr -d '\r')" ]; then
+      MOBILE_NOT_READY="the app is not running, it crashed or was closed (adb logcat -b crash)"
+      return 1
+    fi
     if [ "$handed" -lt 2 ] && [ -n "$(cfg MOBILE_SCHEME)" ] && [ $(( $(date +%s) - MOBILE_HANDED_AT )) -ge 20 ] \
       && mobile_on_launcher "$platform" "$snap"; then
       handed=$((handed + 1))
@@ -685,7 +711,7 @@ vysu_mrelaunch() {
     mobile_quiet_dev_menu "$platform" "$bundle"
     local log from; log="$(metro_log)"; from="$(metro_lines "$log")"
     mobile_launch "$platform" "$bundle" "$lang"
-    mobile_wait_bundled "$platform" "$log" "$from" 120 "vysu mrelaunch"
+    mobile_wait_bundled "$platform" "$log" "$from" 180 "vysu mrelaunch"
     # This device's own JS console, for `vysu mlog <platform> --device`: started once, it follows
     # the app through every later relaunch.
     applog_start "$platform" js >/dev/null 2>&1 || true
@@ -694,9 +720,10 @@ vysu_mrelaunch() {
     # but the app itself: VYSU_MOBILE_READY_TEXT below, or the fixed delay when it names nothing.
     mobile_launch "$platform" "$bundle" "$lang"
   fi
-  local note=""
-  mobile_wait_ready "$platform" 60 || note=", ready text not seen (vysu $platform snapshot -i)"
-  echo "$platform: relaunched in $(( $(date +%s) - start ))s${textsize:+ (text size $textsize)}${appearance:+ ($appearance)}${lang:+ ($lang)}$note"
+  local note="" split=""
+  mobile_wait_ready "$platform" 60 || note=", $MOBILE_NOT_READY"
+  [ "$MOBILE_BUNDLED_AT" = 0 ] || split=" (bundled after $(( MOBILE_BUNDLED_AT - start ))s)"
+  echo "$platform: relaunched in $(( $(date +%s) - start ))s$split${textsize:+ (text size $textsize)}${appearance:+ ($appearance)}${lang:+ ($lang)}$note"
 }
 
 # One line of a flow / a recording: vysu's own verbs, then anything agent-device accepts.
