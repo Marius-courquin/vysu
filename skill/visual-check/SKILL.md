@@ -1,120 +1,141 @@
 ---
 name: visual-check
-description: Visual verification of a screen in a real browser (any web app, any URL, a Storybook story, a marketing page) or on an iOS simulator / Android emulator through `vysu` - one session per persona with the login kept, accessibility snapshot, multi-viewport, recent and old device, large text, dark theme, notifications (in-app, push), diff against a deployed baseline, contact sheet, annotations. Use before any merge request touching UI, and on "check this visually", "screenshot", "what does it look like", "on mobile", "in large text", "the push notification".
+description: Entry point for ANY look at a running app, web or mobile, through `vysu`. Use it before saying a UI change is done, before any merge request that touches UI, and whenever someone asks to check, see, look at, screenshot, compare, test on a phone, an iPhone, Android, a tablet, in large text or dark mode, a notification or a push, a page of the site, a Storybook story, or asks "does it look right". Covers a real browser (any URL) and iOS simulators / Android emulators - one session per persona with the login kept, recent and old device, diff against a deployed baseline, contact sheets. Device and multi-screen work is delegated to a short-context checker agent.
 ---
 
 # Visual verification (`vysu`)
 
 `vysu` drives agent-browser (web) and agent-device (mobile) against the real app: one session **per
 persona** whose state is restored (no re-login on every run). Captures live outside every repo,
-under the project's state folder (`vysu doctor` prints it; default `~/.vysu/<project>/shots/`).
-Turning a recording (`rec`, `mrec`) into a demo video: skill **demo-video**.
+under the project's state folder (`vysu doctor` prints it). Turning a recording (`rec`, `mrec`)
+into a demo video: skill **demo-video**.
 
 Nothing here names a value. What this project decides - origin, personas, baseline, devices,
-services, push presets - comes from three places, and only from them:
-
-| Question | Where the answer is |
-|---|---|
-| origin, baseline, viewports, language, devices, services, push drivers, auth connector | `vysu doctor` (the resolved values and where each came from) |
-| the same, editable | the project's `.vysu/config` |
-| who can log in | `vysu persona list` |
-
-A project may add its own **overlay skill** on top of this one: its definition of done, its
-personas and what they are for, its test data and its merge-request rules. This skill stays the
+services, push presets, deep-link prefix - comes from `vysu doctor` (resolved values and where each
+came from), the project's `.vysu/config`, and `vysu persona list`. A project may add an **overlay
+skill** (its definition of done, personas, test data, merge-request rules); this skill stays the
 mechanics.
 
-## When (definition of done)
+## 1. Delegate first
+
+A visual check is dozens of tool calls, and every call re-reads the whole conversation. Measured on
+62 sessions: the same device round trip cost **386k tokens of context** in a long development
+session and 185k in a sub-agent, and the long session also lost its thread. So:
+
+- **Delegate** to a checker sub-agent whenever the check needs a device, more than one screen, a
+  persona change, a state to set up (deep link, offline, permission, large text), or an
+  interaction pass. The brief template and the report contract are in `references/delegate.md`.
+  **`vysu checker`** names the model to spawn it on for the agent tool you are (the project sets
+  it per tool in `VYSU_CHECKER_MODELS`: driving and capturing need no frontier model, you judge
+  the design on the sheet it returns); pass it as the sub-agent's model (Claude Code's Agent tool,
+  Codex's spawn_agent). Claude Code also gets a ready `visual-checker` agent from `vysu init`. An
+  agent without sub-agents runs the same brief itself.
+- **Inline** only for one `vysu walk` / one `mshot` you will read yourself.
+- Give the checker **what changed and what should now look different**: it reports facts (what is
+  on screen, what moved, what the logs say); you judge.
+
+## 2. When (definition of done)
 
 - **Web** - every screen the change touches:
   `vysu walk <persona> <name> --url <origin>/<path> --baseline-url @`, and `check: clean`.
-  `--baseline-url @` means "the same path on `VYSU_BASELINE_ORIGIN`", which is normally the
-  deployed main branch: a branch is read against main without a checkout.
-- **Mobile** - every screen on the **recent and the old** device of the platform, then `textsize xl`.
-- **Notifications** - if the change touches one, trigger it for real (`vysu push`, or the project's
-  own command).
-- `vysu report <name> --md` goes into the `## Tests` section of the merge request. A contact sheet
-  or an annotated PNG only when the pixels are the question.
+- **Mobile** - every screen on the **recent and the old** device of each platform, then in `xl`
+  text (`vysu mdo … --devices "<recent>,<old>" --textsize normal,xl` does the matrix in one call).
+- **Interaction** - a screen that scrolls, drags, pulls to refresh, opens a sheet or animates: one
+  short `mrec` (or `rec` on the web) of that gesture, read through its motion report. Static
+  captures never show a drag defect.
+- **Notifications** - if the change touches one, trigger it for real (`vysu push`, or the
+  project's own command).
+- **"Fixed" needs evidence**: after a fix, the capture of that screen says
+  `vs previous: N zones changed` on the zone in question. `unchanged` means the fix is not on
+  screen (stale bundle, a style class that was not compiled, the wrong device): `vysu mlog --errors`,
+  `vysu mreload`, then capture again. Never announce a fix on an unchanged capture.
+- `vysu report <name> --md` goes into the `## Tests` section of the merge request.
 
-## The loop, in tokens
+## 3. The loop, in tokens
 
-Every image is downscaled before it is tokenised (Claude: 1 568 px on the long side, then about
-`w x h / 750` tokens; OpenAI: 512 px tiles, same order of magnitude): a web capture is about
-1 700 tokens, a 1x mobile capture about 470, an Android capture in device pixels three times more
-(hence the 1x), a tall contact sheet 1 800-2 900 **and unreadable** (table in `diff.md`). A tool
-call costs about 200 tokens *plus* the reasoning between two calls: one `walk` replaces six calls.
-Text first, image second.
+Images are cheap when small (a 1x mobile capture is about 470 tokens, a web capture about 1 700,
+an Android capture in device pixels three times more); round trips are what cost. Text first,
+one call instead of five, image last.
 
-1. `vysu up <service>` if the app is not being served yet (the services this project declares are
-   in `vysu doctor`; `vysu up all` starts them in order).
-2. `vysu walk` per screen -> a report of 25 lines or fewer: what moved, what the browser
-   complained about, **the single image to read**. `vysu report <name>` reads it back without
-   re-capturing.
-3. Read **only** the `read: ...-changed.png`. Never what follows `identical, do not read:`.
-4. Several states: `vysu sheet <name>` -> `sheet-1.png`. One detail: `vysu box` then `vysu mark`.
-   A long screen: `--full` (how it unfolds inner scrollers: `diff.md`). Full size only when the
-   pixels are the question.
-5. Interaction: `vysu <persona> snapshot -i -c` (about 300 tokens; never a bare `snapshot`, never
-   `get html`), `-s "<css>"` to scope it, then `--delta`. Act by refs (`click @e12`).
-6. `vysu check <persona>` after any screen reached outside a `walk` (a framework error or a 4xx/5xx
-   on the API is a defect), and `vysu <persona> close` at the end.
+**Web**: `vysu up <service>` if needed, then `vysu walk` per screen -> a report of 25 lines or fewer:
+what moved, what the browser complained about, **the single image to read**. Read only the
+`read: ...-changed.png`. Interaction: `vysu <persona> snapshot -i -c`, act by refs, `vysu check`.
 
-## Commands
+**Mobile**:
+
+1. `vysu claim ios|android --any` (or `--device` / `--avd`): a free device becomes yours for the
+   task, and every next command aims at it. `vysu devices` says who holds what.
+2. `vysu mdo <platform> --shots <name> -- "<step>" …`: the steps run in one call, one line each,
+   with the screen after each step (labels, node delta, keyboard). Steps: `open <route>`,
+   `tap "<label>" [--wait "<text>"]`, `fill "<label>" "<value>"`, `type`, `key return|dismiss|back`,
+   `wait "<text>"`, `wait gone "<text>"`, `wait idle`, `scroll-to "<label>"`, `expect [no] "<text>"`,
+   `net offline|online`, `perm <name> grant|deny|reset`, `relaunch [--textsize …]`, `shot <label>`,
+   `screen`. **Never `sleep` to wait for the app**: wait for what you expect to see.
+3. Read the sheet (`sheet:` line) or the one capture that changed (`vs previous:` line).
+4. `vysu mlog --errors` (`--device` for this device only) before concluding: a red bundle or an
+   API error is a defect even when the capture looks fine. `metro: bundle failed` means the code
+   on disk does not compile right now, possibly because of another session's edit.
+5. `vysu release <platform> --reset` at the end.
+
+## 4. Commands
 
 ```bash
-vysu up <service> | up all | down <service> | down all | down metro
-vysu walk <p> <name> --url <url> [--baseline-url @|<url> | --baseline <name>] [--sizes WxH,…] [--dark] \
-                                 [--full] [--no-expand] [--no-warm] [--lang <l>] [--ignore <css>]… [--freeze]
-vysu shots <p> <name> …            # captures only (walk = shots + check + report)
-vysu report <name> [--md] · sheet <name> [--cols N] [--max 6] [--open] · check <p> [--save <name>] · lang <p> <l>
-vysu flow <p> <file|-> --shots <name> [--viewport WxH]
-vysu rec <p> <name> [--fps 30] [--viewport 1440x900] [--cursor] [--flow <file>] -- "<step>"…
-vysu frame <name|file> [--preset framed|pitch] · sheet <name> --compare [--against <name>] · render <args>
-vysu cut <take> --draft [--force] · video <take> [--format landscape|portrait|all] [--check] [--draft]
-vysu login <p> [url] · auth token <p> · box <p> <selector|@ref> [--page] · mark <png> …
-vysu <p> <agent-browser args…>     # open, snapshot -i -c, click, fill, eval, network route…
-vysu up ios | android [--build] [--device <name>] [--avd <name>]   # Metro + simulator / emulator
-vysu mlogin ios|android <p>        # once per persona and install
-vysu ios|android <agent-device args…>   # snapshot -i, press @eN~sN --settle, wait text "…" 15000
-vysu mshot ios|android <name> [label] [--baseline <name>] [--full [--step 150] [--max 12] [--top <pt>] [--bottom <pt>]]
-vysu mrelaunch ios|android [--textsize normal|large|xl] [--appearance light|dark] [--lang <l>]
-vysu mtap ios|android "<label>" · mflow ios|android <file|-> --shots <name> · mrec … · mlog [mark|--tail N]
-vysu push ios <preset> · push <p> <preset> [--platform ios|android] [--field k=v]…
-vysu textsize ios|android normal|large|xl · appearance ios|android light|dark
-vysu claim ios|android|<p> [--minutes 30] [--note "<why>"] · release <same> [--force] [--reset]
-vysu prune [--days 30] [--match "<glob>"]… [--dry-run] · cache clear · doctor · persona list · setup · init
+# web
+vysu walk <p> <name> --url <url> [--baseline-url @|<url> | --baseline <name>] [--sizes WxH,…] [--dark] [--full]
+vysu shots <p> <name> … · report <name> [--md] · sheet <name> [--only <glob>] [--strip] · check <p>
+vysu flow <p> <file|-> --shots <name> · rec <p> <name> -- "<step>"… · login <p> · <p> <agent-browser args…>
+# devices
+vysu devices · claim ios|android [--any | --device <name> | --avd <name>] [--minutes 20] · release … [--reset]
+vysu up ios|android [--device <name>] [--avd <name>] [--isolated [--port N] [--dir <mobile dir>]]
+vysu adb <args…> · simctl <verb> [args…]          # raw tools on YOUR device, under its lock
+# mobile
+vysu mdo ios|android [--shots <name>] [--devices "<a>,<b>"] [--textsize normal,xl] [--keep-going] -- "<step>"…
+vysu mopen ios|android <route|url> [--wait "<text>"] · mwait ios|android "<text>" [--gone] [--timeout s]
+vysu mtap ios|android "<label>" [--wait "<text>"] · mshot ios|android <name> [label] [--full] [--no-prev]
+vysu mreload ios|android · mrelaunch ios|android [--textsize …] [--appearance …] [--lang …]
+vysu mnet android offline|online · mperm ios|android <name> grant|deny|reset
+vysu mburst ios|android <name> [--seconds 3] -- "<step>" · mrec ios|android <name> -- "<step>"…
+vysu mlog [mark | --errors | --device | --tail N] · mlogin ios|android <p> · textsize|appearance …
+vysu ios|android <agent-device args…>             # the raw driver, when a verb above does not fit
 ```
 
-`-` as the persona is an anonymous session: a public page, a marketing site, a Storybook story.
+`-` as the persona is an anonymous session (a public page, a marketing site, a Storybook story).
 
-## Personas and data
+## 5. Sharing one machine
 
-`vysu persona list` names them; `vysu doctor` says where the file is. Credentials live in
-`personas.env` under the state folder, mode 600, outside every repo, and are **never printed**.
-Keep mutations inside whatever scope the project reserves for them (its overlay skill says which);
-a state the environment does not produce on demand is simulated with `network route`, not with a
-mock harness - see `local-stack.md`.
+Several agents (and the developer) share the simulators, the emulators and, by default, **one
+Metro serving one checkout**: every command locks what it touches, a claim holds a device for a
+task. In the shared mode an edit anywhere in the checkout reloads every device: judge after
+`vysu mreload`, and read `mlog` before blaming the screen. For a phase that must not be disturbed,
+`vysu up <platform> --isolated` from your own worktree gives you your own Metro on your own port
+(about 1-1.5 GB of RAM: a mode for isolated phases, not the default).
+
+## 6. Reporting to the person
+
+A contact sheet with a **numbered legend** (1: before, 2: after, 3: xl text…) and one question
+when a decision is theirs. Keep process out of the answer (commit ids, which device was released,
+lint results): that belongs in the merge request.
 
 ## Do not
 
 - Build a Playwright / MSW harness or a fake auth context just to "see" a screen.
-- Open a capture listed after `identical, do not read:`, or a full-size one when the
-  `-changed.png` exists.
-- Re-run `login` / `mlogin` without a reason: a login consumes the SSO session and rotates the
-  refresh token.
-- Write captures into a repo.
-- Use the default agent-browser session (no `--session`): it is shared between agents.
-- Work around a `busy` line: wait, switch device or persona, or `vysu claim` at the start of a
-  mobile task.
+- `sleep` to wait for the app, or write a helper script for a sequence `mdo` can run.
+- Run `adb` / `xcrun simctl` directly: another agent's device may answer. `vysu adb` / `vysu simctl`.
+- Open a capture listed after `identical, do not read:`, or a full-size one when a `-changed.png`
+  exists.
+- Re-run `login` / `mlogin` without a reason: a login consumes the SSO session.
+- Write captures into a repo, or use the default agent-browser session (no `--session`).
+- Work around a `busy` / `claimed by` line: wait, `claim --any`, or ask.
 
 ## References
 
 `Read skill/visual-check/references/<file>` (installed copy: `.claude/skills/visual-check/references/`).
 
-- `diff.md` - reading a diff, a report, a contact sheet, `meta.json`; `--full`, `--ignore`,
-  `--freeze`, `box` + `mark`.
-- `demo.md` - web flows (`flow`, `rec`), `events.json`, `cut.json`, `frame`, `sheet --compare`.
-- `mobile.md` - iOS / Android: devices, `mlogin`, agent-device, large text, `mrelaunch`, flows.
+- `delegate.md` - the checker brief template, the report contract, the agent definition.
+- `mobile.md` - devices, pool and claims, `mdo`, sessions, deep links, offline, permissions,
+  bursts, large text, isolated mode, logs.
+- `diff.md` - reading a diff, a report, a sheet, `meta.json`; `--full`, `--ignore`, `box` + `mark`.
+- `demo.md` - web flows, `rec`, `events.json`, `cut.json`, `frame`, `sheet --compare`.
 - `notifications.md` - in-app, e-mail, push through `vysu push`.
-- `local-stack.md` - a local stack through `vysu up`, a known state, data the environment does not
-  produce.
+- `local-stack.md` - a local stack through `vysu up`, a known state, data the environment lacks.
 - `troubleshooting.md` - when `vysu` misbehaves.
