@@ -8,9 +8,9 @@
   now serves all three (`py/personas.py`): a persona is declared by its `_EMAIL` key, every other
   key belongs to the longest declared name it starts with, and an `_EMAIL` field under a declared
   name without a `_PASSWORD` of its own (`RESIDENT_BACKUP_EMAIL`) stays that persona's field.
-- **`persona import` leaves behind what is nobody's.** A key that belongs to no persona — a fixture
-  id kept next to the credentials, `E2E_RESIDENCE_ID` — used to become a persona `residence`; it is
-  now skipped and named (never its value). The converted file is created mode 600 rather than
+- **`persona import` leaves behind what is nobody's.** A key that belongs to no persona (a fixture
+  id kept next to the credentials, such as `E2E_RESIDENCE_ID`) used to become a persona `residence`;
+  it is now skipped and named, never its value. The converted file is created mode 600 rather than
   chmod-ed after the write, and the command prints the personas it read.
 - `persona add|set` refuse a name a variable cannot hold (`tb-x`): the line would not source.
 - `vysu init` says, for each question, what the answer is for.
