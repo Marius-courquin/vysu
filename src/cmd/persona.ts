@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
 import { personaCheckName, personaImport, personaKey, personaList, personaWrite } from '../core/personas.ts';
+import { ask, askSecret } from '../setup/prompt.ts';
 
 const USAGE = 'usage: vysu persona add <name> | set <name> <KEY> <value> | list [--json] | import <file> [--prefix <P>] [--to <file>]';
 
@@ -22,46 +23,16 @@ export async function run(args: string[]): Promise<void> {
   }
 }
 
-// One line from the terminal. Silent for a password: typed into a prompt, it is not in the shell
-// history, not in an agent's transcript and not in a process list.
-function ask(prompt: string, silent: boolean): Promise<string> {
-  process.stderr.write(prompt);
-  return new Promise((resolve) => {
-    const stdin = process.stdin;
-    const raw = silent && stdin.isTTY;
-    if (raw) stdin.setRawMode(true);
-    let buf = '';
-    const onData = (chunk: Buffer): void => {
-      for (const ch of chunk.toString('utf8')) {
-        if (ch === '\n' || ch === '\r' || ch === '\u0004') {
-          stdin.off('data', onData);
-          if (raw) stdin.setRawMode(false);
-          stdin.pause();
-          if (silent) process.stderr.write('\n');
-          resolve(buf);
-          return;
-        }
-        if (ch === '\u0003') {
-          if (raw) stdin.setRawMode(false);
-          process.exit(130);
-        }
-        if (ch === '\u007f' || ch === '\b') buf = buf.slice(0, -1);
-        else buf += ch;
-      }
-    };
-    stdin.on('data', onData);
-    stdin.resume();
-  });
-}
-
+// Asked for, not taken as arguments: a password typed into a prompt is not in the shell history, not
+// in an agent's transcript and not in a process list. A pipe answers too, one line per question.
 async function add(args: string[]): Promise<void> {
   config().needProject();
   const name = args[0];
   if (!name) die('usage: vysu persona add <name>');
   personaCheckName(name);
-  const email = await ask(`e-mail for ${name}: `, false);
+  const email = await ask(`e-mail for ${name}: `);
   if (!email) die('persona add: no e-mail');
-  const password = await ask(`password for ${name} (not echoed): `, true);
+  const password = await askSecret(`password for ${name} (not echoed): `);
   if (!password) die('persona add: no password');
   personaWrite(personaKey(name, 'EMAIL'), email);
   personaWrite(personaKey(name, 'PASSWORD'), password);
