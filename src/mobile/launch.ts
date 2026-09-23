@@ -88,26 +88,42 @@ export async function sessionRepair(p: Platform, said: string): Promise<boolean>
 // own `defaults` on the container's plist path: its cfprefsd is the one the app reads from, where a
 // plain write to the file could be overwritten by that daemon's cache. Android needs a debuggable build
 // for `run-as`, which a dev-client is; a release build answers « not debuggable » and is left alone.
+// The floating tools button goes too (`EXDevMenuShowFloatingActionButton` / `showFab`): it sat in
+// every capture, over the app's top-right corner, and took the taps meant for what lay under it — a
+// `tap Notifications` opened the dev menu instead. The menu itself stays a shake away.
 export async function quietDevMenu(p: Platform, bundle: string): Promise<void> {
   if (p === 'ios') {
     const r = await xcrun(['simctl', 'get_app_container', await iosUdid(), bundle, 'data']);
     if (r.code !== 0) return;
     const plist = join(r.stdout.trim(), 'Library', 'Preferences', bundle);
     const get = async (k: string): Promise<string> => (await run('plutil', ['-extract', k, 'raw', `${plist}.plist`])).stdout.trim();
-    if ((await get('EXDevMenuIsOnboardingFinished')) === 'true' && (await get('EXDevMenuShowsAtLaunch')) === 'false') return;
+    if (
+      (await get('EXDevMenuIsOnboardingFinished')) === 'true' &&
+      (await get('EXDevMenuShowsAtLaunch')) === 'false' &&
+      (await get('EXDevMenuShowFloatingActionButton')) === 'false'
+    ) {
+      return;
+    }
     await sim('spawn', ['defaults', 'write', plist, 'EXDevMenuIsOnboardingFinished', '-bool', 'YES']);
     await sim('spawn', ['defaults', 'write', plist, 'EXDevMenuShowsAtLaunch', '-bool', 'NO']);
+    await sim('spawn', ['defaults', 'write', plist, 'EXDevMenuShowFloatingActionButton', '-bool', 'NO']);
     return;
   }
   const prefs = 'shared_prefs/expo.modules.devmenu.sharedpreferences.xml';
   let cur = crlf((await adb(['shell', 'run-as', bundle, 'cat', prefs])).stdout).replace(/\n+$/, '');
   if (cur.includes('run-as:')) return; // not debuggable, or not installed
-  if (cur.includes('name="isOnboardingFinished" value="true"') && cur.includes('name="showsAtLaunch" value="false"')) return;
+  const want = ['name="isOnboardingFinished" value="true"', 'name="showsAtLaunch" value="false"', 'name="showFab" value="false"'];
+  if (want.every((w) => cur.includes(w))) return;
   if (!cur.includes('<map')) cur = "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n</map>";
   const next = cur
     .split('\n')
-    .filter((l) => !/name="(isOnboardingFinished|showsAtLaunch)"/.test(l))
-    .map((l) => l.replace('</map>', '    <boolean name="isOnboardingFinished" value="true" />\n    <boolean name="showsAtLaunch" value="false" />\n</map>'))
+    .filter((l) => !/name="(isOnboardingFinished|showsAtLaunch|showFab)"/.test(l))
+    .map((l) =>
+      l.replace(
+        '</map>',
+        '    <boolean name="isOnboardingFinished" value="true" />\n    <boolean name="showsAtLaunch" value="false" />\n    <boolean name="showFab" value="false" />\n</map>',
+      ),
+    )
     .join('\n');
   await adb(['shell', `run-as ${bundle} sh -c 'mkdir -p shared_prefs && cat > ${prefs}'`], { input: `${next}\n` });
 }

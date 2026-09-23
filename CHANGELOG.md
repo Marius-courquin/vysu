@@ -48,6 +48,10 @@ lock, claim, device-choice and state files are unchanged, so both versions can r
   - `vysu adb shell` is interactive; `cache clear` skips a directory instead of dying on it; a
     missing option value is named instead of « unbound variable »; `vysu doctor | head` ends quietly;
     a helper that fails prints one line instead of a Python traceback.
+- **Expo's floating tools button is hidden** on the devices vysu launches, with the dev menu's intro
+  and its opening at launch: it sat in every capture over the app's top-right corner and took the
+  taps meant for what lay under it (`tap Notifications` opened the dev menu). A shake still opens
+  the menu.
 - `VYSU_DEBUG=mobile` traces what a relaunch waited for.
 
 ## 0.5.1 — 2026-09-23
