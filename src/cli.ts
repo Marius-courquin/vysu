@@ -53,6 +53,15 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
+// A reader that stops early (`vysu doctor | head`) closes the pipe: the rest of the output has
+// nowhere to go, which is an end, not an error. The locks go with the exit hook.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (e: NodeJS.ErrnoException) => {
+    if (e.code === 'EPIPE') process.exit(0);
+    throw e;
+  });
+}
+
 // A signal ends the command the way a die does: locks given back, a recorder stopped.
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
   process.on(sig, () => {
