@@ -120,9 +120,12 @@ export function isoMillis(t: number): string {
   );
 }
 
-// Seconds between sending a touch and the touch landing: agent-device's round trip to the device,
-// the browser's to its page.
-const TOUCH_LATENCY: Record<string, number> = { mobile: 0.15, web: 0.05 };
+// Seconds between sending a touch and the touch landing: agent-device's round trip to the device, the
+// browser's to its page — by platform, then by kind. Measured against the screen's reactions: 0.15 s
+// on an iOS simulator, 0.2 s on an Android emulator. (The bash engine measured 0.55 s on Android: its
+// every call started agent-device's CLI between the stamp and the touch, where this one calls the
+// library.)
+const TOUCH_LATENCY: Record<string, number> = { ios: 0.15, android: 0.2, mobile: 0.15, web: 0.05 };
 
 // A step's seconds in the clip, kept as numbers beside the step that prints them as floats.
 export interface Timed {
@@ -153,7 +156,7 @@ export function readRows(text: string, t0: number, kind: string, platform: strin
     // When the step touched the screen: the clock it sent its first press at, plus the driver's own
     // round trip before the touch lands. A tap reads the screen first, so its start is not it.
     if (at) {
-      t.at = pyRoundTo(pyFloat(at)! - t0 + (TOUCH_LATENCY[kind] ?? 0), 2);
+      t.at = pyRoundTo(pyFloat(at)! - t0 + (TOUCH_LATENCY[platform] ?? TOUCH_LATENCY[kind] ?? 0), 2);
       step.at = float(t.at);
     }
     step.ok = ok !== 'false';

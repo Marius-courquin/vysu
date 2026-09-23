@@ -84,6 +84,8 @@ export async function mrec(argv: string[]): Promise<number> {
   const dir = join(config().shots, name);
   mkdirSync(dir, { recursive: true });
   rmSync(join(dir, 'frames'), { recursive: true, force: true });
+  // A re-take under the same name must not re-anchor on the previous take's motion report.
+  rmSync(join(dir, 'motion.txt'), { force: true });
   const video = join(dir, `${platform}.mp4`);
   const scale = await mobileScale(platform);
   mkdirSync(config().logs, { recursive: true });

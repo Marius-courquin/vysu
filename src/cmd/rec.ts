@@ -57,8 +57,7 @@ export async function run(args: string[]): Promise<void> {
   const dir = join(config().shots, name);
   mkdirSync(dir, { recursive: true });
   rmSync(join(dir, 'frames'), { recursive: true, force: true });
-  // The last take's motion report must not be read as this one's: take re-anchors the clock on the
-  // motion.txt it finds, and the web one is only written after it.
+  // A re-take under the same name must not re-anchor on the previous take's motion report.
   rmSync(join(dir, 'motion.txt'), { force: true });
   const video = join(dir, `web.${ext}`);
   await lockTake(resourceOf(persona));
@@ -99,6 +98,12 @@ export async function run(args: string[]): Promise<void> {
   print(`${clip}\n`);
   // agent-browser writes the contact sheet next to the video, under the same stem.
   if (existsSync(join(dir, 'web.contact-sheet.png'))) print(`${join(dir, 'web.contact-sheet.png')}\n`);
+  // The motion report first: take re-anchors the steps on the screen's reactions it lists.
+  const motion = await tool('motion', [clip, '--fps', fps, '--scale', '1', '--dump', join(dir, 'frames')]);
+  print(motion.stdout);
+  writeFileSync(join(dir, 'motion.txt'), motion.stdout);
+  process.stderr.write(motion.stderr);
+  if (motion.code !== 0) exit(motion.code);
   const take = await tool('take', ['events', '--dir', dir, '--rows', rows, '--clip', 'web.mp4', '--kind', 'web', '--platform', 'web', '--t-stop', tStop, '--viewport', viewport]);
   print(take.stdout);
   process.stderr.write(take.stderr);
@@ -106,9 +111,4 @@ export async function run(args: string[]): Promise<void> {
   rmSync(rows, { force: true });
   evStop();
   await webMeta(dir, persona, { viewport, fps, events: 'true', clip: 'web.mp4' });
-  const motion = await tool('motion', [clip, '--fps', fps, '--scale', '1', '--dump', join(dir, 'frames')]);
-  print(motion.stdout);
-  writeFileSync(join(dir, 'motion.txt'), motion.stdout);
-  process.stderr.write(motion.stderr);
-  if (motion.code !== 0) exit(motion.code);
 }

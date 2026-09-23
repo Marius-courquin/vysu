@@ -61,7 +61,7 @@
 #                                           falls back to mrelaunch when the device has no inspector page of its own
 #   vysu mflow ios|android <file|-> [--shots <name>] [--keep-going]   the steps of a file, as `mdo` runs
 #                                           them (tap t:<i18n.key> too) → ✓ / ✗ lines + contact sheet
-#   vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] -- "<step>" …   record the screen while the steps run →
+#   vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] [--strict] -- "<step>" …   record the screen while the steps run →
 #                                           normalized H.264 clip + motion report + events.json (each step in clip
 #                                           seconds, with the point it tapped)
 #   vysu mlog [ios|android] [--device] [--errors] [mark | --tail N]   the app's log since this owner's last mark
