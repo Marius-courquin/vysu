@@ -2,7 +2,7 @@
 // doing it, with no device at all.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fakeAndroid } from './fake-adb.ts';
@@ -32,4 +32,16 @@ test('__prim mobile_load_bundle android addresses the emulator of the AVD, two b
   const focus = f.calls().filter((l) => l.includes('dumpsys window'));
   assert.equal(focus.length, 1, f.calls().join('\n'));
   assert.match(focus[0]!, /-s emulator-5598 shell dumpsys window/);
+});
+
+test('mobileScale: a density adb does not give is asked again, then a die, never a 0.0 remembered', posix, async () => {
+  const f = fakeAndroid({ density: '' });
+  const cache = join(f.state, 'scale-android-fake-avd');
+  writeFileSync(cache, '0.0');
+  const r = await f.vysu(['mshot', 'android', 's1']);
+  assert.equal(r.code, 1, r.stderr);
+  assert.match(r.stderr, /no screen density/);
+  assert.equal(f.calls().filter((l) => l.includes('wm density')).length, 2);
+  assert.equal(readFileSync(cache, 'utf8'), '0.0');
+  assert.equal(f.calls().filter((l) => l.includes('screencap')).length, 0);
 });

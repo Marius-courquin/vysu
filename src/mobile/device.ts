@@ -194,11 +194,19 @@ export async function androidSdkLevel(): Promise<number> {
 export async function mobileScale(p: Platform): Promise<string> {
   const f = join(config().state, `scale-${p}-${slug(devices.of(p))}`);
   const cached = read(f);
-  if (cached) return cached;
+  // A 0.0 an earlier engine remembered is no scale either: asked again.
+  if (Number(cached) > 0) return cached;
   let scale: string;
   if (p === 'android') {
     await androidSelect();
-    const d = /\d+/.exec(await adbShell(['wm', 'density']))?.[0] ?? '';
+    // An adbd restarting (a zygote restart, an emulator still booting) answers nothing: asked again
+    // once, and never remembered as 0.0, which every later capture would have divided by.
+    let d = '';
+    for (let i = 0; i < 2 && !d; i++) {
+      if (i) await sleep(2000);
+      d = /\d+/.exec(await adbShell(['wm', 'density']))?.[0] ?? '';
+    }
+    if (!(Number(d) > 0)) die(`android: ${devices.android} answered no screen density (adb shell wm density), twice: its adbd may be restarting, try again in a few seconds`);
     scale = pyFloat(Number(d) / 160);
   } else {
     // agent-device captures at 1x and says that logical size (« (402x874 @1x) »); simctl captures
@@ -217,6 +225,7 @@ export async function mobileScale(p: Platform): Promise<string> {
     scale = String(pyRound(px / logical));
     rmSync(oneX, { force: true });
     rmSync(full, { force: true });
+    if (!(Number(scale) > 0)) die(`ios: no scale from a ${px} px capture and a ${logical} pt one`);
   }
   remember(f, scale);
   return scale;
