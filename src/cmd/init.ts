@@ -151,13 +151,15 @@ export async function run(args: string[]): Promise<void> {
       'Executables here become vysu commands: `vysu <name>` runs ./<name> with every VYSU_* exported,\nVYSU_ENGINE set to the engine dir and VYSU_PROJECT_DIR to this project.\n',
     );
   }
-  // The answer decides, unless the environment names a connector for this very command.
+  // The answer decides, unless the environment names a connector for this very command. The
+  // template is the module form, which runs wherever vysu runs; a connector the project already
+  // has, in any form, is left alone (the first found is the one loaded).
   const connector = config().origin('AUTH') === 'env' ? config().get('AUTH') : auth;
-  if (connector === 'custom' && !isFile(join(vysu, 'auth.sh'))) {
-    const example = join(ENGINE, 'connectors', 'auth', 'example.sh');
+  if (connector === 'custom' && !['auth.mjs', 'auth.js', 'auth.ts', 'auth.sh'].some((f) => isFile(join(vysu, f)))) {
+    const example = join(ENGINE, 'connectors', 'auth', 'example.mjs');
     if (isFile(example)) {
-      copyFileSync(example, join(vysu, 'auth.sh'));
-      console.log(`wrote ${root}/.vysu/auth.sh (from connectors/auth/example.sh)`);
+      copyFileSync(example, join(vysu, 'auth.mjs'));
+      console.log(`wrote ${root}/.vysu/auth.mjs (from connectors/auth/example.mjs)`);
     }
   }
 

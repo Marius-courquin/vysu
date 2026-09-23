@@ -63,7 +63,8 @@ const cases: Case[] = [
   { name: 'load/bogus', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'bogus' }, ignore: [/^vysu: no auth connector « bogus »/] },
   { name: 'load/missing-path', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'connectors/mine.sh' } },
   { name: 'load/path', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: sh } },
-  { name: 'load/custom-none', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'custom' } },
+  // Deliberate: with no connector in .vysu/, the one expected is the module form vysu init writes.
+  { name: 'load/custom-none', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'custom' }, ignore: [/^vysu: no auth connector « custom »/] },
   { name: 'load/no-origin', args: ['login', 'alice'], cwd: plain, env: { VYSU_ORIGIN: '' } },
 ];
 

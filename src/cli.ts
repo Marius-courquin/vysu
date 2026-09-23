@@ -3,11 +3,10 @@
 // asked for, so a `vysu report` never pays for the mobile code.
 import module from 'node:module';
 import { Config } from './core/config.ts';
-import { legacy } from './core/legacy.ts';
 import { setCommandLine, setConfig } from './core/ctx.ts';
 import { Exit, printError, runCleanups, VysuError } from './core/errors.ts';
 import { noColor } from './core/ui.ts';
-import { commands, ENGINE_COMMANDS } from './commands.ts';
+import { commands } from './commands.ts';
 import { execProjectCommand, projectCommandPath } from './core/project.ts';
 import { usage } from './cmd/help.ts';
 
@@ -34,14 +33,12 @@ async function main(argv: string[]): Promise<number> {
       const code = await (await load()).run(args.slice(1));
       return typeof code === 'number' ? code : 0;
     }
-    // A project command wins over the persona passthrough: `.vysu/commands/seed` is a command the
-    // project named, while a persona is only ever a session name.
-    if (!ENGINE_COMMANDS.has(name)) {
-      const file = projectCommandPath(name);
-      if (file) return await execProjectCommand(file, args.slice(1));
-      return await (await import('./web/passthrough.ts')).passthrough(name, args.slice(1));
-    }
-    return await legacy(args);
+    // Any other name is a project command or a persona. The project command wins:
+    // `.vysu/commands/seed` is a command the project named, while a persona is only ever a session
+    // name. An unknown name is therefore a persona's session, and agent-browser answers for it.
+    const file = projectCommandPath(name);
+    if (file) return await execProjectCommand(file, args.slice(1));
+    return await (await import('./web/passthrough.ts')).passthrough(name, args.slice(1));
   } catch (e) {
     if (e instanceof Exit) return e.code;
     if (e instanceof VysuError) {

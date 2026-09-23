@@ -52,7 +52,7 @@ export async function authLoad(): Promise<Loaded> {
   if (c.origin('AUTH') === 'default' && projectConnector()) named = 'custom';
   let file: string;
   if (named === 'custom') {
-    file = projectConnector() || join(c.vysuDir, 'auth.sh');
+    file = projectConnector() || join(c.vysuDir, 'auth.mjs');
   } else if (named.includes('/')) {
     file = c.projectPath(named);
   } else {
