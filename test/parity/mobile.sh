@@ -11,6 +11,8 @@
 # comment. A line starting with `!` is run once, by the TS engine only, to put the device back between
 # cases (`! mrelaunch ios`). The device must be claimed by $VYSU_OWNER first (`vysu claim ios --any`),
 # and released after: this script takes nothing and leaves nothing behind but the scratch dir.
+# PARITY_FIRST=ts runs the TypeScript engine first: a command that changes the device (a permission,
+# the network) is then read from the same starting state by the engine that ran second before.
 set -uo pipefail
 
 ENGINE="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -45,7 +47,8 @@ while IFS= read -r line || [ -n "$line" ]; do
   fi
   N=$((N + 1))
   eval "set -- $line"
-  for side in legacy ts; do
+  order="legacy ts"; [ "${PARITY_FIRST:-legacy}" = ts ] && order="ts legacy"
+  for side in $order; do
     bin=("$ENGINE/bin/vysu")
     [ "$side" = legacy ] && bin=(bash "$ENGINE/legacy/vysu")
     t0=$(date +%s)
