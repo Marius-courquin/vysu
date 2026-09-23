@@ -138,6 +138,9 @@ export async function abRaw(args: string[], o: AbOptions = {}): Promise<RunResul
     partial = text.slice(cut + 1);
     if (cut >= 0) process.stderr.write(quiet(text.slice(0, cut + 1)));
   });
+  // A batch agent-browser left unread (it exited on a bad option, or crashed) must not take vysu down
+  // with EPIPE: its exit code says what happened.
+  child.stdin?.on('error', () => undefined);
   if (o.input !== undefined) child.stdin?.end(o.input);
   const code = await new Promise<number>((resolve) => {
     child.on('error', (e) => {

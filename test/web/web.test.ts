@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { abCandidates, bboxes, evalValue, lastLine, lastResult, quiet } from '../../src/web/ab.ts';
+import { abCandidates, abRaw, bboxes, evalValue, lastLine, lastResult, quiet } from '../../src/web/ab.ts';
 import { chromeJs, ignoreJs, pyJsonList, pyJsonString } from '../../src/web/js.ts';
 import { shellWords, StepSyntax } from '../../src/web/words.ts';
 import { wh } from '../../src/web/shots.ts';
@@ -133,4 +133,18 @@ test('where the native agent-browser is looked for', () => {
   ]);
   const patched = '/usr/local/lib/node_modules/agent-browser/bin/agent-browser-linux-x64';
   assert.equal(abCandidates('/usr/local/bin/agent-browser', patched, 'agent-browser-linux-x64', false)[0], patched);
+});
+
+// An agent-browser that exits before reading its batch (a bad option, a crash) closed the pipe under
+// a large write, and the EPIPE took vysu down with a stack trace instead of its exit code.
+test('a batch agent-browser never read ends with its code, not with EPIPE', { skip: process.platform === 'win32' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vysu-epipe-'));
+  writeFileSync(join(dir, 'agent-browser'), '#!/bin/sh\nexit 3\n');
+  chmodSync(join(dir, 'agent-browser'), 0o755);
+  process.env.PATH = `${dir}:${process.env.PATH}`;
+  const { Config } = await import('../../src/core/config.ts');
+  const { setConfig } = await import('../../src/core/ctx.ts');
+  setConfig(Config.load({ ...process.env, VYSU_STATE: join(dir, 'state') }, dir));
+  const r = await abRaw(['batch', '--json'], { input: 'x'.repeat(8 * 1024 * 1024), stderr: 'capture' });
+  assert.equal(r.code, 3);
 });
