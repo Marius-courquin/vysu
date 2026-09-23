@@ -134,7 +134,7 @@ VYSU_AUTH='none'
 # VYSU_SERVICES='web api db'
 #
 # One service, key by key:
-#   _CMD      the command, run through `sh -c` in _DIR, in the background, logged to logs/<name>.log
+#   _CMD      the command, run through `sh -c` (cmd.exe on Windows) in _DIR, in the background, logged to logs/<name>.log
 #   _DIR      where to run it, relative to the project (default: the project root)
 #   _PORT     the port it listens on: what `down` kills, and what « HEALTH=port » waits for
 #   _HEALTH   a url to poll, the literal `port` for a TCP listen check, or a command to succeed
@@ -182,5 +182,5 @@ VYSU_AUTH='none'
 
 # --- agent hooks ------------------------------------------------------------------------------------
 
-# Which changed files count as UI, comma-separated. Read by templates/hooks/stop-reminder.sh only.
+# Which changed files count as UI, comma-separated. Read by the Stop hook only (templates/hooks/).
 # VYSU_UI_GLOBS='**/*.tsx,**/*.vue,**/*.svelte,**/*.css'

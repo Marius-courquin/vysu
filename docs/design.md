@@ -25,7 +25,9 @@ before touching anything: the comments carry the reasons, and the reasons stay t
   non-regression is the two flows `web-tour` and `mobile-tour` plus a `walk` against prep.
 - **Small dependency surface.** bash ≥ 3.2 (macOS default), python3 with Pillow and numpy, node ≥ 22
   for `agent-browser` and `agent-device`. Remotion is installed on first `vysu video`. No npm
-  package for vysu itself: install is `git clone` + PATH.
+  package for vysu itself: install is `git clone` + PATH. Since the TypeScript engine (§ 15): Node
+  ≥ 22.18 and sharp (`npm ci --omit=dev` in the engine), no bash, and python3 only for as long as a
+  helper still runs from `py/`.
 - **Secrets never enter a repo.** Personas and service accounts live under `~/.vysu/<project>/`
   with mode 600. Nothing prints a password.
 
@@ -58,6 +60,8 @@ vysu/
 ├── docs/design.md            this note
 ├── README.md LICENSE VERSION CHANGELOG.md
 ```
+
+(That was the bash engine; § 15 has the TypeScript layout that replaces `bin/vysu` + `lib/` + `py/`.)
 
 `bin/vysu` stays the single entry point; `lib/` is sourced, never executed. Functions keep their
 `nv_*` names renamed to `vysu_*`; internal helpers keep their names so the source comments still
@@ -318,7 +322,9 @@ is written to the global file `~/.vysu/devices.env`, below the project config in
 
 `vysu setup` (machine-wide, idempotent, ~90 % of the onboarding):
 
-1. node ≥ 22, python3 with Pillow and numpy (prints the `pip3 install --user` line when missing);
+1. node ≥ 22 (≥ 22.18 since the TypeScript engine, with its dependencies installed), python3 with
+   Pillow and numpy while a helper still needs it (prints the install line of the machine — brew,
+   apt or dnf, winget — when missing);
 2. `agent-browser` and `agent-device` installed globally through npm, Chrome for Testing downloaded;
 3. Xcode: simulators present, iOS 18 runtime present or the `xcodebuild -downloadPlatform` line;
 4. Android SDK: cmdline-tools present, system images downloaded, AVDs created with the device
@@ -406,6 +412,15 @@ vysu walk alice home --url http://localhost:3000/
 
 `vysu update` pulls. A tag per release (`v0.1.0`), CHANGELOG kept by hand.
 
+Since the TypeScript engine the clone needs its dependencies (`npm ci --omit=dev`), which
+`install.sh` runs after its Node check, and `vysu update` again whenever a pull changes
+`package-lock.json`. On Windows, `install.ps1` does the same from PowerShell and adds `<engine>\bin`
+(where `vysu` is `vysu.cmd`) to the user PATH:
+
+```powershell
+irm https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.ps1 | iex
+```
+
 ## 13. Lots
 
 Each lot is one or more commits on `main` of the vysu repo (this repo has no MR rule), with the
@@ -437,7 +452,71 @@ Lots 2 and 3 can run in parallel after lot 1; lot 4 after 2.
 
 ## 14. Out of scope for 0.1
 
-- Windows and Linux support beyond "should work for web" (agent-device needs macOS for iOS).
+- Windows and Linux support beyond "should work for web" (agent-device needs macOS for iOS) — in
+  scope since the TypeScript engine, § 15.
 - A Playwright or MSW harness of any kind: vysu looks at the real app only.
 - Publishing to npm or Homebrew. Clone and PATH is the install until someone asks.
 - Multi-project state sharing, cloud rendering, a web UI over the shots.
+
+## 15. The TypeScript engine
+
+The bash engine grew to 7 000 lines and a dozen Python helpers, and its cost was in the plumbing: a
+fork per `cfg`, a `ps` per level of the owner walk, 250 ms of Python start-up per helper, `lsof`
+for every port question, and no Windows. The engine is now TypeScript that Node runs as it is
+(type stripping, Node ≥ 22.18, no build step), and keeps every observable behaviour: the same
+commands and options, the same lines on stdout and stderr, the same exit codes, the same files
+(shots folders, `meta.json`, `events.json`, verdicts, locks, claims, device choices, state files),
+so the two engines ran side by side on one machine during the port, each waiting on the other's
+locks.
+
+```
+vysu/
+├── bin/vysu, bin/vysu.cmd    launchers: sh (macOS, Linux, Git Bash) and cmd (Windows); VYSU_RUNTIME=bun
+├── src/
+│   ├── cli.ts                the leading --no-color, the config, then the command
+│   ├── commands.ts           every command by name, each module loaded on demand
+│   ├── core/                 config and ctx (discovery, values, origins), errors (die, cleanups),
+│   │                         ui (the three report shapes), hold (owner, locks, claims, devices),
+│   │                         host (everything OS-specific), winps (the Windows process table),
+│   │                         proc (run, detached, shell lines, npm shims), net (ports, health),
+│   │                         meta, rec, i18n, personas, project commands, shellenv, text
+│   ├── cmd/                  one module per command: run(args) → exit code
+│   ├── setup/                setup, init, doctor, update, version, checker: tools, skills, hints
+│   ├── services/             up / down of the declared services
+│   ├── web/, auth/, connectors/auth/    the browser side and the login connectors
+│   ├── mobile/, push/, connectors/push/ the device side and the push drivers
+│   └── img/                  the image and recording helpers of py/, behind tool(<name>, argv)
+├── test/                     unit tests (node --test), parity scripts against the bash engine,
+│                             fixtures (small PNGs, Windows command outputs)
+├── install.sh, install.ps1   the installers: clone, Node check, npm ci --omit=dev, PATH
+└── .github/workflows/ci.yml  macOS, Linux, Windows × Node 22, 24
+```
+
+- **One file knows the operating system.** `src/core/host.ts` answers the questions whose answer
+  differs: the process table and a process's name (Linux `/proc`, macOS one `ps`, Windows a
+  helper, below), which processes listen on a port (`lsof`, else `ss`, else `netstat -ano`), how a
+  command line from the config runs (`/bin/sh -c`, or `cmd.exe /d /s /c "…"` handed over verbatim),
+  how an npm-installed CLI starts (a `.cmd` shim on Windows goes through `cmd.exe`: Node refuses to
+  spawn one directly since April 2024), where a tool is (`PATHEXT` on Windows), how a file is
+  opened for a human. Everything above it is the same code everywhere; iOS says in one line that it
+  needs a Mac.
+- **The Windows process table.** `owner()` walks up from vysu to the agent that drives it on every
+  locked command, so the table is read once per command — and PowerShell's CIM query costs 0.5 to
+  1 s. A C# helper of forty lines, compiled on first use with the `csc.exe` every Windows 10 / 11
+  carries (.NET Framework 4) and kept in `%LOCALAPPDATA%\vysu`, lists it through
+  `CreateToolhelp32Snapshot` in about 20 ms; CIM remains the fallback where it cannot be built.
+- **The config is read, not sourced.** `src/core/shellenv.ts` reads `KEY=value` lines the way bash
+  did (quotes, `$VAR`, `${VAR:-x}`, `export`, several per line); a line it cannot follow goes to a
+  real bash when the machine has one, and is named otherwise.
+- **Contracts between the parts.** `src/web/api.ts` and `src/mobile/api.ts` are what the rest of
+  the engine calls on the browser and device code (a persona's session, a device's state, `up
+  ios|android`, the doctor's lines); `src/img/tools.ts` runs a helper by its old script name, as a
+  TypeScript module once ported and as its Python script until then, so callers never know which.
+  `vysu doctor` prints one « not available yet » line for a contract that is still a placeholder.
+- **Faster where it was free.** Independent questions are asked at once (`setup` 1.9 s → 0.4 s,
+  `doctor` 1.5 s → 0.5 s on the Nidz project), a driver's version is read from its `package.json`,
+  a port is answered by a connection rather than `lsof`, a url by `fetch` rather than `curl`.
+- **Tested against the bash engine.** `test/parity/*.sh` run both engines on the same inputs in
+  mirrored scratch folders and compare stdout, stderr, exit codes and the files written;
+  `test/platform/smoke.ts` is what CI runs on the three systems.
+
