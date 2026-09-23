@@ -169,6 +169,12 @@ export VYSU_ENGINE
 # it among their own options too. Only leading, so a `rec` step that says --no-color stays a step.
 case "${1:-}" in --no-color) ui_no_color; shift;; esac
 
+# Bash reads a script while it runs it: an engine edited in place during a long command (an agent
+# changing bin/vysu, an editor saving over it) had this process resume reading at its old byte
+# offset in the new file once the command was over, and run whatever fragment sat there (`r:
+# unbound variable`, a syntax error) after a `vysu sheet` that had worked. Inside the braces the
+# dispatch is parsed in one go, and the `exit` inside them means nothing past it is ever read.
+{
 VYSU_CMD="$(printf 'vysu %s' "$*" | cut -c1-120)"
 config_load
 devices_resolve
@@ -226,3 +232,5 @@ case "$cmd" in
     if project_command "$cmd"; then exec_project_command "$cmd" "$@"; else ab "$cmd" "$@"; fi
     ;;
 esac
+exit
+}
