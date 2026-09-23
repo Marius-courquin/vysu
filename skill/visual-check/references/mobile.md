@@ -13,6 +13,14 @@ simulator: the primitives are not the same.
 - Android: the AVDs of `VYSU_ANDROID_AVDS`, the default being `VYSU_ANDROID_AVD`, picked with
   `vysu up android --avd <name>`. A Google APIs image is what makes real FCM possible.
 - **A screen is validated on the recent device AND on the old one of each platform.**
+- **Several agents on one Mac: take a device, do not pick one by hand.** `vysu claim ios|android
+  --any` takes a free device of the pool (`VYSU_IOS_DEVICES`, the AVDs of `VYSU_ANDROID_AVDS`):
+  a booted one first, then a shut-down one it boots, then on iOS a clone of a pool device
+  (`<base> (vysu N)`, up to `VYSU_IOS_MAX_CLONES`). `--device "<simulator>"` / `--avd <name>` claims
+  a named one. Either way the device becomes **this owner's choice**: every next command aims at it,
+  above the config (the environment still wins). `vysu devices` lists who holds what, in a second.
+- **Raw tools only through vysu**: `vysu adb <args…>` and `vysu simctl <verb> …` run on your device,
+  under its lock (a raw `adb -s emulator-5556` once drove another agent's emulator).
 - Each device has **its own** agent-device session - `<project>-ios-<slug>` addressed by UDID,
   `<project>-android-<slug>` addressed by serial - so several simulators and emulators run side by
   side. `vysu up ios --device …` / `vysu up android --avd …` **remembers** the choice: the next
@@ -34,20 +42,18 @@ agent-device. On an older iOS simulator, agent-device may fail to read the syste
 the app reads normally.
 
 ```bash
-vysu up ios | android          # Metro on 8081 (+ adb reverse) + simulator / emulator; --build: native (5-10 min)
-vysu mlogin ios alice          # once per persona (the state persists)
-vysu ios open "<VYSU_IOS_APP>" --foreground     # session + first snapshot
-vysu android open <VYSU_MOBILE_BUNDLE> --foreground
-vysu ios snapshot -i                          # accessibility tree (~40 nodes)
-vysu ios press @e21~s4 --settle               # the EXACT ref (with ~sN); --settle makes the UI diff land
-vysu ios press 'label="Menu"' --settle        # or by selector: label= role= text= id=
-vysu ios fill 'role="textfield"' "…"          # iOS roles: textfield / securetextfield
-vysu ios wait text "Welcome" 15000            # positional timeout, not --timeout
-vysu mtap ios "Help"                          # by label, then text, then "contains", plus a settle
-vysu mshot ios <name> [label] [--full]        # -> shots/<name>/ios-<label>.png; --full for a long screen
-vysu ios home                                 # background it (push banners); logs | network | react-native dismiss-overlay | metro reload
-vysu mlog mark … vysu mlog                    # Metro log since the mark; --tail N
-vysu ios close
+vysu claim ios --any                          # a free simulator, yours for the task (renewed on use)
+vysu up ios | android                         # Metro (shared, VYSU_METRO_PORT) + device; --build: native (5-10 min)
+vysu mlogin ios alice                         # once per persona and install (the state persists)
+vysu mdo ios --shots s1 -- 'open notifications' 'wait idle' 'shot list' \
+    'tap "Incidents" --wait "Récents"' 'expect no "Page introuvable"' 'shot incidents'
+vysu mwait ios "Welcome" --timeout 15         # or --gone, --idle: instead of any sleep
+vysu mtap ios "Help" --wait "FAQ"             # by label, then text, then "contains", settled
+vysu mshot ios <name> [label] [--full]        # 1x; the same label again says « vs previous: … »
+vysu mreload ios                              # this device's JS only, in place (4-12 s)
+vysu mlog mark … vysu mlog --errors [--device]   # what the app logged since the mark, errors only
+vysu ios snapshot -i | press @e21~s4 --settle # the raw driver, when no verb above fits
+vysu release ios --reset
 ```
 
 agent-device rules: a ref is valid for one frame only ("needs a complete snapshot" means taking the
@@ -56,7 +62,7 @@ the form); a system alert or the system sign-in sheet reads like the rest.
 
 ## Picking a device back up
 
-A device moves from one agent to the next: `vysu claim ios|android [--minutes 30]` reserves it
+A device moves from one agent to the next: `vysu claim ios|android [--minutes 20]` reserves it
 **and** says what state it is picked up in, instead of rediscovering it in five commands. `state:`
 is what `vysu` applied to it (text size, appearance, language, persona signed in, Metro) with who
 did it and when; `screen:` is the first six readable labels, when an agent-device session is
@@ -69,7 +75,56 @@ language already at the default avoiding an Android zygote restart; on a web per
 restores `media light`, the 1440x900 viewport and the default language. `vysu doctor` prints the
 same `state:` line for every device that has one.
 
+A claim is renewed by every command its owner runs on the device (the end moves to now +
+`--minutes`), so a long task keeps it and a forgotten one ends 20 minutes after its last use; the
+claim of an agent whose process is gone is dropped by the next command that meets it.
+
+## Driving a screen in one call: `vysu mdo`
+
+A dozen tool calls (press, sleep, snapshot, grep, capture) become one: each step prints one line,
+`✓ 3 tap "Continuer" · Tapped …` or `✗ 3 tap "Publier" · nothing labelled « Publier »`, followed by
+`screen: <up to 6 labels> (<n> nodes, +added −removed, keyboard)`; the first ✗ stops the run with
+exit 1 (`--keep-going` marks it and goes on). Steps, one per argument or per line of a file (`-` for
+stdin, `#` comments):
+
+| Step | What it does |
+|---|---|
+| `tap "<label>" [--wait "<text>"]` | by label, then visible text, then "contains"; then waits for the text |
+| `wait "<text>" [s]` · `wait gone "<text>" [s]` · `wait idle [s]` | until it shows / goes / two snapshots agree (10 s default) |
+| `fill "<label>" "<value>"` · `type "<text>"` · `key return\|dismiss\|back` | fields by label (Android also shows `focus "<field>"`) |
+| `scroll-to "<label>" [max]` · `expect [no] "<text>"` · `screen` | bring it on screen, assert, print the screen line |
+| `open <route>` · `net offline\|online` · `perm <name> grant\|deny\|reset` | `mopen`, `mnet`, `mperm` inside a run |
+| `shot <label> [--full]` · `relaunch [--textsize …]` · `sleep <s>` · any agent-device verb | as in `mflow` |
+
+`--devices "<a>,<b>"` × `--textsize normal,xl` runs the steps once per pair, prefixes the shots
+`<device>-<size>-`, makes **one** sheet and puts the text size back to normal. `mflow <file>` runs a
+file the same way. iOS limits: `key back` needs an in-app back control agent-device recognises (tap
+the app's own « Back » label instead), `key dismiss` needs a keyboard with a hide key, and a focused
+field is not reported.
+
+## State: deep links, network, permissions, bursts
+
+- `vysu mopen <platform> <route|url> [--wait "<text>"]`: `VYSU_MOBILE_DEEPLINK` + the route. A cold
+  app is launched first (a raw cold link parks the dev-client on its launcher), the system « Open
+  in … ? » alert is pressed only when it shows, the existing task is reused on Android.
+- `vysu mnet android offline|online`: airplane mode, read back; `release --reset` puts it online.
+  The iOS simulator shares the Mac's network: there is no per-device switch, and vysu says so.
+- `vysu mperm <platform> notifications|camera|photos|location|microphone|contacts|calendar
+  grant|deny|reset`: `reset` makes the system ask again (iOS notifications through SpringBoard's
+  BulletinBoard; Android through the permission flags, API 33+ for notifications). An app that
+  remembers it already asked will not ask again: that is the app's state, not the device's.
+- `vysu mburst <platform> <name> [--seconds 3] -- "<step>"`: frames at 1x while a step runs, the
+  near-identical ones dropped, a one-row strip and a line `N distinct · 00 0.0s · 03 0.9s (38 %)…`:
+  a skeleton, a flash, a transition, without a video.
+
 ## Captures and diff
+
+**The same label twice** keeps the first capture as `<platform>-<label>.prev.png` and prints one
+line under the path: `vs previous: unchanged`, or the zones that moved and the marked png. After a
+fix, `unchanged` means the fix is not on screen: say so, never « fixed » (`--no-prev` to overwrite
+without comparing). `vysu report <name>` reads a mobile folder back the same way as a web one.
+On Android the capture holds the whole display, keyboard and system dialogs included (agent-device
+selects an invisible input method to type with; the user's keyboard stands in for the capture).
 
 `vysu mshot` captures **at 1x on both platforms**: the iOS status bar is normalised (clock, battery
 and signal frozen, so the chrome stops being a diff), and Android device pixels are brought back to
@@ -121,6 +176,26 @@ launches and waits for `VYSU_MOBILE_READY_TEXT` (five seconds when the project n
 `logs/<platform>-app.log` — `log stream` filtered on the app's process on iOS, `logcat --uid` of
 the package on Android, both surviving a relaunch. `vysu down applog` stops those tails,
 `vysu down metro` stays the expo one. `vysu doctor` prints the kind in force.
+
+## One Metro, or your own
+
+By default every session shares **one Metro** (`VYSU_METRO_PORT`, 8081) serving **one checkout**:
+an edit anywhere reloads every device, and a file that does not compile breaks every screen.
+`vysu mlog` then starts with `metro: bundle failed since the mark: <error> (<file>)` and `mrelaunch`
+stops in seconds with the same line instead of waiting for a bundle that will not come: the cause
+may be another session's edit. Judge a screen after `vysu mreload` (this device only, 4-12 s)
+rather than after whatever Fast Refresh last happened. `mrelaunch` prints its time
+(`relaunched in 13s (bundled after 8s)`), reopens a lost agent-device session and clears Expo's dev
+menu and its intro (`VYSU_MOBILE_DISMISS_LABELS`).
+
+For a phase that must not be disturbed: `vysu up <platform> --isolated [--port N] [--dir <mobile
+dir>]` from your own worktree starts **your** Metro on the next free port (8082+), points your
+device at it, and every command of yours follows it; `vysu down metro` stops it and sends the device
+back to the shared one on its next relaunch. It costs about 1-1.5 GB of RAM: a mode, not the default.
+
+`vysu mlog --errors` keeps errors and warnings, repeats collapsed (`401 … ×8`); `--device` reads this
+device's own JS log (simulator log stream, logcat) instead of Metro's, which mixes every device;
+`VYSU_MLOG_IGNORE` drops the project's known noise and says how many lines it dropped.
 
 ## Android: what `vysu up android` sets (do not redo it by hand)
 
@@ -193,8 +268,8 @@ ran between which clip seconds, with the **point it touched** in points. From th
 - In zsh, `for t in "173 822"; do … $t` does **not** split the argument (`${=t}`, or a bash script).
 - A `Pressable` with no accessibility role reports a full-screen frame to XCTest, so `press label=`
   taps the middle of the screen. Give it the role.
-- On Android, agent-device's `scroll` sometimes does nothing and its captures show the demo status
-  bar (09:41) - fall back to `adb shell input swipe` / `adb exec-out screencap -p`. The dev-launcher
+- On Android, agent-device's `scroll` sometimes does nothing - fall back to
+  `vysu adb shell input swipe …` (your emulator, under its lock), never a raw `adb`. The dev-launcher
   bubble can cover a tab bar item.
 - A recreated simulator (new UDID, different density) means `vysu cache clear`.
 - "Development Build" on screen means the dev-client is waiting for the Metro URL (handled by

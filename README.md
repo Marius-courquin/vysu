@@ -261,10 +261,18 @@ the engine version, its sha, and the two tools' versions against their minimums.
 `vysu init` installs two skills into `.claude/skills/` (or `--skills-dir <dir>`), and
 `vysu init --refresh-skills` re-copies them after an engine update:
 
-- **`visual-check`** — the token-aware loop, the commands, how to read a diff / report / contact
-  sheet, mobile devices and large text, notifications, a local stack, troubleshooting.
-- **`demo-video`** — a recording turned into an explainer video: `rec`/`mrec` → `cut.json` →
+- **`visual-check`**: the entry point of every look at the app, web or mobile. It starts with
+  delegation: device work goes to a short-context checker sub-agent, with a brief and a report
+  contract (`references/delegate.md`), because every device round trip re-reads the caller's whole
+  context. Then the token-aware loop, `mdo` and the mobile verbs, reading a diff / report / sheet,
+  notifications, a local stack, troubleshooting.
+- **`demo-video`**: a recording turned into an explainer video: `rec`/`mrec` → `cut.json` →
   `vysu video`, in 16:9 and 9:16.
+
+It also installs a **`visual-checker`** agent definition for Claude Code (`.claude/agents/`, or
+`--agents-dir`). The model a checker runs on is a project setting per agent tool,
+`VYSU_CHECKER_MODELS='claude=sonnet,codex=…'`, and `vysu checker` names it for whichever agent asks:
+the skill itself names no model, so Claude Code, Codex and the next tool read the same text.
 
 They hold no project value: they point at `vysu doctor`, `.vysu/config` and `vysu persona list`. A
 project that has its own definition of done writes a thin overlay skill on top.
@@ -288,9 +296,11 @@ The versions of `agent-browser` and `agent-device` the engine is known to work w
 
 ## Status
 
-`v0.4.1`: every command of the original tool, project-agnostic, Expo and native mobile apps, a
-soundtrack shipped, validated end to end on iOS and Android; a setup that says what is blocking,
-your own Chromium browser if you want it, an update path for engine, tools and skills, and persona names that may hold `_`. The design note is
+`v0.5.0`: every command of the original tool, project-agnostic, Expo and native mobile apps,
+validated end to end on iOS and Android; built for several agents sharing one Mac: a device pool
+with claims renewed on use, `mdo` to drive a screen in one call, deep links, network, permissions
+and bursts as verbs, per-device reload and logs, an isolated Metro when a phase needs one, and a
+visual check that delegates to a checker sub-agent. The design note is
 [docs/design.md](docs/design.md); the first consumer is the Nidz monorepo through its `.vysu/`
 folder. Bugs and requests: GitHub issues.
 
