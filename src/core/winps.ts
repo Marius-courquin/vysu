@@ -1,10 +1,19 @@
-// The Windows process table, fast. `owner()` walks up from vysu to the agent that drives it, so every
-// command that takes a lock reads the whole table once — and PowerShell's CIM answers in 0.5 to 1 s,
-// more than the command itself. The table is a single Win32 call (CreateToolhelp32Snapshot, what
-// `ps-list`'s fastlist does in C++): a 4 kB helper compiled once with the C# compiler every Windows
-// 10 / 11 carries (.NET Framework 4, csc.exe) answers in about 20 ms. It is kept per user, named by
-// the hash of its source, so an engine that changes it builds a new one. Where it cannot be built
-// (no csc, a policy that blocks it) the CIM query stays the answer, once per command.
+// Two things Node cannot do on Windows, done by a 5 kB helper compiled once with the C# compiler every
+// Windows 10 / 11 carries (.NET Framework 4, csc.exe), kept per user and named by the hash of its
+// source, so an engine that changes it builds a new one.
+//
+// The process table, fast. `owner()` walks up from vysu to the agent that drives it, so every command
+// that takes a lock reads the whole table once — and PowerShell's CIM answers in 0.5 to 1 s, more
+// than the command itself. The table is a single Win32 call (CreateToolhelp32Snapshot, what
+// `ps-list`'s fastlist does in C++): about 20 ms.
+//
+// A process that outlives vysu and holds none of its handles. Node starts a child with every
+// inheritable handle of its own, and vysu's stdout is one: the pipe an agent reads vysu through. A
+// service started that way keeps the pipe open, and the agent waits on `vysu up` until the service
+// stops. The helper starts it with no handle inherited, its output redirected by cmd.exe.
+//
+// Where the helper cannot be built (no csc, a policy that blocks it), CIM answers for the table and
+// Node's own detached spawn starts the service.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -36,7 +45,56 @@ static class VysuPs {
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "Process32NextW")] static extern bool Next(IntPtr snap, ref Entry e);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
 
-  static int Main() {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct Startup {
+    public int cb;
+    public string lpReserved;
+    public string lpDesktop;
+    public string lpTitle;
+    public int dwX;
+    public int dwY;
+    public int dwXSize;
+    public int dwYSize;
+    public int dwXCountChars;
+    public int dwYCountChars;
+    public int dwFillAttribute;
+    public int dwFlags;
+    public short wShowWindow;
+    public short cbReserved2;
+    public IntPtr lpReserved2;
+    public IntPtr hStdInput;
+    public IntPtr hStdOutput;
+    public IntPtr hStdError;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct Started {
+    public IntPtr hProcess;
+    public IntPtr hThread;
+    public uint dwProcessId;
+    public uint dwThreadId;
+  }
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "CreateProcessW")]
+  static extern bool Create(string app, StringBuilder line, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string cwd, ref Startup si, out Started pi);
+
+  static void Out(string s) {
+    byte[] bytes = new UTF8Encoding(false).GetBytes(s);
+    using (System.IO.Stream o = Console.OpenStandardOutput()) o.Write(bytes, 0, bytes.Length);
+  }
+
+  // spawn <cwd> <command line>: no handle inherited, no window, its own process group; prints the pid.
+  static int Spawn(string cwd, string line) {
+    Startup si = new Startup();
+    si.cb = Marshal.SizeOf(typeof(Startup));
+    Started pi;
+    if (!Create(null, new StringBuilder(line), IntPtr.Zero, IntPtr.Zero, false, 0x08000200, IntPtr.Zero, cwd, ref si, out pi)) return 1;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    Out(pi.dwProcessId + "\\n");
+    return 0;
+  }
+
+  static int Main(string[] args) {
+    if (args.Length == 3 && args[0] == "spawn") return Spawn(args[1], args[2]);
     IntPtr snap = CreateToolhelp32Snapshot(2, 0);
     if (snap == new IntPtr(-1)) return 1;
     Entry e = new Entry();
@@ -48,8 +106,7 @@ static class VysuPs {
       } while (Next(snap, ref e));
     }
     CloseHandle(snap);
-    byte[] bytes = new UTF8Encoding(false).GetBytes(sb.ToString());
-    using (System.IO.Stream o = Console.OpenStandardOutput()) o.Write(bytes, 0, bytes.Length);
+    Out(sb.ToString());
     return 0;
   }
 }
@@ -118,6 +175,16 @@ export function windowsProcessLines(): string {
     { encoding: 'utf8', windowsHide: true },
   );
   return r.stdout ?? '';
+}
+
+// A command line started with none of vysu's handles (see above), in `cwd`, with `env`: its pid, or
+// 0 when the helper is not there to do it.
+export function windowsDetach(line: string, cwd: string, env: NodeJS.ProcessEnv): number {
+  const exe = helperExe();
+  if (!exe) return 0;
+  const r = spawnSync(exe, ['spawn', cwd, line], { env, encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+  const pid = Number((r.stdout ?? '').trim());
+  return r.status === 0 && pid > 0 ? pid : 0;
 }
 
 export interface RawProc {

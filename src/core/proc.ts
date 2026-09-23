@@ -3,7 +3,8 @@
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { isWindows, shellArgv, toolArgv } from './host.ts';
+import { cmdQuote, isWindows, shellArgv, toolArgv } from './host.ts';
+import { windowsDetach } from './winps.ts';
 
 export interface RunResult {
   code: number;
@@ -70,8 +71,20 @@ export function runBuffer(cmd: string, args: string[], opts: RunOptions = {}): P
   });
 }
 
+// Windows: through the helper, which starts it with none of vysu's handles (the pipe an agent reads
+// vysu through would otherwise stay open as long as the service runs); cmd.exe writes the log.
+function detachOnWindows(line: string, opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string }): number {
+  mkdirSync(dirname(opts.log), { recursive: true });
+  const shell = process.env.ComSpec ?? 'cmd.exe';
+  return windowsDetach(`"${shell}" /d /s /c "(${line}) > "${opts.log}" 2>&1"`, opts.cwd ?? process.cwd(), opts.env ?? process.env);
+}
+
 // A process that outlives vysu, its output in a log file. Returns its pid.
 export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string; verbatim?: boolean }): number {
+  if (isWindows && !opts.verbatim) {
+    const pid = detachOnWindows([cmd, ...args].map(cmdQuote).join(' '), opts);
+    if (pid) return pid;
+  }
   mkdirSync(dirname(opts.log), { recursive: true });
   const fd = openSync(opts.log, 'w');
   const o: SpawnOptions = {
@@ -91,6 +104,10 @@ export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string;
 
 // A command line from a config, detached, through the platform's shell.
 export function spawnShellDetached(command: string, opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string }): number {
+  if (isWindows) {
+    const pid = detachOnWindows(command, opts);
+    if (pid) return pid;
+  }
   const [sh, args] = shellArgv(command);
   return spawnDetached(sh, args, { ...opts, verbatim: isWindows });
 }

@@ -138,6 +138,7 @@ function Install-Vysu {
 
 try {
   Install-Vysu
+  if ($AsFile) { exit 0 }
 } catch {
   if ("$_" -ne 'vysu-install-stop') { throw }
   if ($AsFile) { exit 1 }

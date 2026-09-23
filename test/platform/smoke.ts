@@ -35,9 +35,9 @@ function vysu(args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = 
         env,
         encoding: 'utf8',
         windowsVerbatimArguments: true,
-        timeout: 120_000,
+        timeout: 60_000,
       })
-    : spawnSync(join(ENGINE, 'bin', 'vysu'), args, { cwd: opts.cwd ?? tmp, env, encoding: 'utf8', timeout: 120_000 });
+    : spawnSync(join(ENGINE, 'bin', 'vysu'), args, { cwd: opts.cwd ?? tmp, env, encoding: 'utf8', timeout: 60_000 });
   return { code: r.status ?? -1, out: r.stdout ?? '', err: r.stderr ?? '' };
 }
 
@@ -113,8 +113,13 @@ try {
     join(project, '.vysu', 'config'),
     `${config}\nVYSU_SERVICES='hello'\nVYSU_SERVICE_hello_CMD='node server.mjs'\nVYSU_SERVICE_hello_PORT=${port}\nVYSU_SERVICE_hello_HEALTH='http://localhost:${port}/'\nVYSU_SERVICE_hello_ENV='PORT=${port}'\n`,
   );
+  // Read through pipes, as an agent reads it: a service holding vysu's stdout would keep this call
+  // waiting until the timeout.
+  const t0 = performance.now();
   r = vysu(['up', 'hello'], { cwd: project });
+  const upMs = performance.now() - t0;
   check('up (a node server)', r.code === 0 && r.out.startsWith(`hello: http://localhost:${port} — PORT=${port}`), show(r));
+  check('up returns while the service runs', upMs < 30_000, `took ${upMs.toFixed(0)} ms`);
   r = vysu(['up', 'hello'], { cwd: project });
   check('up again (already listening)', r.code === 0 && r.out.includes(`already listening on ${port}`), show(r));
   r = vysu(['down', 'hello'], { cwd: project });
@@ -123,7 +128,12 @@ try {
   check('up after down', r.code === 0 && r.out.startsWith('hello: http://localhost:'), show(r));
   vysu(['down', 'hello'], { cwd: project });
 } finally {
-  rmSync(tmp, { recursive: true, force: true });
+  try {
+    // Windows keeps a file busy for a moment after the process that held it is gone.
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch {
+    console.log(`(left ${tmp} behind)`);
+  }
 }
 
 console.log(failed ? `smoke: ${failed} failed` : 'smoke: all passed');
