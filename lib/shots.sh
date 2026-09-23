@@ -4,6 +4,71 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2153  # SHOTS, DIFF, COMPARE, STITCH and the rest are set in core.sh
 
+# One 1x capture of what the device shows. iOS goes through agent-device (1x already, clock and
+# bars repainted). Android goes through `screencap` of the display, brought down to dp here: the
+# same picture agent-device's screenshot takes (it runs screencap too, under the same demo-mode
+# status bar), minus its fixed one-second settle: 0.4 s instead of 1.9 s on a Pixel 8, which a
+# --full walk pays once per frame. A keyboard is drawn in both (see android_keyboard_swap).
+mshot_capture() { # platform out
+  if [ "$1" = android ]; then mshot_android_capture "$2"; return; fi
+  local args=(); read -r -a args <<<"$(mcapture_args "$1")"
+  ad "$1" screenshot "$2" "${args[@]}" >/dev/null
+}
+# Android's status bar says the time: two captures a minute apart differ there, and a walk that
+# crosses a minute leaves stitch.py no fixed band to find. The demo mode agent-device uses (9:41, no
+# notification icons) is set for a capture and dropped after it, so the emulator is left as found;
+# a --full walk holds it across all its frames (MSHOT_DEMO=1). It shows at once: no settle needed.
+MSHOT_DEMO=0
+android_demo() { # on | off
+  if [ "$1" = on ]; then
+    adb -s "$ANDROID_SERIAL" shell "settings put global sysui_demo_allowed 1; am broadcast -a com.android.systemui.demo -e command clock -e hhmm 0941 >/dev/null; am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null" >/dev/null 2>&1 || true
+  else
+    adb -s "$ANDROID_SERIAL" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
+  fi
+}
+# Why a keyboard went missing from Android captures: agent-device types through an input method of
+# its own (com.callstack.agentdevice.imehelper) and leaves it selected for the rest of its session.
+# A focused field then has a keyboard « shown » that draws nothing, and every capture, agent-device's
+# or screencap's, is a screen no user sees: full height, no keyboard. Measured on a Pixel 8 (API 36):
+# with Gboard selected both captures show Gboard, and both show the volume panel over the app. So
+# when that helper holds a shown keyboard, the keyboard the user had is put back for the capture
+# (the latest other one in the subtype history, else the first one installed that is not a voice
+# input), and the helper right after it, so agent-device's next `fill` finds its own input method.
+android_keyboard_swap() { # → « <helper ime> <real ime> », or nothing when the capture needs no swap
+  local info cur ime
+  # « shown » and « bound visible » both: right after a field goes away, mInputShown stays true a
+  # moment while nothing is bound any more, and a swap then would only wait for a keyboard.
+  info="$(adb -s "$ANDROID_SERIAL" shell 'settings get secure default_input_method; dumpsys input_method | grep -E "mInputShown|mVisibleBound" | tr -d " \n"; echo; settings get secure input_methods_subtype_history; ime list -s' 2>/dev/null | tr -d '\r' || true)"
+  cur="$(printf '%s\n' "$info" | sed -n 1p)"
+  case "$cur" in *agentdevice*) ;; *) return 0;; esac
+  case "$(printf '%s\n' "$info" | sed -n 2p)" in *mVisibleBound=true*mInputShown=true*|*mInputShown=true*mVisibleBound=true*) ;; *) return 0;; esac
+  for ime in $(printf '%s\n' "$info" | sed -n 3p | tr ':' '\n' | cut -d';' -f1) $(printf '%s\n' "$info" | sed -n '4,$p'); do
+    case "$ime" in ''|null|*agentdevice*|*[Vv]oice*) continue;; esac
+    printf '%s %s' "$cur" "$ime"; return 0
+  done
+}
+mshot_android_capture() { # out
+  android_select
+  local scale; scale="$(mobile_scale android)"
+  # A --full walk is about the content under the keyboard, not the keyboard: no swap per frame.
+  local swap=""; [ "$MSHOT_DEMO" = 1 ] || swap="$(android_keyboard_swap)"
+  if [ -n "$swap" ]; then
+    adb -s "$ANDROID_SERIAL" shell ime set "${swap#* }" >/dev/null 2>&1 || true
+    # The keyboard window comes up about a second after the switch, then slides in.
+    local i; for i in $(seq 1 12); do
+      adb -s "$ANDROID_SERIAL" shell 'dumpsys window InputMethod | grep isOnScreen' 2>/dev/null | grep -q true && break
+      sleep 0.1
+    done
+    sleep 0.4
+  fi
+  [ "$MSHOT_DEMO" = 1 ] || android_demo on
+  local rc=0
+  adb -s "$ANDROID_SERIAL" exec-out screencap -p | "$PY/screencap.py" --scale "$scale" --out "$1" || rc=$?
+  [ "$MSHOT_DEMO" = 1 ] || android_demo off
+  [ -z "$swap" ] || adb -s "$ANDROID_SERIAL" shell ime set "${swap%% *}" >/dev/null 2>&1 || true
+  [ "$rc" = 0 ] || die "android: screencap failed on $ANDROID_SERIAL"
+}
+
 # agent-device captures the viewport of a native app, never the screen: there is no full-page
 # screenshot on mobile, so a long screen is walked through instead — a capture, a scroll of half a
 # viewport, the next capture — until two captures come back byte-identical (the scroller is at the
@@ -15,8 +80,8 @@ mshot_full() { # platform dir shot step max top bottom → tall capture, stitch 
   [ -f "$STITCH" ] || die "stitch.py missing ($STITCH)"
   [ -f "$DIFF" ] || die "diff.py missing ($DIFF)"
   local frames="$dir/full-frames"; rm -rf "$frames"; mkdir -p "$frames"
-  local args=(); read -r -a args <<<"$(mcapture_args "$platform")"
-  ad "$platform" screenshot "$frames/f00.png" "${args[@]}" >/dev/null
+  [ "$platform" != android ] || { android_select; android_demo on; MSHOT_DEMO=1; }
+  mshot_capture "$platform" "$frames/f00.png"
   MSHOT_PROBE="$frames/f00.png"   # the notch band is measured on a viewport, not on the tall image
   # A step has to leave two captures something in common — that overlap is what stitch.py locates
   # the next one by. What the gesture asks for is not what the content does: agent-device's scroll
@@ -34,7 +99,7 @@ mshot_full() { # platform dir shot step max top bottom → tall capture, stitch 
     }
     n="$i"
     cur="$(printf '%s/f%02d.png' "$frames" "$i")"
-    ad "$platform" screenshot "$cur" "${args[@]}" >/dev/null
+    mshot_capture "$platform" "$cur"
     # The same picture twice: the scroller did not move, so the screen has nothing left to show.
     # By pixels, not by bytes — two captures of one still screen come back as different PNG files
     # (agent-device re-encodes each one) while being the very same image, and `cmp` would never
@@ -44,6 +109,7 @@ mshot_full() { # platform dir shot step max top bottom → tall capture, stitch 
     fi
     prev="$cur"
   done
+  [ "$MSHOT_DEMO" = 0 ] || { android_demo off; MSHOT_DEMO=0; }
   [ "$ended" = 1 ] || echo "vysu: mshot --full stopped at --max $max captures (the screen may be longer)" >&2
   # stitch.py finds the fixed bands itself, by taking the rows every capture has in common. A bar
   # drawn *over* the scroller has none — a shell that blurs the feed under its status bar and its
@@ -60,14 +126,37 @@ mshot_full() { # platform dir shot step max top bottom → tall capture, stitch 
   }
 }
 
+# What diff.py leaves out of a mobile comparison: chrome, not UI. The battery corner on iOS:
+# agent-device repaints the clock and the bars, not the battery, and the charging bolt animates, a
+# 20x13 pt zone on every otherwise still screen. The band stops above the app: 44 pt under a notch
+# (content starts at 59), 20 pt on a home-button phone. Measured on $MSHOT_PROBE, a viewport, which
+# a --full capture no longer is, and whose aspect ratio is what tells a notch from a home button.
+# The band sits at the top of the tall image all the same. Android's status bar is in demo mode
+# for the capture: nothing to leave out.
+mshot_ignore() { # platform → « --ignore x,y,w,h » or nothing
+  [ "$1" = ios ] || return 0
+  python3 -c "
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1])
+print('--ignore %d,0,70,%d' % (im.width - 70, 44 if im.height > 2 * im.width else 20))" "$MSHOT_PROBE"
+}
+
+# A capture that would overwrite an earlier one under the same label moves it aside first
+# (`<platform>-<label>.prev.png`) and is diffed against it: « vs previous: unchanged » is what says
+# a fix that was announced did not reach the screen (a class that did not compile, a bundle that
+# did not reload), before anyone reads the picture. One line, the marked image named when zones
+# moved; the verdict is also kept in meta.json for `vysu report`. --no-prev overwrites and drops the
+# earlier one. --baseline <name> compares with that folder instead, and prints what it always did.
 vysu_mshot() {
-  local platform="${1:-}" name="${2:-}"; [ -n "$platform" ] && [ -n "$name" ] || die "usage: vysu mshot ios|android <name> [label] [--baseline <name>] [--full [--step 150] [--max 12] [--top <pt>] [--bottom <pt>]]"
+  local platform="${1:-}" name="${2:-}"; [ -n "$platform" ] && [ -n "$name" ] || die "usage: vysu mshot ios|android <name> [label] [--baseline <name>] [--no-prev] [--full [--step 150] [--max 12] [--top <pt>] [--bottom <pt>]]"
   shift 2
   local label="screen"; case "${1:-}" in ''|--*) ;; *) label="$1"; shift;; esac
-  local baseline="" full=0 step="" max=12 top="" bottom=""
+  local baseline="" full=0 step="" max=12 top="" bottom="" noprev=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --baseline) baseline="$2"; shift 2;;
+      --no-prev) noprev=1; shift;;
       --full) full=1; shift;;
       --step) step="$2"; shift 2;;
       --max) max="$2"; shift 2;;
@@ -76,15 +165,32 @@ vysu_mshot() {
       *) die "vysu mshot: unknown option $1";;
     esac
   done
-  local dir="$SHOTS/$name"; mkdir -p "$dir"
-  local shot="$dir/$platform-$label.png"
-  MSHOT_PROBE="$shot"; MSHOT_STITCH=""
-  if [ "$full" = 1 ]; then
-    mshot_full "$platform" "$dir" "$shot" "$step" "$max" "$top" "$bottom"
-  else
-    local args=(); read -r -a args <<<"$(mcapture_args "$platform")"
-    ad "$platform" screenshot "$shot" "${args[@]}" >/dev/null
+  case "$platform" in ios|android) ;; *) die "platform must be ios or android";; esac
+  local base=""
+  if [ -n "$baseline" ]; then
+    [ -f "$DIFF" ] || die "diff.py missing ($DIFF)"
+    base="$SHOTS/$baseline/$platform-$label.png"
+    [ -f "$base" ] || die "no baseline capture $base"
   fi
+  local dir="$SHOTS/$name"; mkdir -p "$dir"
+  local shot="$dir/$platform-$label.png" prev="$dir/$platform-$label.prev.png"
+  local marked="$dir/$platform-$label-changed.png"
+  # Captured under a hidden name, then moved in place: a capture that fails leaves the earlier one
+  # where it was, and a sheet or a report never reads half a file.
+  local new="$dir/.$platform-$label.new.png"
+  MSHOT_STITCH=""
+  if [ "$full" = 1 ]; then
+    mshot_full "$platform" "$dir" "$new" "$step" "$max" "$top" "$bottom"
+    MSHOT_STITCH="$(printf '%s\n' "$MSHOT_STITCH" | sed "s#$new#$shot#g")"
+  else
+    mshot_capture "$platform" "$new"
+  fi
+  local had_prev=0
+  if [ -f "$shot" ] && [ "$noprev" = 0 ]; then mv -f "$shot" "$prev"; had_prev=1
+  else rm -f "$prev"; fi
+  mv -f "$new" "$shot"
+  rm -f "$marked"   # it marked the capture that was just replaced
+  [ "$full" = 1 ] || MSHOT_PROBE="$shot"
   echo "$shot"
   [ "$full" = 0 ] || printf '%s\n' "$MSHOT_STITCH" | sed 's/^/  /'
   local dev="$ANDROID_AVD"; [ "$platform" = android ] || dev="$IOS_DEVICE"
@@ -93,27 +199,22 @@ vysu_mshot() {
     "textsize=$(mstate_get "$platform" textsize normal)" "appearance=$(mstate_get "$platform" appearance light)" \
     "lang=$(mstate_get "$platform" lang "$(cfg LANG)")" \
     "mobile_sha=$(repo_sha "${MOBILE_DIR:-$VYSU_PROJECT_DIR}")"
-  [ -n "$baseline" ] || return 0
-  [ -f "$DIFF" ] || die "diff.py missing ($DIFF)"
-  local base="$SHOTS/$baseline/$platform-$label.png"
-  [ -f "$base" ] || die "no baseline capture $base"
-  # Both captures are 1x, so the zones are already in points: no --scale to convert. The battery
-  # corner is left out: agent-device repaints the clock and the bars, not the battery, and the
-  # charging bolt animates — a 20x13 pt zone on every otherwise still screen. The band stops above
-  # the app: 44 pt under a notch (content starts at 59), 20 pt on a home-button phone. Measured on
-  # $MSHOT_PROBE — a viewport, which a --full capture no longer is, and whose aspect ratio is what
-  # tells a notch from a home button. The band sits at the top of the tall image all the same.
-  local ign_args=()
-  [ "$platform" != ios ] || ign_args+=(--ignore "$(python3 -c "
-import sys
-from PIL import Image
-im = Image.open(sys.argv[1])
-print('%d,0,70,%d' % (im.width - 70, 44 if im.height > 2 * im.width else 20))" "$MSHOT_PROBE")")
-  local out rc=0
-  out="$("$DIFF" "$base" "$shot" --mark "$dir/$platform-$label-changed.png" ${ign_args[@]+"${ign_args[@]}"} 2>&1)" || rc=$?
-  [ "$rc" -le 1 ] || die "diff.py: $out"
-  printf '%s\n' "$out" | sed 's/^/  /'
-  printf '%s\n' "$out" | awk -v l="$platform-$label" 'NR == 1 { print l ": " $0; next } { print "  " $0 }' >>"$dir/diff.txt"
+  local verdict="$PY/verdict.py" ign_args=() out rc=0
+  read -r -a ign_args <<<"$(mshot_ignore "$platform")"
+  if [ -n "$base" ]; then
+    # Both captures are 1x, so the zones are already in points: no --scale to convert.
+    out="$("$DIFF" "$base" "$shot" --mark "$marked" ${ign_args[@]+"${ign_args[@]}"} 2>&1)" || rc=$?
+    [ "$rc" -le 1 ] || die "diff.py: $out"
+    printf '%s\n' "$out" | sed 's/^/  /'
+    printf '%s\n' "$out" | awk -v l="$platform-$label" 'NR == 1 { print l ": " $0; next } { print "  " $0 }' >>"$dir/diff.txt"
+    printf '%s\n' "$out" | "$verdict" "$dir" "$platform-$label" "baseline:$baseline" --diff - --device "$dev" --quiet
+  elif [ "$had_prev" = 1 ]; then
+    out="$("$DIFF" "$prev" "$shot" --mark "$marked" ${ign_args[@]+"${ign_args[@]}"} 2>&1)" || rc=$?
+    [ "$rc" -le 1 ] || die "diff.py: $out"
+    printf '%s\n' "$out" | "$verdict" "$dir" "$platform-$label" previous --diff - --device "$dev"
+  else
+    "$verdict" "$dir" "$platform-$label" "$( [ "$noprev" = 1 ] && echo skipped || echo new )" --device "$dev"
+  fi
 }
 
 vysu_shots() {
@@ -292,6 +393,104 @@ try:
 except Exception:
     pass
 
+if meta.get("kind") == "mobile":
+    # A mobile folder: what the device was set to, then one line per capture with the verdict its
+    # last mshot recorded (vs previous, vs a baseline), then the one image worth opening.
+    name = os.path.basename(directory.rstrip("/"))
+    verdicts = dict(meta.get("verdicts") or {})
+    # A folder an older vysu diffed against a baseline has diff.txt only: its statuses stand in.
+    legacy = os.path.join(directory, "diff.txt")
+    label = None
+    for raw in open(legacy).read().splitlines() if os.path.exists(legacy) else []:
+        if raw.strip() and not raw.startswith(" "):
+            label, _, rest = raw.partition(": ")
+            if label not in (meta.get("verdicts") or {}):
+                verdicts[label] = {"vs": "baseline", "verdict": rest}
+        elif raw.strip().startswith("marked:") and label in verdicts and label not in (meta.get("verdicts") or {}):
+            verdicts[label]["marked"] = raw.split("marked:", 1)[1].strip()
+    head = ["mobile", meta.get("platform"), meta.get("device")]
+    for key in ("textsize", "lang", "appearance"):
+        if meta.get(key):
+            head.append("%s %s" % (key, meta[key]))
+    if meta.get("mobile_sha"):
+        head.append("sha " + meta["mobile_sha"])
+    if meta.get("date"):
+        head.append(meta["date"][:16].replace("T", " "))
+    lines.append(" · ".join(str(h) for h in head if h))
+
+    def is_capture(f):
+        return (f.endswith(".png") and not f.startswith((".", "sheet", "compare"))
+                and not f.endswith((".prev.png", "-changed.png", "-base.png")))
+    shots = sorted((f for f in os.listdir(directory) if is_capture(f)),
+                   key=lambda f: os.path.getmtime(os.path.join(directory, f)))
+
+    def line_of(f):
+        label, v = f[:-4], verdicts.get(f[:-4])
+        if not v:
+            return "%s: not compared" % label
+        where = " [%s]" % v["device"] if v.get("device") and v["device"] != meta.get("device") else ""
+        if not v.get("vs"):
+            return "%s%s: %s" % (label, where, v.get("verdict"))
+        text = v.get("verdict") or "?"
+        if v.get("zones"):
+            text += " (%s%s)" % (" · ".join(v["zones"]), " · +%d" % v["more"] if v.get("more") else "")
+        if v.get("size"):
+            text = "size %s, %s" % (v["size"], text)
+        return "%s%s: vs %s · %s" % (label, where, v["vs"], text)
+
+    changed = [f for f in shots if (verdicts.get(f[:-4]) or {}).get("marked")
+               and os.path.exists(verdicts[f[:-4]]["marked"])]
+    closing = []
+    if changed:
+        latest = max(changed, key=lambda f: verdicts[f[:-4]].get("at") or "")
+        closing.append("read: " + verdicts[latest[:-4]]["marked"])
+        if len(changed) > 1:
+            closing.append("changed: %d captures, all marked in one image: vysu sheet %s --only '*-changed.png'" % (len(changed), name))
+    elif len(shots) == 1:
+        closing.append("read: " + os.path.join(directory, shots[0]))
+    elif shots:
+        sheets = sorted(f for f in os.listdir(directory) if f.startswith("sheet") and f.endswith(".png") and f != "sheet-strip.png")
+        newest = max(os.path.getmtime(os.path.join(directory, f)) for f in shots)
+        if sheets and min(os.path.getmtime(os.path.join(directory, f)) for f in sheets) >= newest:
+            closing.extend("read: " + os.path.join(directory, f) for f in sheets[:5])
+            if len(sheets) > 5:
+                closing.append("… %d more sheet page(s), all in %s" % (len(sheets) - 5, os.path.join(directory, "index.html")))
+        else:
+            closing.append("sheet: vysu sheet %s" % name)
+    else:
+        closing.append("no capture in %s" % directory)
+
+    if shots and not any(f[:-4] in verdicts for f in shots):
+        # Nothing was ever compared here (captured before verdicts existed, or by hand): one line
+        # naming them beats a screenful of « not compared ».
+        names = ", ".join(f[:-4] for f in shots)
+        lines.append("%d capture(s), none compared: %s" % (len(shots), names if len(names) <= 200 else names[:199] + "…"))
+    else:
+        # 25 lines at most: the header and the closing lines are kept, a changed capture is never
+        # the one folded away, and what is folded is counted by verdict.
+        room = 25 - 1 - len(closing)
+        shown = shots
+        if len(shots) > room:
+            keep = set(changed[-(room - 1):])
+            for f in reversed(shots):
+                if len(keep) >= room - 1:
+                    break
+                keep.add(f)
+            shown = [f for f in shots if f in keep]
+        folded = [f for f in shots if f not in shown]
+        if folded:
+            counts = {}
+            for f in folded:
+                key = (verdicts.get(f[:-4]) or {}).get("verdict") or "not compared"
+                counts[key] = counts.get(key, 0) + 1
+            lines.append("%d earlier capture(s) not listed: %s" % (len(folded), ", ".join("%d %s" % (n, k) for k, n in counts.items())))
+        lines.extend(line_of(f) for f in shown)
+    lines.extend(closing)
+    if flag == "--md":
+        lines = ["```"] + lines + ["```"]
+    print("\n".join(lines))
+    sys.exit(0)
+
 head = [meta.get("kind", "shots"), meta.get("persona"), meta.get("url") or meta.get("device")]
 if meta.get("lang"):
     head.append("lang " + meta["lang"])
@@ -393,17 +592,23 @@ PY
 }
 
 # The one image an agent reads back. An image is downsized to a 1568 px long edge first, so a tall
-# sheet of everything comes back as unreadable thumbnails for the same 1800 tokens: the grid is
-# sized to fit inside that square, and past --max captures the sheet is split into pages. Marked
-# diffs come first, a baseline sits next to its current. index.html keeps them all, for a human.
+# sheet of everything comes back as unreadable thumbnails for the same 1800 tokens: every page fits
+# inside that square (py/sheet.py picks the columns), and past --max captures the folder is split
+# into pages of even size. A baseline sits next to its current; a marked diff and the capture an
+# mshot replaced are left out unless --only names them. --strip is one row at one scale: a before
+# and an after side by side. index.html keeps them all, for a human.
+# Composed with Pillow, not rendered in the browser: it used to wait on a shared `render` session
+# and come back blank when an image had not loaded yet.
 vysu_sheet() {
-  local name="${1:-}"; [ -n "$name" ] || die "usage: vysu sheet <name> [--cols N] [--max N] [--open] [--compare [--against <name>]]"
+  local name="${1:-}"; [ -n "$name" ] || die "usage: vysu sheet <name> [--cols N] [--max N] [--only \"<glob>,…\"] [--strip] [--open] [--compare [--against <name>]]"
   shift
-  local cols="" max=6 want_open=0 compare=0 against=""
+  local cols="" max=6 want_open=0 compare=0 against="" only="" strip=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --cols) cols="$2"; shift 2;;
       --max) max="$2"; shift 2;;
+      --only) only="$2"; shift 2;;
+      --strip) strip=1; shift;;
       --open) want_open=1; shift;;
       --compare) compare=1; shift;;
       --against) against="$2"; shift 2;;
@@ -422,70 +627,15 @@ vysu_sheet() {
     [ "$want_open" != 1 ] || open "$(printf '%s\n' "$out" | grep '\.html$' | head -1)" 2>/dev/null || true
     return
   fi
-  local html="$dir/index.html"
-  rm -f "$dir"/sheet.png "$dir"/sheet-*.png
-  # The heredoc stays out of a command substitution: bash 3.2 mis-reads a quote inside one.
-  python3 - "$dir" "$name" "$cols" "$max" "$SHEET_EDGE" <<'PY'
-import math, os, sys, time
-from PIL import Image
-
-directory, name, cols, max_per_page, edge = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
-files = [f for f in os.listdir(directory) if f.endswith(".png") and not f.startswith(("sheet", "compare"))]
-files.sort(key=lambda f: os.path.getmtime(os.path.join(directory, f)))
-changed = [f for f in files if f.endswith("-changed.png")]
-rest = [f for f in files if not f.endswith("-changed.png")]
-bases = {f[: -len("-base.png")] + ".png": f for f in rest if f.endswith("-base.png")}
-order = list(changed)
-for f in rest:
-    if f.endswith("-base.png"):
-        continue
-    if f in bases:
-        order.append(bases[f])
-    order.append(f)
-order += [f for f in rest if f.endswith("-base.png") and f not in order]
-if not order:
-    sys.exit("vysu: no capture in %s" % directory)
-
-widest = max(Image.open(os.path.join(directory, f)).width for f in order)
-cols = int(cols) if cols else (2 if widest >= 768 else 3)
-pages = [order[i : i + max_per_page] for i in range(0, len(order), max_per_page)]
-gap, pad, chrome = 12, 16, 30  # chrome: the figure padding, border and caption line
-# A 1fr column gives the width; the height is what has to be capped, or three rows of a landscape
-# capture leave the square and get downsized into mush.
-rows = max(1, math.ceil(min(len(order), max_per_page) / cols))
-thumb_h = (edge - 2 * pad - 32 - rows * (gap + chrome)) // rows
-
-out = ["""<!doctype html><meta charset="utf-8"><title>%s</title>
-<style>body{margin:0;background:#e5e7eb;font:12px/1.4 system-ui,sans-serif;color:#111}
-section{width:%dpx;box-sizing:border-box;padding:%dpx;background:#f3f4f6;display:grid;gap:%dpx;
-grid-template-columns:repeat(%d,1fr);align-items:start}
-h1{grid-column:1/-1;font-size:14px;margin:0}
-figure{margin:0;background:#fff;border:1px solid #d1d5db;border-radius:6px;padding:6px;min-width:0}
-img{display:block;max-width:100%%;max-height:%dpx;width:auto;height:auto;margin:0 auto}
-figcaption{margin-top:4px;color:#4b5563;font-variant-numeric:tabular-nums}</style>""" % (name, edge, pad, gap, cols, thumb_h)]
-stamp = time.strftime("%Y-%m-%d %H:%M")
-for i, page in enumerate(pages, 1):
-    out.append('<section id="p%d"><h1>%s — %s%s</h1>' % (i, name, stamp, " — %d/%d" % (i, len(pages)) if len(pages) > 1 else ""))
-    for f in page:
-        out.append('<figure><img src="%s" alt="%s"><figcaption>%s</figcaption></figure>' % (f, f, f))
-    out.append("</section>")
-open(os.path.join(directory, "index.html"), "w").write("\n".join(out))
-PY
-  local pages; pages="$(grep -c '<section id="p' "$html")"
-  # One rendered PNG per page: the cheapest thing for an agent to read back.
-  # Tall enough to hold a whole page: an element screenshot is a crop of the viewport, not a scroll.
-  bcmd set viewport $((SHEET_EDGE + 40)) $((SHEET_EDGE + 120))
-  bcmd open "file://$html"
-  bcmd wait 600
-  local i=1 sheets=() png
-  while [ "$i" -le "$pages" ]; do
-    png="$dir/sheet-$i.png"; [ "$pages" = 1 ] && png="$dir/sheet.png"
-    bcmd screenshot "#p$i" "$png"
-    sheets+=("$png"); i=$((i + 1))
-  done
-  brun render | bboxes >/dev/null
-  echo "$html"; printf '%s\n' "${sheets[@]}"
-  [ "$want_open" = 1 ] && open "$html" || true
+  local sheet="$PY/sheet.py"; [ -f "$sheet" ] || die "sheet.py missing ($sheet)"
+  local sargs=(--name "$name" --max "$max" --edge "$SHEET_EDGE")
+  [ -z "$cols" ] || sargs+=(--cols "$cols")
+  [ -z "$only" ] || sargs+=(--only "$only")
+  [ "$strip" = 0 ] || sargs+=(--strip)
+  # sheet.py says on stderr why it composed nothing (no capture, a glob that matches none).
+  local out; out="$("$sheet" "$dir" "${sargs[@]}")" || exit 1
+  printf '%s\n' "$out"
+  [ "$want_open" = 1 ] && open "$(printf '%s\n' "$out" | head -1)" || true
 }
 
 vysu_mark() { python3 "$MARK" "$@"; }
