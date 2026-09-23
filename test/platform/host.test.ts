@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseNetstatListeners, parseProcessLines } from '../../src/core/winps.ts';
-import { cmdQuote, isWindows, processName, processTable, which } from '../../src/core/host.ts';
+import { cmdQuote, isWindows, processEntry, processName, processTable, which } from '../../src/core/host.ts';
 
 const fixture = (name: string): string => readFileSync(join(import.meta.dirname, '..', 'fixtures', 'windows', name), 'utf8');
 
@@ -42,7 +42,12 @@ test('an argument for a cmd.exe command line', () => {
 // On the machine that runs the tests: the real table has this process under its parent, and a tool
 // is found by its bare name (on Windows, npm is npm.cmd and never the extensionless Git Bash script).
 test('the process table of this machine', () => {
+  // Asked one process at a time first, then the whole table: the same answers.
+  const one = processEntry(process.pid);
+  const parent = processEntry(process.ppid);
   const t = processTable();
+  assert.deepEqual(one, t.get(process.pid));
+  assert.deepEqual(parent, t.get(process.ppid));
   const me = t.get(process.pid);
   assert.ok(me, 'this process is in the table');
   assert.equal(me.ppid, process.ppid);

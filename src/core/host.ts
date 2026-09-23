@@ -63,6 +63,29 @@ export function processTable(): Map<number, Proc> {
   return table;
 }
 
+// One process of the table: its parent and its name. Where the system answers for one process, it is
+// asked for that one alone — on a Mac running 1 400 processes, `ps -A` takes 160 ms and `ps -p` 9, and
+// the owner walk needs two or three of them; on Windows the whole table is one call anyway.
+const entries = new Map<number, Proc | null>();
+export function processEntry(pid: number): Proc | undefined {
+  if (!(pid > 0)) return undefined;
+  if (table || isWindows) return processTable().get(pid);
+  const hit = entries.get(pid);
+  if (hit !== undefined) return hit ?? undefined;
+  let found: Proc | null = null;
+  if (isLinux) {
+    const stat = safeRead(`/proc/${pid}/stat`);
+    const close = stat.lastIndexOf(')');
+    if (close >= 0) found = { ppid: Number(stat.slice(close + 2).split(' ')[1]), name: procName(stat.slice(stat.indexOf('(') + 1, close)) };
+  } else {
+    const r = spawnSync('ps', ['-o', 'ppid=,comm=', '-p', String(pid)], { encoding: 'utf8' });
+    const m = /^\s*(\d+)\s(.*)$/.exec((r.stdout ?? '').split('\n')[0] ?? '');
+    if (r.status === 0 && m) found = { ppid: Number(m[1]), name: procName(m[2]!) };
+  }
+  entries.set(pid, found);
+  return found ?? undefined;
+}
+
 // One process, fresh: whether it still exists and what it runs now (a pid handed to another program
 // since counts as someone else).
 export function processName(pid: number): string {
