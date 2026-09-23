@@ -58,7 +58,8 @@ const cases: Case[] = [
   ...verbs('form', formProject),
   ...verbs('bash', bash),
   ...verbs('module', both, {}, [/^✗ Wait timed out/]),
-  { name: 'load/bogus', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'bogus' } },
+  // Deliberate: the message names the built-in's file, now a .ts one.
+  { name: 'load/bogus', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'bogus' }, ignore: [/^vysu: no auth connector « bogus »/] },
   { name: 'load/missing-path', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'connectors/mine.sh' } },
   { name: 'load/path', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: sh } },
   { name: 'load/custom-none', args: ['auth', 'describe'], cwd: plain, env: { VYSU_AUTH: 'custom' } },
