@@ -363,9 +363,93 @@ mperm_ios() { # name action
   [ "$after" = "$want" ] || { mctl_why "ios: $name $action did not hold: $tcc reads « $after » (was « $before »)"; return 1; }
   echo "ios: $name $(mperm_word "$action") · $tcc $after (was $before)$(mperm_next "$action")$stopped"
 }
+# Notifications are not TCC's: SpringBoard's BulletinBoard keeps one archived BBSectionInfo per app
+# in data/Library/BulletinBoard/VersionedSectionInfo.plist, and its authorizationStatus (0 never
+# asked, 1 denied, 2 granted, 3 provisional) is what UNUserNotificationCenter answers the app.
+# `simctl privacy` has no service for it, so that file is the one handle: `reset` drops the app's
+# section (iOS then treats it as never asked, and the next request prompts), `deny` / `grant` set
+# the status. SpringBoard holds the sections in memory and writes them back: it is stopped with
+# SIGKILL right after the edit (a clean exit would save its own copy over it) and launchd starts it
+# again from the file, along with usernotificationsd, which caches what it last read.
+# The section vysu removed or changed is kept under $STATE, so a `grant` after a `reset` puts the
+# app's own section back rather than one made up.
+mperm_bb() { # plist bundle read|reset|grant|deny saved-section → prints the status (read), exit 3: no section
+  python3 - "$@" <<'PY'
+import os
+import plistlib
+import sys
+
+path, bundle, op, saved = sys.argv[1:5]
+NAMES = {0: "not asked", 1: "denied", 2: "granted", 3: "provisional", 4: "ephemeral"}
+with open(path, "rb") as f:
+    top = plistlib.load(f)
+sections = top.setdefault("sectionInfo", {})
+
+
+def settings_of(blob):
+    """The archive and its BBSectionInfoSettings dict (NSKeyedArchiver: objects addressed by UID)."""
+    archive = plistlib.loads(blob)
+    objects = archive["$objects"]
+    root = objects[archive["$top"]["root"].data]
+    return archive, objects[root["sectionInfoSettings"].data]
+
+
+blob = sections.get(bundle)
+if op == "read":
+    if blob is None:
+        print("not asked")
+    else:
+        status = settings_of(blob)[1].get("authorizationStatus")
+        print(NAMES.get(status, "status %s" % status))
+    sys.exit(0)
+if op == "reset":
+    if blob is None:
+        sys.exit(0)
+    open(saved, "wb").write(blob)
+    del sections[bundle]
+else:
+    if blob is None:
+        if not os.path.exists(saved):
+            sys.exit(3)
+        blob = open(saved, "rb").read()
+    else:
+        open(saved, "wb").write(blob)
+    archive, settings = settings_of(blob)
+    settings["authorizationStatus"] = 2 if op == "grant" else 1
+    sections[bundle] = plistlib.dumps(archive, fmt=plistlib.FMT_BINARY)
+tmp = path + ".vysu"
+with open(tmp, "wb") as f:
+    plistlib.dump(top, f, fmt=plistlib.FMT_BINARY)
+os.replace(tmp, path)
+PY
+}
+mperm_springboard_pid() { xcrun simctl spawn "$1" launchctl print user/foreground/com.apple.SpringBoard 2>/dev/null | awk '$1 == "pid" { print $3; exit }'; }
 mperm_ios_notifications() { # action
-  mctl_why "ios: notifications have no simctl privacy service; nothing to $1 here"
-  return 1
+  local action="$1" bundle udid file saved before after rc=0
+  bundle="$(cfg MOBILE_BUNDLE)"; ios_lock; udid="$(ios_udid)"
+  file="$HOME/Library/Developer/CoreSimulator/Devices/$udid/data/Library/BulletinBoard/VersionedSectionInfo.plist"
+  [ -f "$file" ] || { mctl_why "ios: no BulletinBoard file on this simulator ($file): nothing to $action"; return 1; }
+  mkdir -p "$STATE"; saved="$STATE/bulletin-$udid-$bundle.section"
+  before="$(mperm_bb "$file" "$bundle" read "$saved" 2>/dev/null)" || { mctl_why "ios: cannot read $file"; return 1; }
+  local old_pid; old_pid="$(mperm_springboard_pid "$udid")"
+  mperm_bb "$file" "$bundle" "$action" "$saved" >/dev/null 2>&1 || rc=$?
+  [ "$rc" != 3 ] || { mctl_why "ios: $bundle has never asked for notifications on this simulator, so there is no section to $action: let the app ask once (then deny / grant / reset work)"; return 1; }
+  [ "$rc" = 0 ] || { mctl_why "ios: could not rewrite $file"; return 1; }
+  xcrun simctl spawn "$udid" launchctl kill SIGKILL user/foreground/com.apple.SpringBoard >/dev/null 2>&1 || true
+  xcrun simctl spawn "$udid" launchctl kill SIGKILL user/foreground/com.apple.usernotificationsd >/dev/null 2>&1 || true
+  # Back when launchd has a new SpringBoard running; the home screen takes a moment more to paint.
+  local i pid=""
+  for i in $(seq 1 40); do
+    pid="$(mperm_springboard_pid "$udid")"
+    [ -z "$pid" ] || [ "$pid" = "$old_pid" ] || break
+    sleep 0.5
+  done
+  { [ -n "$pid" ] && [ "$pid" != "$old_pid" ]; } || { mctl_why "ios: SpringBoard did not come back after the restart (pid ${pid:-none})"; return 1; }
+  sleep 2
+  after="$(mperm_bb "$file" "$bundle" read "$saved" 2>/dev/null || true)"
+  local want; case "$action" in grant) want=granted;; deny) want=denied;; reset) want="not asked";; esac
+  [ "$after" = "$want" ] || { mctl_why "ios: notifications $action did not hold: SpringBoard reads « $after » back (was « $before »)"; return 1; }
+  echo "ios: notifications $(mperm_word "$action") · BulletinBoard $after (was $before)$(mperm_next "$action") · SpringBoard restarted: relaunch the app (vysu mrelaunch ios)"
 }
 vysu_mperm() {
   local usage="vysu mperm ios|android <permission> grant|deny|reset  (permission: ${MPERM_NAMES// /, }, or the platform's own name)"
