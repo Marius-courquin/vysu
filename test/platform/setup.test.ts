@@ -5,6 +5,8 @@ import { stampText } from '../../src/setup/skills.ts';
 import { checkerAgentText } from '../../src/setup/checker.ts';
 import { avdSpecs, ios18Runtime } from '../../src/setup/devices.ts';
 import { fillTemplate } from '../../src/cmd/init.ts';
+import { machineEnvText } from '../../src/cmd/setup.ts';
+import { parseShellEnv } from '../../src/core/shellenv.ts';
 
 test('versions are compared on their numbers', () => {
   assert.equal(versionBelow('0.38.0', '0.38.1'), true);
@@ -74,4 +76,13 @@ test('a size the way du -h writes it', async () => {
   assert.equal(humanSize(4096), '4.0K');
   assert.equal(humanSize(12 * 1024 * 1024), '12M');
   assert.equal(humanSize(1.84 * 1024 ** 3), '1.8G');
+});
+
+// A value holding a quote once left the file's quote open: every command on that machine died reading it.
+test('machine.env reads back what setup wrote, quotes included', () => {
+  const values = { VYSU_IOS_DEVICE: 'iPhone 16', VYSU_ANDROID_AVDS: 'a:36:pixel_8:', VYSU_BROWSER_PATH: "C:\\Users\\O'Brien\\Chrome $HOME\\chrome.exe" };
+  const text = machineEnvText(values);
+  assert.equal(text.split('\n')[3], `VYSU_BROWSER_PATH='C:\\Users\\O'"'"'Brien\\Chrome $HOME\\chrome.exe'`);
+  const read = Object.fromEntries(parseShellEnv(text, () => undefined, '/home/me').map((a) => [a.key, a.value]));
+  assert.deepEqual(read, values);
 });

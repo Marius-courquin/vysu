@@ -9,6 +9,7 @@ import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
 import { which } from '../core/host.ts';
 import { runTool } from '../core/proc.ts';
+import { shellQuote } from '../core/shellenv.ts';
 import { allRequiredPresent, head, info, miss, noColor, ok, summary } from '../core/ui.ts';
 import { browserLabel, browsersFound, isExecutable } from '../setup/browsers.ts';
 import { androidSection, avdSpecs, iosProbe, iosSection } from '../setup/devices.ts';
@@ -122,14 +123,9 @@ export async function run(args: string[]): Promise<number> {
   if (dry) {
     info(`machine.env: ${machineEnv} (unchanged — reporting only)`);
   } else {
-    const lines = [
-      '# written by vysu setup — what this machine drives.',
-      `VYSU_IOS_DEVICE='${wantIos}'`,
-      `VYSU_IOS_OLD_DEVICE='${wantOld}'`,
-      `VYSU_ANDROID_AVDS='${wantAvds}'`,
-    ];
-    if (wantBrowser) lines.push(`VYSU_BROWSER_PATH='${wantBrowser}'`);
-    writeFileSync(machineEnv, `${lines.join('\n')}\n`);
+    const values: Record<string, string> = { VYSU_IOS_DEVICE: wantIos, VYSU_IOS_OLD_DEVICE: wantOld, VYSU_ANDROID_AVDS: wantAvds };
+    if (wantBrowser) values.VYSU_BROWSER_PATH = wantBrowser;
+    writeFileSync(machineEnv, machineEnvText(values));
     ok(`machine.env: ${machineEnv}`);
     if (existsSync(join(HOME, '.vysu', 'devices.env'))) {
       info('devices.env: still read, and below machine.env — delete it once you have moved its keys over');
@@ -144,6 +140,15 @@ export async function run(args: string[]): Promise<number> {
 
   summary(['cd <your project> && vysu init      the .vysu/config of that project', 'vysu persona add <name>             credentials, mode 600, never printed']);
   return allRequiredPresent() ? 0 : 1;
+}
+
+// Each value quoted the way the settings reader reads it back: a device name or a browser path that
+// holds a `'` (C:\Users\O'Brien\…) once left a quote open, and every command on that machine died
+// reading the file.
+export function machineEnvText(values: Record<string, string>): string {
+  const lines = ['# written by vysu setup — what this machine drives.'];
+  for (const [k, v] of Object.entries(values)) lines.push(`${k}=${shellQuote(v)}`);
+  return `${lines.join('\n')}\n`;
 }
 
 // Where the installed browsers are, for the reader who has to find one to name.
