@@ -16,7 +16,7 @@ import { config } from '../core/ctx.ts';
 import { ENGINE } from '../core/config.ts';
 import { die } from '../core/errors.ts';
 import { devices, iosLock, type Platform } from '../core/hold.ts';
-import { isWindows, which } from '../core/host.ts';
+import { isWindows, toolArgv, which } from '../core/host.ts';
 import { run, type RunResult } from '../core/proc.ts';
 import { slug } from '../core/text.ts';
 import { androidSelect, serial } from './device.ts';
@@ -31,27 +31,29 @@ export function agentDeviceBin(): string {
 }
 
 // How to start the CLI. On Windows npm installs a `.cmd` shim, which Node no longer spawns without a
-// shell: the package's own script is run by node instead, the same file the shim would have run.
-function cliArgv(args: string[]): [string, string[]] {
+// shell: the package's own script is run by node instead, the same file the shim would have run. When
+// that package is not beside the shim, the shim itself goes through cmd.exe (toolArgv): spawned bare,
+// it failed with EINVAL, which reached the entry point as an internal error.
+function cliArgv(args: string[]): { file: string; args: string[]; verbatim: boolean } {
   const bin = agentDeviceBin();
   if (isWindows && /\.(cmd|bat)$/i.test(bin)) {
     const root = packageRoot();
     const node = which('node');
-    if (root && node) return [node, [join(root, 'bin', 'agent-device.mjs'), ...args]];
+    if (root && node) return { file: node, args: [join(root, 'bin', 'agent-device.mjs'), ...args], verbatim: false };
   }
-  return [bin, args];
+  return toolArgv(bin, args);
 }
 function runCli(args: string[], o: { inherit?: boolean } = {}): Promise<RunResult> {
-  const [cmd, argv] = cliArgv(args);
-  if (o.inherit) return interactive(cmd, argv, childEnv());
-  return run(cmd, argv, { env: childEnv() });
+  const c = cliArgv(args);
+  if (o.inherit) return interactive(c.file, c.args, childEnv(), c.verbatim);
+  return run(c.file, c.args, { env: childEnv(), verbatim: c.verbatim });
 }
 
 // A tool handed the terminal whole, stdin included: a passthrough may read a steps file from `-` or
-// open a shell.
-export function interactive(cmd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<RunResult> {
+// open a shell. `verbatim`: the arguments are already a cmd.exe command line (toolArgv).
+export function interactive(cmd: string, args: string[], env?: NodeJS.ProcessEnv, verbatim = false): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: 'inherit', env });
+    const child = spawn(cmd, args, { stdio: 'inherit', env, windowsVerbatimArguments: verbatim });
     child.on('error', (e) => resolve({ code: 127, stdout: '', stderr: e.message }));
     child.on('close', (code, signal) => resolve({ code: code ?? (signal ? 128 + 9 : 1), stdout: '', stderr: '' }));
   });
@@ -155,6 +157,9 @@ export function agentLib(): Promise<Lib | null> {
 
 async function loadLib(): Promise<Lib | null> {
   if ((process.env.VYSU_AGENT_DEVICE ?? '') === 'cli') return null;
+  // The client starts the daemon every agent session shares with process.execPath, which under Bun is
+  // bun: the CLI starts it on node, the runtime agent-device is made for.
+  if (process.versions.bun) return null;
   const root = packageRoot();
   if (!root) return null;
   try {
