@@ -500,11 +500,14 @@ vysu/
   spawn one directly since April 2024), where a tool is (`PATHEXT` on Windows), how a file is
   opened for a human. Everything above it is the same code everywhere; iOS says in one line that it
   needs a Mac.
-- **The Windows process table.** `owner()` walks up from vysu to the agent that drives it on every
-  locked command, so the table is read once per command — and PowerShell's CIM query costs 0.5 to
-  1 s. A C# helper of forty lines, compiled on first use with the `csc.exe` every Windows 10 / 11
+- **The Windows helper.** `owner()` walks up from vysu to the agent that drives it on every locked
+  command, so the process table is read once per command — and PowerShell's CIM query costs 0.5 to
+  1 s. A C# helper of a hundred lines, compiled on first use with the `csc.exe` every Windows 10 / 11
   carries (.NET Framework 4) and kept in `%LOCALAPPDATA%\vysu`, lists it through
-  `CreateToolhelp32Snapshot` in about 20 ms; CIM remains the fallback where it cannot be built.
+  `CreateToolhelp32Snapshot` in about 20 ms. It also starts what outlives vysu (a service, Metro, an
+  emulator) with none of vysu's handles: Node hands a child every inheritable handle, the pipe an
+  agent reads vysu through included, and `vysu up` would not return before the service stopped. CIM
+  and Node's own detached spawn remain the fallbacks where it cannot be built.
 - **The config is read, not sourced.** `src/core/shellenv.ts` reads `KEY=value` lines the way bash
   did (quotes, `$VAR`, `${VAR:-x}`, `export`, several per line); a line it cannot follow goes to a
   real bash when the machine has one, and is named otherwise.
