@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.1 — 2026-09-23
+
+- **A persona name may hold `_`.** `vysu persona add tb_non_verifie` always wrote
+  `VYSU_PERSONA_TB_NON_VERIFIE_*` and the login always found it, but `persona list`, `doctor` and
+  `import` split names on the first `_`: twenty personas read back as one called `tb`. One reader
+  now serves all three (`py/personas.py`): a persona is declared by its `_EMAIL` key, every other
+  key belongs to the longest declared name it starts with, and an `_EMAIL` field under a declared
+  name without a `_PASSWORD` of its own (`RESIDENT_BACKUP_EMAIL`) stays that persona's field.
+- **`persona import` leaves behind what is nobody's.** A key that belongs to no persona — a fixture
+  id kept next to the credentials, `E2E_RESIDENCE_ID` — used to become a persona `residence`; it is
+  now skipped and named (never its value). The converted file is created mode 600 rather than
+  chmod-ed after the write, and the command prints the personas it read.
+- `persona add|set` refuse a name a variable cannot hold (`tb-x`): the line would not source.
+- `vysu init` says, for each question, what the answer is for.
+
 ## 0.4.0 — 2026-09-22
 
 From a first external user's first hour on a fresh Mac: they could not tell, from the output of
