@@ -564,6 +564,9 @@ export async function mperm(p: string, args: string[]): Promise<boolean> {
   if (!name) return mctlWhy(`usage: ${MPERM_USAGE}`);
   if (!['grant', 'deny', 'reset'].includes(action)) return mctlWhy(`usage: ${MPERM_USAGE}`);
   if (args.length > 2) return mctlWhy(`usage: ${MPERM_USAGE}`);
+  // adb joins the words of `adb shell pm …` into one line for the device's shell: a name is a
+  // permission's (letters, digits, _ and .), or « CAMERA;reboot » reboots the emulator.
+  if (p === 'android' && !/^[A-Za-z0-9_.]+$/.test(name)) return mctlWhy(`mperm: « ${name} » is not an android permission name (letters, digits, _ and . only)`);
   if (!config().get('MOBILE_BUNDLE')) return mctlWhy('mperm: VYSU_MOBILE_BUNDLE is not set (the app id on both platforms)');
   return p === 'android' ? mpermAndroid(name, action) : mpermIos(name, action);
 }

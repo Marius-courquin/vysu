@@ -92,3 +92,15 @@ test('up android, native, API 30: the app log is filtered by uid from a script f
   assert.equal(text, '01-01 00:00:00.000 I/App( 10166: 2291): from the app\n');
   assert.ok(existsSync(join(f.state, 'applog-uid-filter.cjs')));
 });
+
+// `adb shell pm grant <bundle> <name>` reaches the device's shell as one line.
+test('mperm android: a name that is not a permission name never reaches adb', posix, async () => {
+  const f = fakeAndroid();
+  Object.assign(f.env, { VYSU_MOBILE_BUNDLE: 'com.example' });
+  const r = await f.vysu(['mperm', 'android', 'CAMERA;reboot', 'grant']);
+  assert.equal(r.code, 1, r.stderr);
+  assert.match(r.stderr, /« CAMERA;reboot » is not an android permission name/);
+  assert.deepEqual(f.calls(), []);
+  const ok = await f.vysu(['mperm', 'android', 'android.permission.CAMERA', 'grant']);
+  assert.match(ok.stderr, /does not request android\.permission\.CAMERA/);
+});
