@@ -34,7 +34,8 @@ KNOWN='^✓ engine: dependencies installed|^✓ node: v|^ready: [0-9]+ · |Termi
 CONTRACT='^(auth|push|ios device|android avd|emulators|state [^:]*|avds|session|devices|sessions):'
 
 norm() { # file side
-  sed -e "s#$W/$2#<W>#g" -e "s#$W#<W>#g" "$1" | grep -Ev "$KNOWN" | { if [ -n "${FILTER:-}" ]; then grep -Ev "$FILTER"; else cat; fi; } || true
+  # Live locks and claims of other sessions age between the two runs.
+  sed -E -e "s#$W/$2#<W>#g" -e "s#$W#<W>#g" -e 's/ for [0-9]+s$/ for Ns/' -e 's/\([0-9-]+ min left\)/(N min left)/' "$1" | grep -Ev "$KNOWN" | { if [ -n "${FILTER:-}" ]; then grep -Ev "$FILTER"; else cat; fi; } || true
 }
 
 # case name — runs "$@" in $W/<side>/<name>/proj for side in legacy and ts, compares.
@@ -88,6 +89,17 @@ VYSU_STATE="$W/state/setup" TREE=0 case_ setup-notty setup
 VYSU_STATE="$W/state/setup" TREE=0 case_ setup-opts setup --dry-run --browser default --ios-device 'iPhone 16' --ios-old-device 'Old SE' --android-avds 'a_b:34:pixel_7:hw.x=1;c:30:pixel_4a'
 VYSU_STATE="$W/state/setup" TREE=0 case_ setup-bad-browser setup --dry-run --browser /nonexistent/browser
 TREE=0 case_ setup-bogus setup --bogus
+# On a terminal: the device questions, answered through expect.
+if command -v expect >/dev/null; then
+  for side in legacy ts; do
+    mkdir -p "$W/$side/setup-tty"
+    if [ "$side" = legacy ]; then VYSU=(bash "$ENGINE/legacy/vysu"); else VYSU=("$ENGINE/bin/vysu"); fi
+    (cd "$W/$side/setup-tty" && VYSU_STATE="$W/state/setup" expect "$ENGINE/test/parity/setup-tty.exp" "${VYSU[@]}" | tr -d '\r') >"$W/$side/setup-tty/out" 2>&1
+  done
+  if diff <(norm "$W/legacy/setup-tty/out" legacy) <(norm "$W/ts/setup-tty/out" ts) >"$W/setup-tty.diff"; then
+    PASSED=$((PASSED + 1)); echo "same     setup-tty"
+  else FAILED=$((FAILED + 1)); echo "DIFFERS  setup-tty ($W/setup-tty.diff)"; sed 's/^/    /' "$W/setup-tty.diff" | head -20; fi
+fi
 
 # --- init --------------------------------------------------------------------------------------------
 SETUP='mkdir -p .claude' case_ init-yes init --yes
