@@ -6,8 +6,9 @@ import { config } from '../core/ctx.ts';
 import { die, VysuError } from '../core/errors.ts';
 import type { Platform } from '../core/hold.ts';
 import { i18nLabel } from '../core/i18n.ts';
-import { ev, evTouch, now } from '../core/rec.ts';
+import { ev, evTouch, now, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
+import { chunks } from '../img/pace.ts';
 import { ad, adCall, calls, parseAnswer, type Answer, type Call } from './agent.ts';
 import { lines, quiet, say, tell, why } from './io.ts';
 import { mrelaunch } from './launch.ts';
@@ -235,30 +236,69 @@ export async function mexpect(p: Platform, words: string[]): Promise<boolean> {
 // `fill "<label>" "<value>"`: the field by its accessible label; else the field a label names on
 // screen (its value, or the text above it: a form label is a node of its own); else press the label
 // and type, for a field the tree does not describe as one; else, when the label is nowhere (iOS keeps
-// a placeholder out of the tree), the one unlabelled field on screen, said as such.
-export async function mfill(p: Platform, words: string[]): Promise<boolean> {
-  const label = words[0] ?? '';
-  const value = words[1];
-  if (!label || value === undefined) return answer(p, { ok: false, line: 'usage: fill "<label>" "<value>"' });
-  let s = await adJson(p, calls.fill(`label="${label}" editable=true`, value));
-  if (s.ok) return answer(p, { ok: true, line: `${s.line} · label="${label}"` });
+// a placeholder out of the tree), the one unlabelled field on screen, said as such. `delayMs` goes to
+// every agent-device call it makes.
+async function mfillAt(p: Platform, label: string, value: string, delayMs = 0): Promise<Said> {
+  let s = await adJson(p, calls.fill(`label="${label}" editable=true`, value, delayMs));
+  if (s.ok) return { ok: true, line: `${s.line} · label="${label}"` };
   await msnap(p);
   const xy = (await screenPy(['field', snapFile(p), label])).out.trim();
   const [x = '', y = '', how = ''] = xy.split(/\s+/);
   const point: [number, number] = [Number(x), Number(y)];
   if (xy && how !== 'only') {
-    s = await adJson(p, calls.fill(point, value));
-    if (s.ok) return answer(p, { ok: true, line: `${s.line} · the field of « ${label} » (${x}, ${y})` });
+    s = await adJson(p, calls.fill(point, value, delayMs));
+    if (s.ok) return { ok: true, line: `${s.line} · the field of « ${label} » (${x}, ${y})` };
   }
   if (await quiet(() => mtap(p, [label]), { err: true })) {
-    s = await adJson(p, calls.type(value));
-    if (s.ok) return answer(p, { ok: true, line: `${s.line} · after pressing « ${label} »` });
+    s = await adJson(p, calls.type(value, delayMs));
+    if (s.ok) return { ok: true, line: `${s.line} · after pressing « ${label} »` };
   }
   if (how === 'only') {
-    s = await adJson(p, calls.fill(point, value));
-    if (s.ok) return answer(p, { ok: true, line: `${s.line} · no « ${label} » in the tree: the one field on screen (${x}, ${y})` });
+    s = await adJson(p, calls.fill(point, value, delayMs));
+    if (s.ok) return { ok: true, line: `${s.line} · no « ${label} » in the tree: the one field on screen (${x}, ${y})` };
   }
-  return answer(p, { ok: false, line: `no field for « ${label} »` });
+  return { ok: false, line: `no field for « ${label} »` };
+}
+
+// While a take records (typingHuman), a field is typed the way a person types it: the first run
+// replaces the field through the same search as ever, the next runs are appended, each at the
+// driver's own speed, the round trip between two runs being the beat between two words (img/pace.ts).
+// The point the field was found at stays the step's target, so the take still knows where the typing
+// happened.
+export async function mfill(p: Platform, words: string[]): Promise<boolean> {
+  const label = words[0] ?? '';
+  const value = words[1];
+  if (!label || value === undefined) return answer(p, { ok: false, line: 'usage: fill "<label>" "<value>"' });
+  if (!value || !typingHuman()) return answer(p, await mfillAt(p, label, value));
+  let found: Said | undefined;
+  let target = '';
+  for (const run of chunks(value)) {
+    if (!found) {
+      found = await mfillAt(p, label, run.text, run.delay);
+      if (!found.ok) return answer(p, found);
+      target = ev.target;
+    } else {
+      const s = await adJson(p, calls.type(run.text, run.delay));
+      if (!s.ok) {
+        ev.target = target;
+        return answer(p, s);
+      }
+    }
+    await sleep(run.pause);
+  }
+  ev.target = target;
+  return answer(p, { ok: true, line: `${found!.line} · typed at a person's pace` });
+}
+
+// `type "<text>"` into the field that has the focus, at a person's pace while a take records.
+export async function mtype(p: Platform, value: string): Promise<boolean> {
+  if (!value || !typingHuman()) return answer(p, await adJson(p, calls.type(value)));
+  for (const run of chunks(value)) {
+    const s = await adJson(p, calls.type(run.text, run.delay));
+    if (!s.ok) return answer(p, s);
+    await sleep(run.pause);
+  }
+  return answer(p, { ok: true, line: `typed ${Array.from(value).length} characters at a person's pace` });
 }
 
 // `key return|dismiss|back`: the keyboard's return key, the keyboard put away, and back — the system
@@ -370,7 +410,7 @@ export async function mobileStep(p: Platform, shots: string, step: string): Prom
   }
   if (is('type')) {
     const w = words(rest('type'));
-    return w ? answer(p, await adJson(p, calls.type(w[0] ?? ''))) : false;
+    return w ? mtype(p, w[0] ?? '') : false;
   }
   if (is('key')) return mkey(p, rest('key'));
   if (is('scroll-to')) {
