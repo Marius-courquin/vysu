@@ -155,6 +155,14 @@ VYSU_AUTH='none'
 # this file first, then the engine's own. A render reads the theme from cut.json. Default: default
 # VYSU_THEME='default'
 
+# --- delegated checks -------------------------------------------------------------------------------
+
+# The model a visual-checker sub-agent runs on, per agent tool: the caller spawns the checker with
+# the brief of the visual-check skill and the model `vysu checker` names for it. Driving a device and
+# capturing need no frontier model; the caller judges the design on the sheet it gets back.
+# Empty: the sub-agent inherits the caller's model.
+# VYSU_CHECKER_MODELS='claude=sonnet,codex=gpt-5.6-luna'
+
 # --- agent hooks ------------------------------------------------------------------------------------
 
 # Which changed files count as UI, comma-separated. Read by templates/hooks/stop-reminder.sh only.

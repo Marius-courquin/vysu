@@ -144,6 +144,9 @@ config_defaults() {
   : "${VYSU_THEME:=default}"
   : "${VYSU_MIN_VERSION:=}"
   : "${VYSU_LOCK_WAIT:=90}"
+  # The model a visual-checker sub-agent runs on, per agent tool (`claude=sonnet,codex=…`): the
+  # delegation itself is in the skill, only the model is tool-specific. Empty: inherit the caller's.
+  : "${VYSU_CHECKER_MODELS:=}"
   # The simulator and the AVDs to drive, and the specs `vysu setup` creates. A project renames them
   # in its own config; the engine's own names carry its prefix so two projects never share a device.
   IOS_DEFAULT_DEVICE="iPhone 17 Pro"

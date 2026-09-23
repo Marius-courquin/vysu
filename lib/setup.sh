@@ -343,11 +343,12 @@ init_ask() { # variable prompt default — interactive with a default, or the de
 }
 vysu_init() {
   INIT_YES=0
-  local skills_dir="" refresh=0
+  local skills_dir="" agents_dir="" refresh=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --yes|-y) INIT_YES=1; shift;;
       --skills-dir) skills_dir="$2"; shift 2;;
+      --agents-dir) agents_dir="$2"; shift 2;;
       --refresh-skills) refresh=1; shift;;
       --no-color) ui_no_color; shift;;
       *) die "vysu init: unknown option $1" "vysu --help";;
@@ -359,6 +360,9 @@ vysu_init() {
     local target="${skills_dir:-$(skills_target)}"
     skills_install "$target" || true
     [ -n "$(skills_installed_version "$target")" ] || die "init --refresh-skills: this engine ships no skill to install" "vysu update"
+    # The agent definition follows the skills it points at, where one was installed before.
+    local agents="${agents_dir:-${VYSU_PROJECT_DIR:-$(pwd -P)}/.claude/agents}"
+    if [ -n "$agents_dir" ] || [ -f "$agents/visual-checker.md" ]; then checker_agent_install "$agents"; fi
     return 0
   fi
   local root; root="${VYSU_PROJECT_DIR:-$(pwd -P)}"
@@ -444,6 +448,8 @@ PY
   # whatever `skill/` holds is copied, and nothing is said when it holds nothing.
   local target="${skills_dir:-$root/.claude/skills}"
   if [ -n "$skills_dir" ] || [ -d "$root/.claude" ]; then skills_install "$target"; fi
+  # The checker sub-agent, for the agent tools that read a definition file (Claude Code).
+  if [ -n "$agents_dir" ] || [ -d "$root/.claude" ]; then checker_agent_install "${agents_dir:-$root/.claude/agents}"; fi
   [ ! -f "$VYSU_ENGINE/templates/agents-snippet.md" ] || {
     echo; echo "--- paste this into AGENTS.md / CLAUDE.md ---"
     cat "$VYSU_ENGINE/templates/agents-snippet.md"
@@ -492,6 +498,7 @@ vysu_doctor() {
   done
   auth_describe_line
   push_describe_line
+  echo "checker: model for $(checker_family): $(checker_model "$(checker_family)" | grep . || echo "inherited")${VYSU_CHECKER_MODELS:+ (VYSU_CHECKER_MODELS = $VYSU_CHECKER_MODELS)}"
   if [ -f "$PERSONAS" ]; then
     echo "personas ($PERSONAS): $(persona_names | tr '\n' ' ')"
   else

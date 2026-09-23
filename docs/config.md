@@ -174,6 +174,7 @@ These are not written to `.vysu/config`; they are exported for one command or on
 | `VYSU_PERSONAS` | the personas file, so one can be tried without moving the state folder | `$VYSU_STATE/personas.env` |
 | `VYSU_SHOTS` | the shots folder | `$VYSU_STATE/shots` |
 | `VYSU_LOCK_WAIT` | seconds a command waits for a busy device or session before giving up, and `claim --any` for a free device | `90` |
+| `VYSU_CHECKER_MODELS` | the model a visual-checker sub-agent runs on, per agent tool, as `family=model` pairs (`claude=sonnet,codex=gpt-5.6-luna`); the family is the caller's name as vysu detects it (`claude:41234` → `claude`). `vysu checker` answers for the caller, `vysu init` writes the Claude Code definition with it | empty: inherit the caller's model |
 | `VYSU_OWNER` | who a lock, a claim and a device choice are attributed to. A detected owner is `<name>:<pid>`: once that process is gone, its claims are dropped | the agent or terminal above the command |
 | `VYSU_ENGINE` | the engine directory, exported to project commands and to the render script | resolved from `bin/vysu` |
 | `VYSU_UI_GLOBS` | read by `templates/hooks/stop-reminder.sh` only: which changed files count as UI | `**/*.tsx,**/*.vue,**/*.svelte,**/*.css` |
