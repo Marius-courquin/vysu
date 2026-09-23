@@ -190,7 +190,13 @@ export async function release(args: string[]): Promise<void> {
   if (del) {
     await iosLock();
     await deleteClone(devices.ios);
-  } else if (reset) await resetResource(r, what);
+  } else if (reset) {
+    // Another owner's claim is taken over first: the reset relaunches under the device's lock, which
+    // waits on any other owner's claim, and died on the very claim being released. Should the reset
+    // die, the claim is this owner's, which a plain `vysu release` hands back.
+    if (who !== owner()) claimWrite(r, Number(claimField(f, 'minutes')) || CLAIM_MINUTES, claimField(f, 'note'), claimField(f, 'device'));
+    await resetResource(r, what);
+  }
   rmSync(f, { force: true });
   say(`released: ${r} (was ${who})`);
 }

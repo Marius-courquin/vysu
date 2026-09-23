@@ -104,3 +104,20 @@ test('mperm android: a name that is not a permission name never reaches adb', po
   const ok = await f.vysu(['mperm', 'android', 'android.permission.CAMERA', 'grant']);
   assert.match(ok.stderr, /does not request android\.permission\.CAMERA/);
 });
+
+// --force takes another owner's claim over: the relaunch of the reset takes the device's lock, which
+// waits on any other owner's claim, the one being released included.
+test('release --force --reset of another owner\'s claim resets the device, then releases it', posix, async () => {
+  const f = fakeAndroid({ agentDevice: true });
+  Object.assign(f.env, { VYSU_MOBILE_BUNDLE: 'com.example', VYSU_MOBILE_KIND: 'native', VYSU_MOBILE_READY_TEXT: 'Home', VYSU_LOCK_WAIT: '1' });
+  mkdirSync(join(f.state, 'claims'), { recursive: true });
+  const claim = join(f.state, 'claims', 'android-fake-avd');
+  writeFileSync(claim, `owner=shell:${process.pid}\nuntil=${Math.floor(Date.now() / 1000) + 600}\nminutes=10\nnote=\ndevice=fake_avd\n`);
+  writeFileSync(join(f.state, 'state-android-fake-avd.env'), 'textsize=xl\n');
+  const r = await f.vysu(['release', 'android', '--force', '--reset'], 30000);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /^reset: vysu mrelaunch android --textsize normal$/m);
+  assert.match(r.stdout, new RegExp(`^released: android-fake-avd \\(was shell:${process.pid}\\)$`, 'm'));
+  assert.ok(!existsSync(claim));
+  assert.ok(f.calls().some((l) => l.includes('font_scale 1.0')));
+});
