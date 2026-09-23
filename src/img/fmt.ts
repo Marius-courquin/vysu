@@ -204,3 +204,88 @@ export function pyStrRepr(s: string): string {
   const q = s.includes("'") && !s.includes('"') ? '"' : "'";
   return q + s.replace(/\\/g, '\\\\').replace(q === "'" ? /'/g : /"/g, `\\${q}`).replace(/\n/g, '\\n').replace(/\t/g, '\\t') + q;
 }
+
+// json.loads, keeping what Python kept: a number written with a point or an exponent stays a float
+// (pyJson writes it back « 30.0 »), NaN and Infinity are read, the last of two equal keys wins.
+const NUMBER = /-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/y;
+const STRING = /"(?:[^"\\\u0000-\u001f]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})*"/y;
+export function pyJsonParse(text: string): unknown {
+  let i = 0;
+  const fail = (): never => {
+    throw new SyntaxError(`Expecting value: char ${i}`);
+  };
+  const ws = (): void => {
+    while (i < text.length && ' \t\n\r'.includes(text[i]!)) i++;
+  };
+  const value = (): unknown => {
+    ws();
+    const c = text[i];
+    if (c === '{') {
+      i++;
+      const o: Record<string, unknown> = {};
+      ws();
+      if (text[i] === '}') {
+        i++;
+        return o;
+      }
+      for (;;) {
+        ws();
+        if (text[i] !== '"') fail();
+        const k = str();
+        ws();
+        if (text[i++] !== ':') fail();
+        o[k] = value();
+        ws();
+        if (text[i] === ',') i++;
+        else if (text[i] === '}') {
+          i++;
+          return o;
+        } else fail();
+      }
+    }
+    if (c === '[') {
+      i++;
+      const a: unknown[] = [];
+      ws();
+      if (text[i] === ']') {
+        i++;
+        return a;
+      }
+      for (;;) {
+        a.push(value());
+        ws();
+        if (text[i] === ',') i++;
+        else if (text[i] === ']') {
+          i++;
+          return a;
+        } else fail();
+      }
+    }
+    if (c === '"') return str();
+    for (const [word, v] of [['true', true], ['false', false], ['null', null], ['NaN', float(NaN)], ['Infinity', float(Infinity)], ['-Infinity', float(-Infinity)]] as const) {
+      if (text.startsWith(word, i)) {
+        i += word.length;
+        return v;
+      }
+    }
+    NUMBER.lastIndex = i;
+    const m = NUMBER.exec(text);
+    if (!m) return fail();
+    i += m[0].length;
+    return m[2] || m[3] ? float(Number(m[0])) : Number(m[0]);
+  };
+  const str = (): string => {
+    STRING.lastIndex = i;
+    const end = STRING.exec(text);
+    if (!end) return fail();
+    i += end[0].length;
+    return JSON.parse(end[0]) as string;
+  };
+  const v = value();
+  ws();
+  if (i < text.length) throw new SyntaxError(`Extra data: char ${i}`);
+  return v;
+}
+
+// A float read by pyJsonParse, as a number.
+export const num = (v: unknown): number | null => (typeof v === 'number' ? v : isFloat(v) ? v[FLOAT] : null);
