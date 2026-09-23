@@ -27,10 +27,12 @@
 #                                           two captures, 150 pt by default — a flick asking for more lands no further;
 #                                           --top / --bottom: the height of a bar drawn over the scroller, which
 #                                           stitch.py cannot find on its own). Android captures the whole display,
-#                                           keyboard and system dialogs included. The same label again: the earlier
-#                                           capture becomes <platform>-<label>.prev.png and one line follows the
-#                                           path, « vs previous: unchanged » or the zones that moved and the marked
-#                                           png (--no-prev: overwrite, compare nothing; --baseline: that folder instead)
+#                                           system dialogs and keyboard included (the user's keyboard stands in for
+#                                           agent-device's invisible input method during the capture). The same label
+#                                           again: the earlier capture becomes <platform>-<label>.prev.png and one line
+#                                           follows the path, « vs previous: unchanged » or the zones that moved and
+#                                           the marked png (--no-prev: overwrite, compare nothing; --baseline: that
+#                                           folder instead, printed as before)
 #   vysu mtap ios|android "<label>"         press by accessible label (then visible text), settled
 #   vysu mrelaunch ios|android [--textsize normal|large|xl] [--appearance light|dark] [--lang <l>]   kill + relaunch,
 #                                           wait for the screen
@@ -75,7 +77,8 @@
 #                                           -changed.png only when the glob spells it); --strip: one row at one
 #                                           scale, a before / after pair → sheet-strip.png
 #   vysu sheet <name> --compare [--against <name>]   before / after / zones triptych (compare.png) + slider page
-#                                           (compare.html); renders through the `render` session:
+#                                           (compare.html); a mobile capture with no baseline pairs with its .prev.png;
+#                                           renders through the `render` session:
 #                                           `vysu render <agent-browser args…>` to look at index.html / compare.html
 #   vysu frame <name|file> [frame.py options…]   demo-ready export of a capture, a clip or a whole shots folder
 #                                           (--preset pitch --title … --caption … for a 16:9 slide, --preset framed for
