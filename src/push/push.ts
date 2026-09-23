@@ -126,12 +126,26 @@ export async function loadDriver(name: string): Promise<PushDriver> {
 // and for agent-device.
 const PRELUDE = join(import.meta.dirname, 'prelude.sh');
 
+// The environment a bash driver runs in. Its `ad ios push …` is a vysu of its own, and a device in its
+// environment wins there over the one this owner claimed and skips the guard between two of them:
+// only a device this command was given in the environment goes along, as for a project command.
+export function driverEnv(): NodeJS.ProcessEnv {
+  const c = config();
+  return c.exportedEnv({
+    VYSU_IOS_DEVICE: c.origin('IOS_DEVICE') === 'env' ? c.get('IOS_DEVICE') : undefined,
+    VYSU_ANDROID_AVD: c.origin('ANDROID_AVD') === 'env' ? c.get('ANDROID_AVD') : undefined,
+    VYSU_CONFIG_FILE: c.configFile,
+    PERSONAS: c.personas,
+    STATE: c.state,
+    VYSU_ENGINE: ENGINE,
+  });
+}
+
 function bashDriver(file: string): PushDriver {
   const bash = isWindows ? '' : which('bash');
   const call = async (args: string[], inherit: boolean): Promise<RunResult> => {
     if (!bash) die(`${file} is a bash push driver, and this machine has no bash (write it as ${file.replace(/\.sh$/, '.mjs')})`);
-    const env = config().exportedEnv({ VYSU_CONFIG_FILE: config().configFile, PERSONAS: config().personas, STATE: config().state, VYSU_ENGINE: ENGINE });
-    return run(bash, [PRELUDE, file, ...args], { env, inherit });
+    return run(bash, [PRELUDE, file, ...args], { env: driverEnv(), inherit });
   };
   return {
     describe: async () => (await call(['describe'], false)).stdout.replace(/\n$/, ''),
