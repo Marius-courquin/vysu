@@ -151,8 +151,8 @@ mobile_up() {
   local build=0 reinstall=0 isolated=0 iso_port="" iso_dir=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --avd) ANDROID_AVD="$2"; device_remember android-avd "$2"; shift 2;;
-      --device) IOS_DEVICE="$2"; device_remember ios-device "$2"; shift 2;;
+      --avd) ANDROID_AVD="$2"; device_remember android-avd "$2"; device_named android; shift 2;;
+      --device) IOS_DEVICE="$2"; device_remember ios-device "$2"; device_named ios; shift 2;;
       --build) build=1; shift;;
       --reinstall) reinstall=1; shift;;
       --isolated) isolated=1; shift;;

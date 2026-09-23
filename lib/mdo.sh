@@ -11,6 +11,7 @@
 # The device a command drives, taken before its first step: the « waiting for … » line of a busy
 # device then reaches the caller, instead of vanishing into the output a step is read back from.
 mdo_lock() { # platform
+  device_guard "$1"
   lock_take "$(resource_of "$1")"
   [ "$1" != android ] || android_select
 }
@@ -162,6 +163,7 @@ vysu_mdo() {
     esac
   done
   [ "$given" = 0 ] || [ -z "$file" ] || die "vysu mdo: steps after -- or a file, not both"
+  [ -z "$devices" ] || device_named "$platform"   # a matrix says which devices, every one of them
   if [ -n "$file" ]; then
     [ "$file" = - ] || [ -f "$file" ] || die "no step file « $file » (steps go after --: vysu mdo $platform -- \"<step>\" …)"
     while IFS= read -r line || [ -n "$line" ]; do steps+=("$line"); done < <(read_lines "$file")

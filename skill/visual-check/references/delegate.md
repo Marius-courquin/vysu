@@ -41,6 +41,12 @@ Report: the contract below, 400 words max
 Mechanics the checker already knows from this skill: claim a device (`--any`), one `mdo` per
 screen or state, `wait` instead of `sleep`, `mlog --errors` before concluding, `release --reset`.
 
+**Several checkers at once** (one per platform, per persona, per device): vysu cannot tell sibling
+sub-agents apart - same agent process, same environment - so they are one owner, and a claim does
+not keep one out of the other's device. Give each its own device in `Devices:`, and expect each to
+name it on every command once the session holds two of a platform (the claim prints the prefix on
+a `name it:` line; a command that names none is refused rather than sent to a sibling's device).
+
 ## The report contract (what the checker returns)
 
 ```markdown

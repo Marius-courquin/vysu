@@ -311,7 +311,7 @@ pool_claim_any() { # platform minutes note nowait
   done
   local name="$POOL_NAME" r done_line=""
   r="$platform-$(slug "$name")"
-  claim_write "$r" "$minutes" "$note"
+  claim_write "$r" "$minutes" "$note" "$name"
   if [ "$POOL_ACTION" = clone ]; then
     local src_udid; src_udid="$(pool_sim "$POOL_SRC" | cut -f1)"
     echo "vysu: cloning « $POOL_SRC » into « $name »…" >&2
@@ -323,6 +323,7 @@ pool_claim_any() { # platform minutes note nowait
   lock_drop "pool-$platform"
   if [ "$platform" = ios ]; then IOS_DEVICE="$name"; device_remember ios-device "$name"
   else ANDROID_AVD="$name"; device_remember android-avd "$name"; fi
+  device_named "$platform"
   case "$POOL_ACTION" in
     boot|clone)
       echo "vysu: booting « $name »…" >&2

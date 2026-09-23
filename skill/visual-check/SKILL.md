@@ -64,7 +64,9 @@ what moved, what the browser complained about, **the single image to read**. Rea
 **Mobile**:
 
 1. `vysu claim ios|android --any` (or `--device` / `--avd`): a free device becomes yours for the
-   task, and every next command aims at it. `vysu devices` says who holds what.
+   task, and every next command aims at it. `vysu devices` says who holds what. Holding two
+   devices of a platform (two checkers of one session are one owner), every command names its own:
+   the claim prints the prefix on a `name it:` line (`VYSU_ANDROID_AVD=<avd> vysu …`).
 2. `vysu mdo <platform> --shots <name> -- "<step>" …`: the steps run in one call, one line each,
    with the screen after each step (labels, node delta, keyboard). Steps: `open <route>`,
    `tap "<label>" [--wait "<text>"]`, `fill "<label>" "<value>"`, `type`, `key return|dismiss|back`,

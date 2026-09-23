@@ -145,7 +145,10 @@
 #                                           owner pushes the end --minutes further; a claim whose agent process is
 #                                           gone is dropped
 #   vysu claim ios --device "<simulator>" | vysu claim android --avd <name>   that device, which becomes this
-#                                           owner's device: every next command drives it, no env var needed
+#                                           owner's device: every next command drives it, no env var needed.
+#                                           An owner holding two of a platform (the sub-agents of one session are
+#                                           one owner) names the device on every command, VYSU_IOS_DEVICE /
+#                                           VYSU_ANDROID_AVD: one that names none is refused, not guessed
 #   vysu claim ios|android --any [--minutes 20] [--no-wait] [--note "<why>"]   a free device of the pool, made
 #                                           this owner's device: a booted one, else a shut-down one it boots
 #                                           (Android: under VYSU_ANDROID_MAX_RUNNING), else on iOS a clone

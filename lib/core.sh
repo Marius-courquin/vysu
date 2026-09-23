@@ -214,9 +214,12 @@ project_command() { [ -n "$VYSU_DIR" ] && [ -x "$VYSU_DIR/commands/$1" ]; }
 exec_project_command() {
   local name="$1"; shift
   local var
-  # The devices in force, not the config's: a `vysu ios …` the command runs inherits them through
-  # the environment, which wins, and lands on the device this owner chose.
-  VYSU_IOS_DEVICE="$IOS_DEVICE"; VYSU_ANDROID_AVD="$ANDROID_AVD"
+  # A device this command named reaches the `vysu ios …` the command runs through the environment,
+  # which wins. One it did not name is left for each of those calls to resolve: under the same
+  # owner they read the same choice, and a guess between two of its devices is refused there, where
+  # a device is driven, instead of travelling on as if it had been named.
+  if [ "$IOS_NAMED" = 1 ]; then VYSU_IOS_DEVICE="$IOS_DEVICE"; else unset VYSU_IOS_DEVICE; fi
+  if [ "$ANDROID_NAMED" = 1 ]; then VYSU_ANDROID_AVD="$ANDROID_AVD"; else unset VYSU_ANDROID_AVD; fi
   for var in $(compgen -v | grep '^VYSU_'); do export "${var?}"; done
   exec "$VYSU_DIR/commands/$name" "$@"
 }
@@ -289,6 +292,43 @@ devices_resolve() {
   vysu_owner >/dev/null   # resolved once in this shell, not once per command substitution below
   IOS_DEVICE="$(device_pick ios-device "$IOS_DEFAULT_DEVICE")"
   ANDROID_AVD="$(device_pick android-avd "$ANDROID_DEFAULT_AVD")"
+  [ "$(config_origin IOS_DEVICE)" != env ] || device_named ios
+  [ "$(config_origin ANDROID_AVD)" != env ] || device_named android
+}
+# The sub-agents of one session are one owner: the same agent CLI process above them, the same
+# environment, nothing that tells them apart. Each claims its own device, each claim becomes the
+# owner's choice, and the last one is everybody's: on 23/09 the checker of a Pixel 4a sent a restart
+# to the Pixel 8 a sibling checker had claimed, whose claim, transparent to its own owner, stopped
+# nothing. While an owner holds two devices of a platform, a command that does not name its device
+# is therefore refused rather than aimed at whichever was claimed last.
+IOS_NAMED=0; ANDROID_NAMED=0
+device_named() { # ios | android: this command says which device (environment, --device, --avd, a pick)
+  if [ "$1" = ios ]; then IOS_NAMED=1; else ANDROID_NAMED=1; fi
+}
+owner_devices() { # platform → the devices this owner holds a live claim on, one per line
+  local f until_s
+  for f in "$CLAIMS/$1"-*; do
+    { [ -f "$f" ] && [ "$(claim_field "$f" owner)" = "$(vysu_owner)" ]; } || continue
+    until_s="$(claim_field "$f" until)"
+    [ "$(date +%s)" -lt "${until_s:-0}" ] || continue
+    # A claim written before 0.5.1 has no device= line: its resource says which one it is.
+    claim_field "$f" device | grep . || basename "$f"
+  done
+}
+device_env() { # platform device → the prefix that names it for one command
+  if [ "$1" = ios ]; then printf 'VYSU_IOS_DEVICE="%s"' "$2"; else printf 'VYSU_ANDROID_AVD=%s' "$2"; fi
+}
+device_guard() { # ios | android — dies when this command would guess between this owner's devices
+  local platform="$1" named held n
+  if [ "$platform" = ios ]; then named="$IOS_NAMED"; else named="$ANDROID_NAMED"; fi
+  [ "$named" != 1 ] || return 0
+  held="$(owner_devices "$platform")"
+  n="$(printf '%s\n' "$held" | grep -c . || true)"
+  # Settled once per command: every agent-device call goes through the lock, and reading the claims
+  # each time would cost more than the call.
+  [ "$n" -ge 2 ] || { device_named "$platform"; return 0; }
+  die "$platform: $(vysu_owner) holds $n devices ($(printf '%s\n' "$held" | paste -sd, - | sed 's/,/, /g')) and this command names none. The sub-agents of one session are one owner, and the device it remembers is the last one any of them claimed" \
+    "$(device_env "$platform" "<yours>") ${VYSU_CMD:-vysu …}   (on every command while this owner holds several)"
 }
 resource_of() { # ios | android | <persona> | a resource name → the resource to lock or claim
   case "$1" in
@@ -361,10 +401,12 @@ claim_renew() { # resource
   { grep -v '^until=' "$f" || true; echo "until=$next"; } >"$CLAIMS/.$1.renew.$$"
   mv "$CLAIMS/.$1.renew.$$" "$f"
 }
-claim_write() { # resource minutes note
+claim_write() { # resource minutes note [device]
   local until_s=$(( $(date +%s) + $2 * 60 ))
   mkdir -p "$CLAIMS"
-  { echo "owner=$(vysu_owner)"; echo "until=$until_s"; echo "minutes=$2"; echo "note=$3"; } >"$CLAIMS/.$1.new.$$"
+  # The device by its own name (the resource is a slug of it): what a refused command lists.
+  { echo "owner=$(vysu_owner)"; echo "until=$until_s"; echo "minutes=$2"; echo "note=$3"
+    [ -z "${4:-}" ] || echo "device=$4"; } >"$CLAIMS/.$1.new.$$"
   mv "$CLAIMS/.$1.new.$$" "$CLAIMS/$1"
 }
 lock_take() { # resource — waits for a foreign lock or claim, then holds it until this process exits
@@ -408,8 +450,8 @@ lock_drop() { # resource: one lock given back before the command ends (the pool 
   if [ "$(cat "$LOCKS/$1/pid" 2>/dev/null || true)" = "$VYSU_PID" ]; then rm -rf "${LOCKS:?}/$1"; fi
   LOCKS_HELD=" $LOCKS_HELD "; LOCKS_HELD="${LOCKS_HELD// $1 / }"
 }
-ios_lock() { lock_take "ios-$(slug "$IOS_DEVICE")"; }
-android_lock() { lock_take "android-$(slug "$ANDROID_AVD")"; }
+ios_lock() { device_guard ios; lock_take "ios-$(slug "$IOS_DEVICE")"; }
+android_lock() { device_guard android; lock_take "android-$(slug "$ANDROID_AVD")"; }
 
 # A screen recording must not outlive vysu: between `record start` and `record stop` any die — a
 # lock given up, an i18n key that does not exist — would leave `screenrecord` filling /sdcard or
@@ -588,13 +630,19 @@ vysu_claim() {
     [ "$(pool_power "$what" "$device")" != "not on this machine" ] \
       || die "$what: no $( [ "$what" = ios ] && echo "simulator named « $device »" || echo "AVD $device") on this machine" "vysu devices"
     if [ "$what" = ios ]; then IOS_DEVICE="$device"; choice=ios-device; else ANDROID_AVD="$device"; choice=android-avd; fi
+    device_named "$what"
     [ "$(config_origin "$(device_key "$choice")")" != env ] \
       || log "VYSU_$(device_key "$choice") is set in the environment: it still wins over this choice"
   fi
+  local dev=""
+  case "$what" in
+    ios) device_guard ios; dev="$IOS_DEVICE";;
+    android) device_guard android; dev="$ANDROID_AVD";;
+  esac
   local r; r="$(resource_of "$what")"
   local held; held="$(claim_why "$r")"
   [ -z "$held" ] || die "$r $held"
-  claim_write "$r" "$minutes" "$note"
+  claim_write "$r" "$minutes" "$note" "$dev"
   [ -z "$choice" ] || device_remember "$choice" "$device"
   claim_report "$what" "$r"
 }
@@ -608,7 +656,13 @@ claim_report() { # what resource [what was done to the device]
       local platform="${r%%-*}" args dev power
       dev="$IOS_DEVICE"; [ "$platform" = ios ] || dev="$ANDROID_AVD"
       if [ "$what" = "$platform" ]; then
-        echo "claimed: $platform « $dev » until $(date -r "$until_s" +%H:%M) by $owner (vysu release $platform)"
+        # From the second device of a platform on, a command that names none is refused: the claim
+        # says so, and hands the prefix, before the first refusal does.
+        local n name=""
+        n="$(owner_devices "$platform" | grep -c . || true)"
+        [ "$n" -lt 2 ] || name="$(device_env "$platform" "$dev") "
+        echo "claimed: $platform « $dev » until $(date -r "$until_s" +%H:%M) by $owner (${name}vysu release $platform)"
+        [ -z "$name" ] || echo "name it: $owner holds $n $platform devices, so every command names its own: ${name}vysu …"
       else
         echo "claimed: $r until $(date -r "$until_s" +%H:%M) by $owner (vysu release $what)"
       fi
@@ -648,6 +702,8 @@ vysu_release() {
       *) die "vysu release: unknown option $1";;
     esac
   done
+  # Which of two devices « android » means is the question a sibling's release would answer wrong.
+  case "$what" in ios|android) device_guard "$what";; esac
   local r f owner; r="$(resource_of "$what")"; f="$CLAIMS/$r"
   if [ "$delete" = 1 ]; then
     # Only a clone vysu made, and only by the owner holding it: a simulator somebody made by hand,

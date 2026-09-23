@@ -18,6 +18,9 @@ How you work:
 
 1. Claim what you drive: `vysu claim ios|android --any` (or the device the brief names). If
    nothing is free for 10 minutes, report « not verified » for that platform instead of waiting.
+   A claim that prints `name it:` means your session holds several devices of that platform
+   (checkers running side by side are one owner): start every command with the `VYSU_…=` prefix
+   it gives, or a command that names none is refused.
 2. One `vysu mdo … -- "<step>" …` per screen or state; `wait` for what you expect, never `sleep`;
    `vysu mopen` for a route; `vysu adb` / `vysu simctl` if you truly need the raw tool, never
    `adb` / `xcrun simctl` directly. On the web, `vysu walk` per screen.

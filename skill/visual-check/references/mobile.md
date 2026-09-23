@@ -19,6 +19,14 @@ simulator: the primitives are not the same.
   (`<base> (vysu N)`, up to `VYSU_IOS_MAX_CLONES`). `--device "<simulator>"` / `--avd <name>` claims
   a named one. Either way the device becomes **this owner's choice**: every next command aims at it,
   above the config (the environment still wins). `vysu devices` lists who holds what, in a second.
+- **Two devices of one platform under one owner: name the device on every command.** The owner is
+  the agent CLI process, so a session and every sub-agent it spawns are **one** owner: one claim
+  does not keep a sibling checker out, and the remembered device is the last one any of them
+  claimed. While an owner holds two devices of a platform, a command that names none is refused
+  (`vysu: android: claude:41234 holds 2 devices (…) and this command names none`); the claim
+  of the second one says so on a `name it:` line, with the prefix to use:
+  `VYSU_ANDROID_AVD=<avd> vysu mdo android …`, `VYSU_IOS_DEVICE="<simulator>" vysu mshot ios …`,
+  release included. `mdo --devices "<a>,<b>"` names its devices and needs no prefix.
 - **Raw tools only through vysu**: `vysu adb <args…>` and `vysu simctl <verb> …` run on your device,
   under its lock (a raw `adb -s emulator-5556` once drove another agent's emulator).
 - Each device has **its own** agent-device session - `<project>-ios-<slug>` addressed by UDID,
