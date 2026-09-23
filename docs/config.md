@@ -177,3 +177,8 @@ These are not written to `.vysu/config`; they are exported for one command or on
 
 Personas themselves are not config: they live in `personas.env` under the state folder, mode 600,
 written by `vysu persona add|set|import` and read as `VYSU_PERSONA_<NAME>_<KEY>`.
+A name may hold `_`, and so may a key (`FCM_TOKEN_IOS`): a persona is declared by its `_EMAIL`
+key, every other key belongs to the longest declared name it starts with, and an `import` leaves
+behind, and names, the keys that belong to no persona (a fixture id kept next to the credentials
+belongs in `.vysu/config`). One reader does this for `persona list`, `import` and `doctor`:
+`py/personas.py`.

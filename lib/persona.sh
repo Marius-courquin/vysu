@@ -21,10 +21,13 @@ persona_require() { # persona → sets PERSONA_EMAIL / PERSONA_PASSWORD
   PERSONA_PASSWORD="$(persona_var "$1" PASSWORD)"
   [ -n "$PERSONA_EMAIL" ] && [ -n "$PERSONA_PASSWORD" ] || die "persona '$1' not in $PERSONAS (vysu persona add $1)"
 }
-persona_names() { # the personas the file declares, one per line
+persona_names() { # the personas the file declares, one per line (names may hold `_`: py/personas.py)
   [ -f "$PERSONAS" ] || return 0
-  grep -oE '^VYSU_PERSONA_[A-Z0-9]+_EMAIL' "$PERSONAS" 2>/dev/null \
-    | sed -E 's/^VYSU_PERSONA_(.*)_EMAIL/\1/' | tr '[:upper:]' '[:lower:]' | sort -u
+  python3 "$PY/personas.py" names "$PERSONAS"
+}
+# A name is part of a variable name: `tb-x` or `tb.x` would write a line bash cannot source.
+persona_check_name() {
+  [[ "$1" =~ ^[A-Za-z0-9_]+$ ]] || die "persona '$1': letters, digits and _ only (the name is part of a variable name)"
 }
 # A key is written once and rewritten in place: the file stays readable, and a `set` never leaves
 # two lines for the same variable behind.
@@ -53,6 +56,7 @@ vysu_persona() {
 persona_add() {
   need_project
   local name="${1:-}"; [ -n "$name" ] || die "usage: vysu persona add <name>"
+  persona_check_name "$name"
   local email password
   printf 'e-mail for %s: ' "$name" >&2; IFS= read -r email
   [ -n "$email" ] || die "persona add: no e-mail"
@@ -70,6 +74,7 @@ persona_set() {
   need_project
   local name="${1:-}" key="${2:-}" value="${3:-}"
   { [ -n "$name" ] && [ -n "$key" ]; } || die "usage: vysu persona set <name> <KEY> <value>"
+  persona_check_name "$name"
   persona_write "$(persona_key "$name" "$key")" "$value"
   case "$(echo "$key" | tr '[:lower:]' '[:upper:]')" in
     PASSWORD|*TOKEN|*SECRET) echo "persona $name: $key set";;
@@ -85,27 +90,8 @@ persona_list() {
     [ "$json" = 1 ] || die "no $PERSONAS (vysu persona add <name>)"
     echo '[]'; return
   fi
-  PERSONAS_FILE="$PERSONAS" python3 - "$json" <<'PY'
-import json, os, re, sys
-
-as_json = sys.argv[1] == "1"
-SECRET = re.compile(r"(PASSWORD|TOKEN|SECRET|KEY)$")
-people = {}
-for raw in open(os.environ["PERSONAS_FILE"]):
-    m = re.match(r"^VYSU_PERSONA_([A-Z0-9]+)_([A-Z0-9_]+)=(.*)$", raw.rstrip("\n"))
-    if not m:
-        continue
-    name, key, value = m.group(1).lower(), m.group(2), m.group(3)
-    person = people.setdefault(name, {"name": name})
-    # A secret is declared, never carried: what a consumer needs to know is that it is there.
-    person[key.lower()] = True if SECRET.search(key) else value.strip('"\'')
-if as_json:
-    print(json.dumps(list(people.values()), ensure_ascii=False, indent=1))
-else:
-    for person in people.values():
-        keys = " ".join(k for k in sorted(person) if k not in ("name", "email"))
-        print("%s: %s%s" % (person["name"], person.get("email", "(no e-mail)"), " · " + keys if keys else ""))
-PY
+  if [ "$json" = 1 ]; then python3 "$PY/personas.py" list "$PERSONAS" --json
+  else python3 "$PY/personas.py" list "$PERSONAS"; fi
 }
 # The one-off that replaces a vault: an existing env file of credentials, whatever its prefix, read
 # into this project's personas. `--to` writes elsewhere than the state folder, which is how a
@@ -122,35 +108,7 @@ persona_import() {
       *) die "vysu persona import: unknown option $1";;
     esac
   done
-  mkdir -p "$(dirname "$to")"
-  local n
-  n="$(IMPORT_FROM="$file" IMPORT_TO="$to" IMPORT_PREFIX="$prefix" python3 - <<'PY'
-import os, re
-
-source, target, prefix = os.environ["IMPORT_FROM"], os.environ["IMPORT_TO"], os.environ["IMPORT_PREFIX"]
-kept = {}
-if os.path.exists(target):
-    for raw in open(target):
-        if "=" in raw and not raw.lstrip().startswith("#"):
-            kept[raw.split("=", 1)[0].strip()] = raw.rstrip("\n")
-pattern = re.compile(r"^%s([A-Za-z0-9]+)_([A-Za-z0-9_]+)=(.*)$" % re.escape(prefix))
-added = 0
-for raw in open(source):
-    line = raw.rstrip("\n")
-    if line.lstrip().startswith("#") or "=" not in line:
-        continue
-    m = pattern.match(line.strip())
-    if not m:
-        continue
-    name, key, value = m.group(1).upper(), m.group(2).upper(), m.group(3)
-    kept["VYSU_PERSONA_%s_%s" % (name, key)] = "VYSU_PERSONA_%s_%s=%s" % (name, key, value)
-    added += 1
-with open(target, "w") as out:
-    for key in sorted(kept):
-        out.write(kept[key] + "\n")
-print(added)
-PY
-)" || die "persona import: could not read $file"
-  chmod 600 "$to"
-  echo "persona import: $n key(s) from $file → $to (mode 600)"
+  # Keys that belong to no persona (a fixture id kept next to the credentials) are named and left
+  # behind: they are the project's config, not anyone's credentials.
+  python3 "$PY/personas.py" import "$file" "$to" --prefix "$prefix" || die "persona import: could not read $file"
 }

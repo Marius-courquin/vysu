@@ -118,7 +118,7 @@ Nothing above was committed to your repo: captures, clips and renders live under
 
 - **Persona** — a named browser (or device) session whose login is restored on every run. `-` is an
   anonymous one, for a public page. Credentials live in `personas.env` under the state folder,
-  mode 600, and are never printed.
+  mode 600, and are never printed. A name holds letters, digits and `_` (`tb_non_verifie`).
 - **Session** — one agent-browser session per persona (`<project>-<persona>`), one agent-device
   session per device (`<project>-<platform>-<device>`). Several agents share a machine: every
   command locks what it drives, and `vysu claim` holds a device across a whole task.
