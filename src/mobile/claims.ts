@@ -133,7 +133,7 @@ export async function claimReport(what: string, r: string, done: string): Promis
   // A web session carries its own login and its own URL: there is nothing vysu has to remember for
   // it, so the state is read from the browser rather than from a file.
   say(`claimed: ${r} until ${until} by ${who} (vysu release ${what})`);
-  say(await webClaimState(r.slice('web-'.length)));
+  say(await webClaimState(what));
 }
 
 export const RELEASE_USAGE = 'usage: vysu release ios|android|<persona> [--force] [--reset] [--delete-clone]';
@@ -175,13 +175,14 @@ export async function release(args: string[]): Promise<void> {
   if (del) {
     await iosLock();
     await deleteClone(devices.ios);
-  } else if (reset) await resetResource(r);
+  } else if (reset) await resetResource(r, what);
   rmSync(f, { force: true });
   say(`released: ${r} (was ${who})`);
 }
 
-// Back to the defaults, only what differs from them.
-export async function resetResource(r: string): Promise<void> {
+// Back to the defaults, only what differs from them. A persona goes by the name it was typed with: the
+// resource is a slug of it, and a slug is not a session name.
+export async function resetResource(r: string, what = r.replace(/^web-/, '')): Promise<void> {
   if (r.startsWith('ios-') || r.startsWith('android-')) {
     const p = r.slice(0, r.indexOf('-')) as Platform;
     // The network first: it needs no relaunch, and a device handed back offline fails the next agent's
@@ -207,5 +208,5 @@ export async function resetResource(r: string): Promise<void> {
     say(`reset: vysu mrelaunch ${p}${args}`);
     return;
   }
-  if (r.startsWith('web-')) say(await webReset(r.slice('web-'.length)));
+  if (r.startsWith('web-')) say(await webReset(what));
 }

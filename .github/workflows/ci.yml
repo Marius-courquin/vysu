@@ -1,0 +1,71 @@
+# The engine on the three systems it runs on, and on the two Node lines it supports (22 from 22.18,
+# which strips types without a flag, and 24). No device, no browser, no network beyond npm: the type
+# check, the unit tests, then the launcher and every command that needs neither (test/platform/smoke.ts),
+# then the installer of the platform against this very checkout.
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: type check
+        run: npx tsc --noEmit -p .
+
+      - name: unit tests
+        run: npm test
+
+      - name: launcher (sh)
+        if: runner.os != 'Windows'
+        run: bin/vysu help
+
+      - name: launcher (cmd)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: bin\vysu.cmd help
+
+      - name: smoke (report, sheet, persona list, doctor, setup, init, up / down)
+        run: node test/platform/smoke.ts
+
+      - name: install.sh against this checkout
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VYSU_REPO: ${{ github.workspace }}
+          VYSU_INSTALL_DIR: ${{ runner.temp }}/vysu
+        run: bash install.sh && "$VYSU_INSTALL_DIR/bin/vysu" version
+
+      - name: install.ps1 against this checkout (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          VYSU_REPO: ${{ github.workspace }}
+          VYSU_INSTALL_DIR: ${{ runner.temp }}\vysu
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:VYSU_INSTALL_DIR\bin\vysu.cmd" version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -3,7 +3,8 @@
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { isWindows, shellArgv } from './host.ts';
+import { cmdQuote, isWindows, shellArgv, toolArgv } from './host.ts';
+import { windowsDetach } from './winps.ts';
 
 export interface RunResult {
   code: number;
@@ -18,6 +19,8 @@ export interface RunOptions {
   timeoutMs?: number;
   // Output straight to this process's own streams, as a passthrough does.
   inherit?: boolean;
+  // Windows: the arguments are already a cmd.exe command line (see shellArgv, toolArgv).
+  verbatim?: boolean;
 }
 
 // Waits for the process and hands back what it said. Never throws for a non-zero exit: the caller
@@ -29,6 +32,7 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
       env: opts.env,
       stdio: [opts.input === undefined ? 'ignore' : 'pipe', opts.inherit ? 'inherit' : 'pipe', opts.inherit ? 'inherit' : 'pipe'],
       windowsHide: true,
+      windowsVerbatimArguments: opts.verbatim,
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
@@ -48,6 +52,8 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
         stderr: Buffer.concat(err).toString('utf8'),
       });
     });
+    // A child that exits without reading all of its input must not take this process down with EPIPE.
+    child.stdin?.on('error', () => undefined);
     if (opts.input !== undefined) child.stdin?.end(opts.input);
   });
 }
@@ -65,11 +71,30 @@ export function runBuffer(cmd: string, args: string[], opts: RunOptions = {}): P
   });
 }
 
+// Windows: through the helper, which starts it with none of vysu's handles (the pipe an agent reads
+// vysu through would otherwise stay open as long as the service runs); cmd.exe writes the log.
+function detachOnWindows(line: string, opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string }): number {
+  mkdirSync(dirname(opts.log), { recursive: true });
+  const shell = process.env.ComSpec ?? 'cmd.exe';
+  return windowsDetach(`"${shell}" /d /s /c "(${line}) > "${opts.log}" 2>&1"`, opts.cwd ?? process.cwd(), opts.env ?? process.env);
+}
+
 // A process that outlives vysu, its output in a log file. Returns its pid.
-export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string }): number {
+export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string; verbatim?: boolean }): number {
+  if (isWindows && !opts.verbatim) {
+    const pid = detachOnWindows([cmd, ...args].map(cmdQuote).join(' '), opts);
+    if (pid) return pid;
+  }
   mkdirSync(dirname(opts.log), { recursive: true });
   const fd = openSync(opts.log, 'w');
-  const o: SpawnOptions = { cwd: opts.cwd, env: opts.env, detached: true, stdio: ['ignore', fd, fd], windowsHide: true };
+  const o: SpawnOptions = {
+    cwd: opts.cwd,
+    env: opts.env,
+    detached: true,
+    stdio: ['ignore', fd, fd],
+    windowsHide: true,
+    windowsVerbatimArguments: opts.verbatim,
+  };
   const child = spawn(cmd, args, o);
   child.on('error', () => undefined);
   child.unref();
@@ -79,14 +104,24 @@ export function spawnDetached(cmd: string, args: string[], opts: { cwd?: string;
 
 // A command line from a config, detached, through the platform's shell.
 export function spawnShellDetached(command: string, opts: { cwd?: string; env?: NodeJS.ProcessEnv; log: string }): number {
+  if (isWindows) {
+    const pid = detachOnWindows(command, opts);
+    if (pid) return pid;
+  }
   const [sh, args] = shellArgv(command);
-  return spawnDetached(sh, args, opts);
+  return spawnDetached(sh, args, { ...opts, verbatim: isWindows });
 }
 
 // A command line from a config, waited for (a health check, a stop command).
 export function runShell(command: string, opts: RunOptions = {}): Promise<RunResult> {
   const [sh, args] = shellArgv(command);
-  return run(sh, args, opts);
+  return run(sh, args, { ...opts, verbatim: isWindows });
+}
+
+// A tool on the PATH by its name (npm, git, agent-browser), wherever it is a `.cmd` shim.
+export function runTool(cmd: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
+  const t = toolArgv(cmd, args);
+  return run(t.file, t.args, { ...opts, verbatim: t.verbatim });
 }
 
 export function killTree(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {

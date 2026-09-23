@@ -19,7 +19,9 @@ folder, and waits for its health check (a url to poll, the literal `port` for a 
 or a command that has to succeed) up to `_TIMEOUT` seconds, 30 by default. A service that is
 already listening on its port is not a failure: `up` only guarantees it is there afterwards.
 `vysu down <service>` runs `_STOP` when the config declares one, and otherwise kills whatever
-listens on `_PORT`.
+listens on `_PORT`. `_CMD`, a command `_HEALTH` and `_STOP` run through the machine's shell: `sh` on
+macOS and Linux, `cmd.exe` on Windows - a config shared across systems names commands both run
+(`pnpm …`, `node …`, `docker …`).
 
 The API a report names comes from the network log first, and otherwise from what `up` recorded from
 its `--env` values (mapped through `VYSU_API_HOSTS`): a capture says which API it was taken

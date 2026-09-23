@@ -21,7 +21,9 @@
 - **Anything else on the browser side** -> `agent-browser doctor`, then
   `agent-browser skills get core` (the full agent-browser reference, to load only when needed).
 - **A new machine** -> `vysu setup` (tools, browser, simulators, AVDs), then `vysu init` in the
-  project, then `vysu persona add <name>` and `vysu login <name>`.
+  project, then `vysu persona add <name>` and `vysu login <name>`. `vysu: command not found` right
+  after an install -> a new terminal (the installer put the engine on the PATH of new ones);
+  `vysu setup` names the install command of the machine for anything missing.
 - **The engine is older than the project asks for** -> every command prints a line naming
   `VYSU_MIN_VERSION`: `vysu update` pulls the engine and shows the changelog since.
 - **`<resource> busy — <agent> running "…" for Ns`** -> another agent holds that device or that

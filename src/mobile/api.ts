@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
-import { deviceOrigin, devices, type Platform } from '../core/hold.ts';
+import { deviceOrigin, devices, iosLock, type Platform } from '../core/hold.ts';
 import { run, type RunResult } from '../core/proc.ts';
 import { tool } from '../img/tools.ts';
 import { ad, adCall, calls } from './agent.ts';
@@ -55,13 +55,18 @@ export function mobileApp(platform: Platform): string {
 export async function mobileLoadBundle(platform: Platform): Promise<void> {
   return launch.mobileLoadBundle(platform);
 }
-// The port of this owner's Metro, and the emulator made to reach it as localhost (what a connector
-// does before its own `open` on Android: adbd restarts drop the reverse).
+// The port of this owner's Metro.
 export function metroPort(): string {
   return port();
 }
-export async function mobileReverseMetro(platform: Platform): Promise<void> {
-  if (platform !== 'android') return;
+// Asked by the web lot for the auth connectors: what auth0.sh / form.sh did before opening the app —
+// `ios_lock` on iOS, `android_select` then `adb reverse tcp:<metro_port> tcp:<metro_port>` on
+// Android — so a connector never reaches for adb or the Metro port itself.
+export async function mobilePrepare(platform: Platform): Promise<void> {
+  if (platform === 'ios') {
+    await iosLock();
+    return;
+  }
   await androidSelect();
   await adb(['reverse', `tcp:${port()}`, `tcp:${port()}`]);
 }
