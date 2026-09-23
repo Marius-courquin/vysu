@@ -85,10 +85,27 @@
 #                                           held; web: a throwaway session of its own, closed at the end,
 #                                           mobile: the real app (one install = one session)
 #   vysu persona add|set|list [--json]|import <file> [--prefix <P>]   the project's personas, mode 600, never printed
-#   vysu claim ios|android|<persona> [--minutes 30] [--note "<why>"]   keep a device / a session for a whole task,
+#   vysu claim ios|android|<persona> [--minutes 20] [--note "<why>"]   keep a device / a session for a whole task,
 #                                           and read back what the last agent left on it: state applied, screen, and
-#                                           the one command that puts it back to the defaults
-#   vysu release ios|android|<persona> [--force] [--reset]   hand it back (--force: someone else's claim;
+#                                           the one command that puts it back to the defaults. Each command of its
+#                                           owner pushes the end --minutes further; a claim whose agent process is
+#                                           gone is dropped
+#   vysu claim ios --device "<simulator>" | vysu claim android --avd <name>   that device, which becomes this
+#                                           owner's device: every next command drives it, no env var needed
+#   vysu claim ios|android --any [--minutes 20] [--no-wait] [--note "<why>"]   a free device of the pool, made
+#                                           this owner's device: a booted one, else a shut-down one it boots
+#                                           (Android: under VYSU_ANDROID_MAX_RUNNING), else on iOS a clone
+#                                           « <name> (vysu N) » of a shut-down one (VYSU_IOS_MAX_CLONES; `vysu release
+#                                           ios --delete-clone` deletes it); pool = VYSU_IOS_DEVICES + the clones,
+#                                           VYSU_ANDROID_AVDS. None free: waits VYSU_LOCK_WAIT listing who holds
+#                                           what (--no-wait: exit 1 with that list)
+#   vysu devices [--prune-clones [--dry-run]]   one line per simulator / emulator: booted, running or shut down,
+#                                           free or claimed (by whom, until when), the command running on it, the
+#                                           state applied; --prune-clones deletes the vysu clones nobody claims
+#   vysu adb <args…>                        adb on this owner's emulator (-s <its serial>), under its lock
+#   vysu simctl <verb> [args…]              xcrun simctl on this owner's simulator (its UDID after the verb), under
+#                                           its lock; list / create / clone / runtime / help / pair run as they are
+#   vysu release ios|android|<persona> [--force] [--reset] [--delete-clone]   hand it back (--force: someone else's claim;
 #                                           --reset: defaults first — normal text, light, the default language)
 #   vysu prune [--days 30] [--match "<glob>"…] [--dry-run]   drop the shots folders older than N days,
 #                                           or the ones a glob names, whatever their age (--dry-run: just say which)
@@ -149,6 +166,8 @@ export VYSU_ENGINE
 . "$VYSU_ENGINE/lib/web.sh"
 # shellcheck source=lib/mobile.sh
 . "$VYSU_ENGINE/lib/mobile.sh"
+# shellcheck source=lib/pool.sh
+. "$VYSU_ENGINE/lib/pool.sh"
 # shellcheck source=lib/shots.sh
 . "$VYSU_ENGINE/lib/shots.sh"
 # shellcheck source=lib/flow.sh
@@ -207,6 +226,9 @@ case "$cmd" in
   persona) vysu_persona "$@";;
   claim) vysu_claim "$@";;
   release) vysu_release "$@";;
+  devices) vysu_devices "$@";;
+  adb) vysu_adb "$@";;
+  simctl) vysu_simctl "$@";;
   prune) vysu_prune "$@";;
   cache) vysu_cache "$@";;
   setup) vysu_setup "$@";;

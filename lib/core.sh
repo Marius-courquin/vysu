@@ -131,6 +131,12 @@ config_defaults() {
   : "${VYSU_MOBILE_BUILD_ANDROID:=}"
   : "${VYSU_IOS_DEVICE:=}"
   : "${VYSU_IOS_OLD_DEVICE:=vysu iPhone SE (iOS 18)}"
+  # The pool a `claim --any` picks from (comma list). Empty is the two devices above: pool.sh fills
+  # it in at the time, once the recent one has its own default.
+  : "${VYSU_IOS_DEVICES:=}"
+  # A clone is a whole simulator: 1-2 GB of RAM once booted, hence one by default.
+  : "${VYSU_IOS_MAX_CLONES:=1}"
+  : "${VYSU_ANDROID_MAX_RUNNING:=2}"
   : "${VYSU_ANDROID_AVD:=}"
   : "${VYSU_ANDROID_LOCALE:=}"
   : "${VYSU_SERVICES:=}"
@@ -198,6 +204,9 @@ project_command() { [ -n "$VYSU_DIR" ] && [ -x "$VYSU_DIR/commands/$1" ]; }
 exec_project_command() {
   local name="$1"; shift
   local var
+  # The devices in force, not the config's: a `vysu ios …` the command runs inherits them through
+  # the environment, which wins, and lands on the device this owner chose.
+  VYSU_IOS_DEVICE="$IOS_DEVICE"; VYSU_ANDROID_AVD="$ANDROID_AVD"
   for var in $(compgen -v | grep '^VYSU_'); do export "${var?}"; done
   exec "$VYSU_DIR/commands/$name" "$@"
 }
@@ -245,15 +254,31 @@ device_choice() { # ios-device | android-avd, default → this owner's choice, e
   [ -s "$f" ] || f="$STATE/$1"
   [ -s "$f" ] && cat "$f" || printf '%s' "$2"
 }
+device_key() { [ "$1" = ios-device ] && printf 'IOS_DEVICE' || printf 'ANDROID_AVD'; }
 device_origin() { # ios-device | android-avd → where the value in force comes from, for `vysu doctor`
+  [ "$(config_origin "$(device_key "$1")")" != env ] || { printf ' (env)'; return; }
   [ ! -s "$(device_file "$1")" ] || { printf ' (remembered for %s)' "$(vysu_owner)"; return; }
-  [ ! -s "$STATE/$1" ] || printf ' (remembered)'
+  [ -n "$(cfg "$(device_key "$1")")" ] || [ ! -s "$STATE/$1" ] || printf ' (remembered)'
 }
-devices_resolve() { # the config still wins over what was remembered
-  IOS_DEVICE="$(cfg IOS_DEVICE)"
-  [ -n "$IOS_DEVICE" ] || IOS_DEVICE="$(device_choice ios-device "$IOS_DEFAULT_DEVICE")"
-  ANDROID_AVD="$(cfg ANDROID_AVD)"
-  [ -n "$ANDROID_AVD" ] || ANDROID_AVD="$(device_choice android-avd "$ANDROID_DEFAULT_AVD")"
+# The device a command drives, in this order: the environment (one command, on purpose), the choice
+# this owner made (`vysu claim ios --device|--any`, `vysu up ios --device`), the config, the machine's
+# last choice, the engine's default. The owner's choice sits above the config because a config names
+# one device for everybody, and several sessions on one Mac each need their own: with the config on
+# top, every session's next command went back to the same simulator, and a session wanting another
+# one had to carry VYSU_IOS_DEVICE on every call, or reached for raw simctl / adb instead.
+device_pick() { # ios-device | android-avd, default
+  local key; key="$(device_key "$1")"
+  [ "$(config_origin "$key")" != env ] || { cfg "$key"; return; }
+  local f; f="$(device_file "$1")"
+  [ ! -s "$f" ] || { cat "$f"; return; }
+  local v; v="$(cfg "$key")"
+  [ -z "$v" ] || { printf '%s' "$v"; return; }
+  device_choice "$1" "$2"
+}
+devices_resolve() {
+  vysu_owner >/dev/null   # resolved once in this shell, not once per command substitution below
+  IOS_DEVICE="$(device_pick ios-device "$IOS_DEFAULT_DEVICE")"
+  ANDROID_AVD="$(device_pick android-avd "$ANDROID_DEFAULT_AVD")"
 }
 resource_of() { # ios | android | <persona> | a resource name → the resource to lock or claim
   case "$1" in
@@ -272,17 +297,65 @@ lock_who() { # lock dir → who holds it, doing what, for how long
   printf '%s running « %s » for %ss' "$(cat "$1/owner" 2>/dev/null || echo '?')" \
     "$(cat "$1/cmd" 2>/dev/null || echo '?')" "$(( $(date +%s) - ${s:-$(date +%s)} ))"
 }
-claim_field() { grep "^$2=" "$1" 2>/dev/null | cut -d= -f2-; }
+# `|| true`: a claim written by an older engine has no `minutes=`, and under pipefail the silent
+# grep would end the command that asked.
+claim_field() { { grep "^$2=" "$1" 2>/dev/null || true; } | cut -d= -f2-; }
+# An owner detected from its process is « <name>:<pid> »: when that process is gone (the agent
+# session ended, crashed, was closed), whatever it holds is held by nobody. A pid handed to another
+# program since counts as gone too. « shell:<pid> » names a shell, whose command is zsh or bash.
+owner_gone() { # owner → 0 when its process no longer exists on this machine
+  case "$1" in *:*) ;; *) return 1;; esac
+  local name="${1%:*}" pid="${1##*:}" comm
+  case "$pid" in ''|*[!0-9]*) return 1;; esac
+  comm="$(ps -o comm= -p "$pid" 2>/dev/null | sed 's#.*/##' | tr ' ' '-' || true)"
+  [ -n "$comm" ] || return 0
+  [ "$name" != shell ] || return 1
+  [ "$comm" != "$name" ]
+}
+owner_forget() { # owner: its device choices, which nobody will read again
+  rm -f "$STATE/ios-device.$(slug "$1")" "$STATE/android-avd.$(slug "$1")"
+}
 # A claim is a lease that outlives one command: a mobile task is a dozen vysu calls, and another
-# agent must not slip a relaunch between two of them. Own claims are transparent, expired ones are gone.
+# agent must not slip a relaunch between two of them. Own claims are transparent, expired ones are
+# gone, and so is one whose owner's process is: 14 claims of the 21-23/09 sessions outlived their
+# agent and held a device until their hour came.
 claim_why() { # resource → why it cannot be taken, or nothing
   local f="$CLAIMS/$1" owner until_s
   [ -f "$f" ] || return 0
   owner="$(claim_field "$f" owner)"; until_s="$(claim_field "$f" until)"
   [ "$owner" != "$(vysu_owner)" ] || return 0
   [ "$(date +%s)" -lt "${until_s:-0}" ] || { rm -f "$f"; return 0; }
+  if owner_gone "$owner"; then
+    # Moved aside before it is removed: of two commands finding the same orphan, one says so.
+    if mv "$f" "$CLAIMS/.$1.gone.$$" 2>/dev/null; then
+      rm -f "$CLAIMS/.$1.gone.$$"
+      owner_forget "$owner"
+      echo "vysu: claim of $owner on $1 dropped: its process is gone" >&2
+    fi
+    return 0
+  fi
   printf 'claimed by %s until %s (vysu release %s --force to take it over)' \
     "$owner" "$(date -r "$until_s" +%H:%M)" "$1"
+}
+# A claim lives as long as its owner uses it: each command that takes the device pushes the end
+# `minutes=` further, so a long task never loses its device halfway, and a forgotten claim still
+# ends that long after its last use. Never shortened: a claim renewed by hand for longer keeps it.
+CLAIM_MINUTES=20
+claim_renew() { # resource
+  local f="$CLAIMS/$1" minutes until_s next
+  [ -f "$f" ] || return 0
+  [ "$(claim_field "$f" owner)" = "$(vysu_owner)" ] || return 0
+  minutes="$(claim_field "$f" minutes)"; until_s="$(claim_field "$f" until)"
+  next=$(( $(date +%s) + ${minutes:-$CLAIM_MINUTES} * 60 ))
+  [ "$next" -gt "${until_s:-0}" ] || return 0
+  { grep -v '^until=' "$f" || true; echo "until=$next"; } >"$CLAIMS/.$1.renew.$$"
+  mv "$CLAIMS/.$1.renew.$$" "$f"
+}
+claim_write() { # resource minutes note
+  local until_s=$(( $(date +%s) + $2 * 60 ))
+  mkdir -p "$CLAIMS"
+  { echo "owner=$(vysu_owner)"; echo "until=$until_s"; echo "minutes=$2"; echo "note=$3"; } >"$CLAIMS/.$1.new.$$"
+  mv "$CLAIMS/.$1.new.$$" "$CLAIMS/$1"
 }
 lock_take() { # resource — waits for a foreign lock or claim, then holds it until this process exits
   local r="$1" i=0 waited=0 dir why
@@ -301,6 +374,7 @@ lock_take() { # resource — waits for a foreign lock or claim, then holds it un
         printf '%s' "$(vysu_owner)" >"$dir/owner"; printf '%s' "$VYSU_PID" >"$dir/pid"
         date +%s >"$dir/since"; printf '%s' "$VYSU_CMD" >"$dir/cmd"
         LOCKS_HELD="$LOCKS_HELD $r"
+        claim_renew "$r"
         [ "$waited" = 0 ] || echo "vysu: $r taken after ${waited}s" >&2
         return 0
       fi
@@ -319,6 +393,10 @@ locks_release() { # EXIT: give back every lock carrying this pid, and only those
     [ -d "$d" ] || continue
     if [ "$(cat "$d/pid" 2>/dev/null || true)" = "$VYSU_PID" ]; then rm -rf "$d"; fi
   done
+}
+lock_drop() { # resource: one lock given back before the command ends (the pool lock of claim --any)
+  if [ "$(cat "$LOCKS/$1/pid" 2>/dev/null || true)" = "$VYSU_PID" ]; then rm -rf "${LOCKS:?}/$1"; fi
+  LOCKS_HELD=" $LOCKS_HELD "; LOCKS_HELD="${LOCKS_HELD// $1 / }"
 }
 ios_lock() { lock_take "ios-$(slug "$IOS_DEVICE")"; }
 android_lock() { lock_take "android-$(slug "$ANDROID_AVD")"; }
@@ -461,29 +539,72 @@ wait_http() { # url seconds label
 
 # A lock lasts one command; a mobile task lasts twenty. A claim says « this device is mine until
 # then », and every other agent's command waits on it exactly as it waits on a lock.
+CLAIM_USAGE="usage: vysu claim ios|android|<persona> [--minutes $CLAIM_MINUTES] [--note \"<why>\"] · ios --device \"<name>\" · android --avd <name> · ios|android --any [--no-wait]"
 vysu_claim() {
-  local what="${1:-}"; [ -n "$what" ] || die "usage: vysu claim ios|android|<persona> [--minutes 30] [--note \"<why>\"]"
+  local what="${1:-}"; [ -n "$what" ] || die "$CLAIM_USAGE"
   shift
-  local minutes=30 note=""
+  local minutes="$CLAIM_MINUTES" note="" device="" any=0 nowait=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --minutes) minutes="$2"; shift 2;;
-      --note) note="$2"; shift 2;;
-      *) die "vysu claim: unknown option $1";;
+      --any) any=1; shift; continue;;
+      --no-wait) nowait=1; shift; continue;;
+      --minutes|--note|--device|--avd) [ $# -ge 2 ] || die "vysu claim: $1 needs a value";;
+      *) die "vysu claim: unknown option $1" "$CLAIM_USAGE";;
     esac
+    case "$1" in
+      --minutes) minutes="$2";;
+      --note) note="$2";;
+      --device) [ "$what" = ios ] || die "vysu claim: --device names a simulator" "vysu claim ios --device \"<name>\""; device="$2";;
+      --avd) [ "$what" = android ] || die "vysu claim: --avd names an emulator" "vysu claim android --avd <name>"; device="$2";;
+    esac
+    shift 2
   done
+  case "$minutes" in ''|*[!0-9]*|0) die "vysu claim: --minutes is a whole number of minutes (got « $minutes »)";; esac
+  if [ "$any" = 1 ]; then
+    case "$what" in ios|android) ;; *) die "vysu claim: --any picks a device" "vysu claim ios|android --any";; esac
+    [ -z "$device" ] || die "vysu claim: --any picks the device, --device / --avd names one: not both"
+    pool_claim_any "$what" "$minutes" "$note" "$nowait"
+    return
+  fi
+  local choice=""
+  if [ -n "$device" ]; then
+    # A device named is checked before anything is written: a typo must not become this owner's
+    # device choice, and every command after it fail on a simulator that does not exist.
+    [ "$(pool_power "$what" "$device")" != "not on this machine" ] \
+      || die "$what: no $( [ "$what" = ios ] && echo "simulator named « $device »" || echo "AVD $device") on this machine" "vysu devices"
+    if [ "$what" = ios ]; then IOS_DEVICE="$device"; choice=ios-device; else ANDROID_AVD="$device"; choice=android-avd; fi
+    [ "$(config_origin "$(device_key "$choice")")" != env ] \
+      || log "VYSU_$(device_key "$choice") is set in the environment: it still wins over this choice"
+  fi
   local r; r="$(resource_of "$what")"
   local held; held="$(claim_why "$r")"
   [ -z "$held" ] || die "$r $held"
-  local until_s=$(( $(date +%s) + minutes * 60 ))
-  mkdir -p "$CLAIMS"
-  { echo "owner=$(vysu_owner)"; echo "until=$until_s"; echo "note=$note"; } >"$CLAIMS/$r"
-  echo "claimed: $r until $(date -r "$until_s" +%H:%M) by $(vysu_owner) (vysu release $what)"
+  claim_write "$r" "$minutes" "$note"
+  [ -z "$choice" ] || device_remember "$choice" "$device"
+  claim_report "$what" "$r"
+}
+# What a claim prints: the claim itself, then what the last agent left on the device. The lines
+# a skill reads (`state:`, `screen:`, `reset:`) keep their names and their order.
+claim_report() { # what resource [what was done to the device]
+  local what="$1" r="$2" f="$CLAIMS/$2" until_s owner
+  until_s="$(claim_field "$f" until)"; owner="$(claim_field "$f" owner)"
   case "$r" in
     ios-*|android-*)
-      local platform="${r%%-*}" args
+      local platform="${r%%-*}" args dev power
+      dev="$IOS_DEVICE"; [ "$platform" = ios ] || dev="$ANDROID_AVD"
+      if [ "$what" = "$platform" ]; then
+        echo "claimed: $platform « $dev » until $(date -r "$until_s" +%H:%M) by $owner (vysu release $platform)"
+      else
+        echo "claimed: $r until $(date -r "$until_s" +%H:%M) by $owner (vysu release $what)"
+      fi
+      power="$(pool_power "$platform")"
+      if [ -n "${3:-}" ]; then echo "device: $3"
+      elif ! pool_is_up "$power"; then
+        echo "device: $power ($( [ "$platform" = ios ] && echo "vysu up ios boots it" || echo "vysu up android starts it"))"
+      fi
       mstate_line "$(mstate_file "$platform")"
-      mscreen_line "$platform"
+      # No snapshot of a device that is not up: agent-device would boot it to answer.
+      if pool_is_up "$power"; then mscreen_line "$platform"; else echo "screen: ($power)"; fi
       args="$(mreset_args "$platform")"
       [ -z "$args" ] || echo "reset: vysu mrelaunch $platform$args"
       ;;
@@ -491,6 +612,7 @@ vysu_claim() {
     # for it, so the state is read from the browser rather than from a file.
     web-*)
       local persona="${r#web-}"
+      echo "claimed: $r until $(date -r "$until_s" +%H:%M) by $owner (vysu release $what)"
       if vysu_web_session "$persona"; then
         echo "state: url $(ab "$persona" eval "location.href$(lang_read_js ' + \" · lang \" + ')" | tail -1 | tr -d '"')"
       else
@@ -500,32 +622,47 @@ vysu_claim() {
   esac
 }
 vysu_release() {
-  local what="${1:-}"; [ -n "$what" ] || die "usage: vysu release ios|android|<persona> [--force] [--reset]"
+  local what="${1:-}"; [ -n "$what" ] || die "usage: vysu release ios|android|<persona> [--force] [--reset] [--delete-clone]"
   shift
-  local force=0 reset=0
+  local force=0 reset=0 delete=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --force) force=1; shift;;
       --reset) reset=1; shift;;
+      --delete-clone) delete=1; shift;;
       *) die "vysu release: unknown option $1";;
     esac
   done
   local r f owner; r="$(resource_of "$what")"; f="$CLAIMS/$r"
+  if [ "$delete" = 1 ]; then
+    # Only a clone vysu made, and only by the owner holding it: a simulator somebody made by hand,
+    # or one another session is driving, is never deleted from here.
+    [ "$what" = ios ] || die "vysu release: --delete-clone is for an iOS clone" "vysu release ios --delete-clone"
+    pool_is_clone "$IOS_DEVICE" || die "« $IOS_DEVICE » is not a vysu clone: only a « <name> (vysu N) » simulator is deleted"
+    [ -f "$f" ] && [ "$(claim_field "$f" owner)" = "$(vysu_owner)" ] \
+      || die "--delete-clone deletes a clone this owner holds, and $(vysu_owner) holds no claim on « $IOS_DEVICE »" "vysu claim ios --device \"$IOS_DEVICE\""
+  fi
   [ -f "$f" ] || { echo "release: no claim on $r"; return; }
   owner="$(claim_field "$f" owner)"
   [ "$owner" = "$(vysu_owner)" ] || [ "$force" = 1 ] || die "$r is claimed by $owner (vysu release $what --force to take it over)"
   # Handing a device back the way it was found: the next agent's `vysu claim` then reads a device
   # in its defaults instead of a large-text dark one it has to notice before believing a capture.
-  [ "$reset" = 0 ] || vysu_reset "$r"
+  # A clone about to be deleted has nobody to hand it back to.
+  if [ "$delete" = 1 ]; then ios_lock; pool_delete_clone "$IOS_DEVICE"
+  elif [ "$reset" = 1 ]; then vysu_reset "$r"; fi
   rm -f "$f"
   echo "released: $r (was $owner)"
 }
 vysu_reset() { # resource — back to the defaults, only what differs from them
   case "$1" in
     ios-*|android-*)
-      local platform="${1%%-*}" args
+      local platform="${1%%-*}" args power
       args="$(mreset_args "$platform")"
       [ -n "$args" ] || { echo "reset: $platform already in its defaults"; return; }
+      # A relaunch on a device that is not up would fail halfway, or boot it: it is reset on its
+      # next `vysu up`, when the claim that follows prints the same `reset:` line.
+      power="$(pool_power "$platform")"
+      pool_is_up "$power" || { echo "reset: $platform left as it is ($power)"; return; }
       [ "$(mobile_kind)" != expo ] || listening 8081 \
         || { echo "reset: $platform left as it is — Metro is not running (vysu up $platform)"; return; }
       # shellcheck disable=SC2086  # the flags are built as a word list on purpose
@@ -561,7 +698,10 @@ locks_report() {
   done
   for f in "$CLAIMS"/*; do
     [ -f "$f" ] || continue
-    r="$(basename "$f")"; u="$(claim_field "$f" until)"; note="$(claim_field "$f" note)"
+    r="$(basename "$f")"
+    claim_why "$r" >/dev/null   # an expired or orphaned claim is dropped, not listed
+    [ -f "$f" ] || continue
+    u="$(claim_field "$f" until)"; note="$(claim_field "$f" note)"
     echo "claim: $r — $(claim_field "$f" owner) until $(date -r "${u:-0}" +%H:%M) ($(( (${u:-0} - $(date +%s)) / 60 )) min left)${note:+ « $note »}"
   done
 }
