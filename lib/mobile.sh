@@ -348,12 +348,33 @@ mobile_load_bundle() {
 # it (a row announcing « title, description »), and settle. Nothing matched is a failed step, not
 # the end of vysu — it says so and returns 1, exactly like `web_click`: `mflow` still stops on the
 # step that went wrong (with its number), while `mrec` reports it, plays the rest and keeps its clip.
+# --wait "<text>" then waits for what the press was meant to bring (10 s, --timeout), and the answer
+# stays one line: the press, then how long the text took.
 vysu_mtap() {
-  local platform="${1:-}" label="${2:-}"; [ -n "$platform" ] && [ -n "$label" ] || die "usage: vysu mtap ios|android \"<label>\""
-  ad_press "$platform" press "label=\"$label\"" --settle \
-    || ad_press "$platform" press "text=\"$label\"" --settle \
-    || ad_press "$platform" find "$label" press --first \
+  local platform="${1:-}" label="${2:-}"
+  [ -n "$platform" ] && [ -n "$label" ] || die "usage: vysu mtap ios|android \"<label>\" [--wait \"<text>\"] [--timeout <s>]"
+  shift 2
+  local wait="" timeout=10
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --wait) wait="${2:-}"; shift; [ $# -eq 0 ] || shift;;
+      --timeout) timeout="${2:-}"; shift; [ $# -eq 0 ] || shift;;
+      *) echo "vysu: $platform: tap takes --wait \"<text>\" and --timeout <s>, not $1" >&2; return 1;;
+    esac
+  done
+  # Through a file, not a command substitution: ad_press leaves the point it hit in $EV_TARGET.
+  local said; said="$(msnap_file "$platform").said"; mkdir -p "$STATE"
+  ad_press "$platform" press "label=\"$label\"" --settle >"$said" \
+    || ad_press "$platform" press "text=\"$label\"" --settle >"$said" \
+    || ad_press "$platform" find "$label" press --first >"$said" \
     || { echo "vysu: $platform: nothing labelled « $label » (vysu $platform snapshot -i)" >&2; return 1; }
+  [ -n "$wait" ] || { cat "$said"; return 0; }
+  local waited
+  if waited="$(mwait_text "$platform" "$wait" "$timeout" 2>/dev/null)"; then
+    echo "$(cat "$said") · $waited"; return 0
+  fi
+  cat "$said"
+  echo "vysu: $platform: tapped, then no « $wait » after ${timeout}s" >&2; return 1
 }
 # Every press goes through --json: the answer carries the point that was hit (data.x / data.y), the
 # only place a tap's coordinates ever exist, and a recording needs them to draw its ripple. The
@@ -518,21 +539,44 @@ vysu_mrelaunch() {
 }
 
 # One line of a flow / a recording: vysu's own verbs, then anything agent-device accepts.
-#   sleep <s> · tap "<label>" · tap t:<i18n.key> · shot <label> [--full] · relaunch [opts] · press … · wait …
+#   sleep <s> · tap "<label>" [--wait "<text>"] [--timeout <s>] · tap t:<i18n.key> [--wait …]
+#   wait "<text>" [<s>] · wait gone "<text>" [<s>] · wait idle [<s>] · fill "<label>" "<value>"
+#   type "<text>" · key return|dismiss|back · scroll-to "<label>" [<max>] · expect [no] "<text>"
+#   screen · shot <label> [--full] · relaunch [opts] · open <route> · net offline|online
+#   perm <name> grant|deny|reset · press … · longpress … · any other agent-device verb
+# What a step answers is one line on stdout; why it failed is one line on stderr and a 1.
+# $MSNAP_FRESH says the device's snapshot file is already the screen after the step.
+MSHOT_PREFIX=""   # set by a matrix run of `vysu mdo`: « <device>-<textsize>- » in front of each label
+MSHOT_TAKEN=""    # the captures the steps wrote, one per line, for the runner to list at the end
 mobile_step() {
   local platform="$1" shots="$2" step="$3"
+  MSNAP_FRESH=0
   case "$step" in
     ''|\#*) ;;
     sleep\ *) sleep "${step#sleep }";;
     # By i18n key: the flow survives a wording change, and reads the same in every language.
     tap\ t:*|tap\ \"t:*|tap\ \'t:*)
-      local key="${step#tap }"; key="${key#[\"\']}"; key="${key%[\"\']}"; key="${key#t:}"
-      EV_LABEL="$(i18n_label "$(mstate_get "$platform" lang "$(cfg LANG)")" "$key")"
-      vysu_mtap "$platform" "$EV_LABEL";;
+      mstep_words "${step#tap }" || return 1
+      local key="${MSTEP_W[0]#t:}"
+      EV_LABEL="$(i18n_label "$(mstate_get "$platform" lang "$(cfg LANG)")" "$key")" || return 1
+      vysu_mtap "$platform" "$EV_LABEL" ${MSTEP_W[@]+"${MSTEP_W[@]:1}"};;
     tap\ *) eval "vysu_mtap \"\$platform\" ${step#tap }";;
     # A bare press / longpress is agent-device's own verb, and its answer holds the point it hit:
-    # worth the same --json round-trip as a `tap`, so a recording gets a ripple out of it too.
-    press\ *|longpress\ *) eval "ad_press \"\$platform\" $step";;
+    # worth the same --json round-trip as a `tap`, so a recording gets a ripple out of it too, and
+    # a refusal says why (« Android system dialog is blocking press »).
+    press\ *|longpress\ *) eval "ad_json \"\$platform\" $step";;
+    wait\ *) mstep_wait "$platform" "${step#wait }";;
+    fill\ *) mstep_words "${step#fill }" && mfill "$platform" ${MSTEP_W[@]+"${MSTEP_W[@]}"};;
+    type\ *)
+      mstep_words "${step#type }" || return 1
+      ad_json "$platform" type "${MSTEP_W[0]:-}";;
+    key\ *) mkey "$platform" "${step#key }";;
+    scroll-to\ *) mstep_words "${step#scroll-to }" && mscroll_to "$platform" ${MSTEP_W[@]+"${MSTEP_W[@]}"};;
+    expect\ *) mstep_words "${step#expect }" && mexpect "$platform" ${MSTEP_W[@]+"${MSTEP_W[@]}"};;
+    screen) mscreen "$platform";;
+    open\ *) mstep_words "${step#open }" && mctl_step vysu_mopen mopen "$platform" ${MSTEP_W[@]+"${MSTEP_W[@]}"};;
+    net\ *) mstep_words "${step#net }" && mctl_step vysu_mnet mnet "$platform" ${MSTEP_W[@]+"${MSTEP_W[@]}"};;
+    perm\ *) mstep_words "${step#perm }" && mctl_step vysu_mperm mperm "$platform" ${MSTEP_W[@]+"${MSTEP_W[@]}"};;
     shot\ *)
       [ -n "$shots" ] || die "vysu: « $step » needs --shots <name> (or a recording name)"
       local words=(); read -r -a words <<<"${step#shot }"
@@ -544,7 +588,12 @@ mobile_step() {
           *) die "vysu: « shot $label » takes --full, not $word";;
         esac
       done
-      vysu_mshot "$platform" "$shots" "$label" ${mfull[@]+"${mfull[@]}"};;
+      label="$MSHOT_PREFIX$label"
+      vysu_mshot "$platform" "$shots" "$label" ${mfull[@]+"${mfull[@]}"} || return 1
+      MSHOT_TAKEN="$MSHOT_TAKEN$SHOTS/$shots/$platform-$label.png
+"
+      # A capture changes nothing on screen: the snapshot of the step before still describes it.
+      MSNAP_FRESH=1;;
     relaunch*) eval "vysu_mrelaunch \"\$platform\" ${step#relaunch}";;
     *) eval "ad \"\$platform\" $step" | tail -1;;
   esac
@@ -633,4 +682,260 @@ mreset_args() { # platform → the mrelaunch flags that put it back to the defau
   [ "$(mstate_get "$p" appearance light)" = light ] || printf ' --appearance light'
   # A --lang costs a zygote restart on Android: only asked for when it is not already the default.
   [ -z "$default_lang" ] || [ "$(mstate_get "$p" lang "$default_lang")" = "$default_lang" ] || printf ' --lang %s' "$default_lang"
+}
+
+# --- the screen in one line, and the verbs that wait on it ---------------------------------------
+
+# One step, then what the screen shows: that is how an agent drives a device without a press, a
+# sleep, a snapshot and a grep per action. Everything below reads agent-device's own snapshot
+# (`snapshot -i --json`) through py/screen.py, one file per device (and its .keys, .out, .err,
+# .said beside it): the device is locked by the command writing them, so there is never a second
+# writer, and each command overwrites what the last one left instead of piling up temp files.
+msnap_file() { # platform → this device's last snapshot
+  local dev="$ANDROID_AVD"; [ "$1" = android ] || dev="$IOS_DEVICE"
+  printf '%s/.snap-%s-%s.json' "$STATE" "$1" "$(slug "$dev")"
+}
+# A fresh snapshot of the device into msnap_file; 1 when agent-device answered nothing readable
+# (the file is then emptied, so no reader mistakes the previous screen for this one). Asked twice:
+# a capture now and then comes back unreadable on a screen that is fine, and « nothing readable »
+# after a step would send the agent looking for a problem that is not there.
+msnap() { # platform
+  local f; f="$(msnap_file "$1")"; mkdir -p "$STATE"
+  local try
+  for try in 1 2; do
+    # An error comes back as JSON too, with no « nodes » in it.
+    ad "$1" snapshot -i --json --timeout 10000 >"$f" 2>/dev/null && grep -q '"nodes"' "$f" && return 0
+  done
+  : >"$f"; return 1
+}
+# The snapshot a verb just took is the screen after it: the runner then reads that one instead of
+# asking for another (a wait, an expect, a scroll-to each end on a fresh one).
+MSNAP_FRESH=0
+mscreen_py() { python3 "$PY/screen.py" "$@"; }
+# `agent-device keyboard status` answers on Android only, where the IME is not in the app's tree;
+# iOS lays its keyboard out in the tree, and screen.py reads it there.
+mkeyboard_up() { # platform
+  [ "$1" = android ] || return 1
+  ad android keyboard status --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = (json.loads(sys.stdin.read() or "{}").get("data") or {})
+except ValueError:
+    sys.exit(1)
+sys.exit(0 if d.get("visible") or d.get("keyboardVisible") or d.get("shown") else 1)
+'
+}
+# « screen: <≤ 6 labels> (<n> nodes, +added −removed, keyboard, focus "<field>") » — the delta is
+# against the previous line printed for this device, so the first one of a command starts from
+# mscreen_reset. `fresh` reuses the snapshot a verb has just taken.
+mscreen() { # platform [fresh]
+  local p="$1" f; f="$(msnap_file "$p")"
+  [ "${2:-}" = fresh ] && [ -s "$f" ] || msnap "$p" || true
+  local kb=auto scale=1
+  # The keyboard is only worth a question when there is something on screen to type into. An
+  # Android snapshot measures in pixels: the icon size is judged in dp, like on iOS in points.
+  if [ "$p" = android ]; then
+    kb=no; scale="$(mobile_scale android)"
+    if mscreen_py editable "$f" && mkeyboard_up android; then kb=yes; fi
+  fi
+  mscreen_py line "$f" --prev "$f.keys" --save "$f.keys" --keyboard "$kb" --scale "$scale" || true
+}
+mscreen_reset() { # platform — the baseline the next line's delta is counted from
+  local f; f="$(msnap_file "$1")"
+  rm -f "$f.keys"
+  msnap "$1" || true
+  mscreen_py line "$f" --save "$f.keys" >/dev/null || true
+}
+# Seconds as a step spells them (« 10 », « 2.5 ») → milliseconds, and the time since a `now`.
+ms_of() { awk -v s="$1" 'BEGIN { printf "%d", s * 1000 }'; }
+since() { awk -v a="$1" -v b="$(now)" 'BEGIN { printf "%.1f", b - a }'; }
+seconds_ok() { case "$1" in ''|*[!0-9.]*|*.*.*) return 1;; esac; }
+# Any agent-device verb through --json: the first line of its message on stdout, the point it acted
+# on in $EV_TARGET (for a recording's ripple), and on failure its own error on stderr, so a step
+# says « UNSUPPORTED_OPERATION: keyboard status … » rather than « failed ».
+ad_json() { # platform <verb …>
+  local platform="$1"; shift
+  local out; out="$(ad "$platform" "$@" --json 2>/dev/null || true)"
+  local parsed rc=0
+  parsed="$(printf '%s' "$out" | python3 -c '
+import json, re, sys
+try:
+    d = json.loads(sys.stdin.read() or "{}")
+except ValueError:
+    print("agent-device answered no JSON"); sys.exit(1)
+if not d.get("success", False):
+    e = d.get("error") or {}
+    # The first sentence: what follows is agent-device explaining its policy, not this screen.
+    msg = re.split(r"(?<=[.;])\s|\s\(", (e.get("message") or "failed").strip())[0].rstrip(".;")
+    print(("%s: %s" % (e.get("code"), msg)) if e.get("code") else msg)
+    sys.exit(1)
+data = d.get("data") or {}
+msg = data.get("message") or ""
+print(msg.splitlines()[0] if msg else "")
+x, y = data.get("x"), data.get("y")
+print("%g %g" % (x, y) if isinstance(x, (int, float)) and isinstance(y, (int, float)) else "")
+')" || rc=$?
+  if [ "$rc" != 0 ]; then
+    echo "vysu: $platform: $(printf '%s\n' "$parsed" | head -1)" >&2
+    return 1
+  fi
+  EV_TARGET="$(printf '%s\n' "$parsed" | sed -n 2p)"
+  printf '%s\n' "$parsed" | sed -n 1p
+}
+
+# `wait "<text>"`: agent-device polls its own captures for a label or a value holding the text,
+# case-insensitively — the primitive, rather than a snapshot loop of ours.
+mwait_text() { # platform text seconds
+  local p="$1" text="$2" s="${3:-10}" t0; t0="$(now)"
+  seconds_ok "$s" || { echo "vysu: $p: wait takes seconds, not « $s »" >&2; return 1; }
+  if ad "$p" wait text "$text" "$(ms_of "$s")" >/dev/null 2>&1; then
+    echo "« $text » after $(since "$t0")s"; return 0
+  fi
+  echo "vysu: $p: no « $text » after ${s}s" >&2; return 1
+}
+# `wait gone "<text>"`: the same matching as `wait "<text>"` (agent-device's `wait absent` takes an
+# exact selector, which would make the two verbs disagree on what « the text » is), polled here.
+mwait_gone() { # platform text seconds
+  local p="$1" text="$2" s="${3:-10}" t0 rc; t0="$(now)"
+  seconds_ok "$s" || { echo "vysu: $p: wait takes seconds, not « $s »" >&2; return 1; }
+  MSNAP_FRESH=1
+  while :; do
+    rc=0; msnap "$p" && { mscreen_py has "$(msnap_file "$p")" "$text" || rc=$?; } || rc=2
+    [ "$rc" != 1 ] || { echo "« $text » gone after $(since "$t0")s"; return 0; }
+    awk -v a="$t0" -v b="$(now)" -v s="$s" 'BEGIN { exit !(b - a >= s) }' && break
+    sleep 0.3
+  done
+  echo "vysu: $p: « $text » still there after ${s}s" >&2; return 1
+}
+# `wait idle`: two snapshots in a row with the same labels. A spinner turning or a skeleton
+# shimmering does not count as movement; a list filling in, a screen swapping, a toast coming or
+# going does.
+mwait_idle() { # platform seconds
+  local p="$1" s="${2:-10}" t0 prev="" cur; t0="$(now)"
+  seconds_ok "$s" || { echo "vysu: $p: wait idle takes seconds, not « $s »" >&2; return 1; }
+  MSNAP_FRESH=1
+  while :; do
+    cur=""
+    if msnap "$p"; then cur="$(mscreen_py sig "$(msnap_file "$p")" || true)"; fi
+    [ -z "$cur" ] || [ "$cur" != "$prev" ] || { echo "idle after $(since "$t0")s"; return 0; }
+    prev="$cur"
+    awk -v a="$t0" -v b="$(now)" -v s="$s" 'BEGIN { exit !(b - a >= s) }' && break
+    sleep 0.3
+  done
+  echo "vysu: $p: still moving after ${s}s" >&2; return 1
+}
+# `scroll-to "<label>" [max]`: down, one settled scroll at a time, until the label's centre is on
+# screen and nothing is drawn over it. A scroll that leaves the screen as it was is the end of the
+# list, and there is no point in asking for the rest.
+mscroll_to() { # platform label [max]
+  local p="$1" label="$2" max="${3:-8}" i=0 f prev="" cur ended=""
+  [ -n "$label" ] || { echo "vysu: $p: scroll-to needs a label" >&2; return 1; }
+  case "$max" in ''|*[!0-9]*) echo "vysu: $p: scroll-to takes a number of scrolls, not « $max »" >&2; return 1;; esac
+  f="$(msnap_file "$p")"; MSNAP_FRESH=1
+  while :; do
+    msnap "$p" || true
+    if mscreen_py has "$f" "$label" --visible; then
+      echo "« $label » on screen after $i scroll(s)"; return 0
+    fi
+    [ "$i" -lt "$max" ] || break
+    cur="$(mscreen_py sig "$f" --geometry || true)"
+    [ "$i" = 0 ] || [ "$cur" != "$prev" ] || { ended=" (the end of the list)"; break; }
+    prev="$cur"
+    ad "$p" scroll down --settle >/dev/null 2>&1 || { ended=" (scroll refused: nothing scrollable?)"; break; }
+    i=$((i + 1))
+  done
+  echo "vysu: $p: no « $label » on screen after $i scroll(s)$ended" >&2; return 1
+}
+# `expect "<text>"` / `expect no "<text>"`: the current screen, now — no waiting (that is `wait`).
+mexpect() { # platform [no] text
+  local p="$1" neg=0 rc=0; shift
+  [ "${1:-}" != no ] || [ $# -lt 2 ] || { neg=1; shift; }
+  local text="${1:-}"; [ -n "$text" ] || { echo "vysu: $p: expect needs a text" >&2; return 1; }
+  MSNAP_FRESH=1
+  msnap "$p" && { mscreen_py has "$(msnap_file "$p")" "$text" || rc=$?; } || rc=2
+  case "$neg:$rc" in
+    0:0) echo "« $text » on screen";;
+    1:1) echo "no « $text » on screen";;
+    0:1) echo "vysu: $p: no « $text » on screen" >&2; return 1;;
+    1:0) echo "vysu: $p: « $text » is on screen" >&2; return 1;;
+    *) echo "vysu: $p: nothing readable on screen" >&2; return 1;;
+  esac
+}
+# `fill "<label>" "<value>"`: the field by its accessible label; else the field a label names on
+# screen (its value, or the text above it: a form label is a node of its own); else press the label
+# and type, for a field the tree does not describe as one; else, when the label is nowhere (iOS
+# keeps a placeholder out of the tree), the one unlabelled field on screen, said as such.
+mfill() { # platform label value
+  local p="$1" label="${2:-}" value="${3-}" said xy x y how
+  [ -n "$label" ] && [ $# -ge 3 ] || { echo "vysu: $p: usage: fill \"<label>\" \"<value>\"" >&2; return 1; }
+  # Through a file rather than a command substitution: ad_json leaves the point it filled in
+  # $EV_TARGET, and a recording draws its ripple from there.
+  said="$(msnap_file "$p").said"; mkdir -p "$STATE"
+  if ad_json "$p" fill "label=\"$label\" editable=true" "$value" >"$said" 2>/dev/null; then
+    echo "$(cat "$said") · label=\"$label\""; return 0
+  fi
+  msnap "$p" || true
+  xy="$(mscreen_py field "$(msnap_file "$p")" "$label" || true)"
+  read -r x y how <<<"$xy"
+  if [ -n "$xy" ] && [ "$how" != only ] && ad_json "$p" fill "$x" "$y" "$value" >"$said" 2>/dev/null; then
+    echo "$(cat "$said") · the field of « $label » ($x, $y)"; return 0
+  fi
+  if vysu_mtap "$p" "$label" >/dev/null 2>&1 && ad_json "$p" type "$value" >"$said" 2>/dev/null; then
+    echo "$(cat "$said") · after pressing « $label »"; return 0
+  fi
+  if [ "$how" = only ] && ad_json "$p" fill "$x" "$y" "$value" >"$said" 2>/dev/null; then
+    echo "$(cat "$said") · no « $label » in the tree: the one field on screen ($x, $y)"; return 0
+  fi
+  echo "vysu: $p: no field for « $label »" >&2; return 1
+}
+# `key return|dismiss|back`: the keyboard's return key, the keyboard put away, and back — the
+# system back on Android, the app's own on iOS, which has no system one.
+mkey() { # platform key
+  local p="$1"
+  case "${2:-}" in
+    return|enter) ad_json "$p" keyboard return;;
+    dismiss|hide) ad_json "$p" keyboard dismiss;;
+    back) if [ "$p" = android ]; then ad_json "$p" back --system --settle; else ad_json "$p" back --settle; fi;;
+    *) echo "vysu: $p: key takes return, dismiss or back (not « ${2:-} »)" >&2; return 1;;
+  esac
+}
+# A step's words, quoted the way a shell quotes them but never expanded: `fill "Mot de passe"
+# "pa$$word"` types what it says. A step whose quotes do not close is said to be one, not run
+# half-read. The words come back joined by the unit separator, which no label holds.
+mstep_words() { # "<rest of the step>" → MSTEP_W
+  MSTEP_W=()
+  local raw
+  raw="$(python3 -c '
+import shlex, sys
+try:
+    words = shlex.split(sys.argv[1])
+except ValueError as e:
+    sys.exit("vysu: cannot read « %s » (%s)" % (sys.argv[1], e))
+sys.stdout.write("".join(w + "\x1f" for w in words))
+' "$1")" || return 1
+  [ -z "$raw" ] || IFS=$'\x1f' read -r -a MSTEP_W <<<"$raw"
+}
+# `wait` keeps agent-device's own forms (`wait 500` in ms, `wait text …`, `wait absent …`,
+# `wait stable`, `wait @e3`, a selector) and adds the three a flow needs most.
+mstep_wait() { # platform "<rest>"
+  local p="$1"
+  mstep_words "$2" || return 1
+  local first="${MSTEP_W[0]:-}"
+  case "$first" in
+    gone) mwait_gone "$p" "${MSTEP_W[1]:-}" "${MSTEP_W[2]:-10}";;
+    idle) mwait_idle "$p" "${MSTEP_W[1]:-10}";;
+    ''|text|absent|stable|@*|*=*) eval "ad \"\$p\" wait $2" | tail -1;;
+    *)
+      case "$first" in
+        *[!0-9]*) mwait_text "$p" "$first" "${MSTEP_W[1]:-10}";;
+        *) eval "ad \"\$p\" wait $2" | tail -1;;
+      esac;;
+  esac
+}
+# The device controls another part of vysu provides (vysu mopen / mnet / mperm): a step calls them
+# only when this engine has them, and says so otherwise.
+mctl_step() { # function verb platform args…
+  local fn="$1" verb="$2"; shift 2
+  declare -F "$fn" >/dev/null || { echo "vysu: $1: needs vysu $verb (lot 4)" >&2; return 1; }
+  "$fn" "$@"
 }

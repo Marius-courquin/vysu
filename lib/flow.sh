@@ -36,25 +36,21 @@ vysu_flow() {
   [ -z "$(ls "$SHOTS/$shots" 2>/dev/null)" ] || vysu_sheet "$shots"
 }
 
-# The twin on mobile: the steps of a file (or stdin), one per line, then the contact sheet.
+# The twin on mobile: the steps of a file (or stdin), one per line, read back the way `vysu mdo`
+# reads them (one ✓ / ✗ line per step, then the screen), then the contact sheet of the shots.
 vysu_mflow() {
-  local platform="${1:-}" file="${2:-}"; [ -n "$platform" ] && [ -n "$file" ] || die "usage: vysu mflow ios|android <file|-> [--shots <name>]"
+  local platform="${1:-}" file="${2:-}"; [ -n "$platform" ] && [ -n "$file" ] || die "usage: vysu mflow ios|android <file|-> [--shots <name>] [--keep-going]"
   shift 2
-  local shots=""
+  local opts=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --shots) shots="$2"; shift 2;;
+      --shots) opts+=(--shots "${2:-}"); shift; [ $# -eq 0 ] || shift;;
+      --keep-going) opts+=(--keep-going); shift;;
       *) die "vysu mflow: unknown option $1";;
     esac
   done
   [ "$file" = - ] || [ -f "$file" ] || die "no flow file $file"
-  local n=0 line
-  while IFS= read -r line || [ -n "$line" ]; do
-    n=$((n + 1))
-    echo "▸ $line"
-    mobile_step "$platform" "$shots" "$line" </dev/null || die "vysu mflow: step $n failed: $line"
-  done < <(read_lines "$file")
-  [ -z "$shots" ] || [ -z "$(ls "$SHOTS/$shots" 2>/dev/null)" ] || vysu_sheet "$shots"
+  vysu_mdo "$platform" "$file" ${opts[@]+"${opts[@]}"}
 }
 
 # Record the page while the steps run, then read the clip back as text. The motion report names the

@@ -33,11 +33,25 @@
 #                                           follows the path, « vs previous: unchanged » or the zones that moved and
 #                                           the marked png (--no-prev: overwrite, compare nothing; --baseline: that
 #                                           folder instead, printed as before)
-#   vysu mtap ios|android "<label>"         press by accessible label (then visible text), settled
+#   vysu mtap ios|android "<label>" [--wait "<text>"] [--timeout <s>]   press by accessible label (then
+#                                           visible text), settled; --wait: then that text, 10 s by default
+#   vysu mdo ios|android [--shots <name>] [--keep-going] [--devices "<a>,<b>"] [--textsize "normal,xl"]
+#            -- "<step>" … | <file|->       drive a screen in one call: per step one ✓ / ✗ line, then
+#                                           « screen: <≤ 6 labels> (<n> nodes, +added −removed, keyboard) »;
+#                                           stops on the first ✗ (exit 1) unless --keep-going. Steps (a
+#                                           <text> is found in any label holding it, in any case):
+#                                           tap "<label>" [--wait "<text>"] · wait "<text>" [<s>] · wait gone
+#                                           "<text>" [<s>] · wait idle [<s>] · fill "<label>" "<value>" · type
+#                                           "<text>" · key return|dismiss|back · scroll-to "<label>" [<max>] ·
+#                                           expect [no] "<text>" · screen · shot <label> · open <route> · net
+#                                           offline|online · perm <name> grant|deny|reset · relaunch · sleep ·
+#                                           any agent-device verb. --devices × --textsize: the steps once per
+#                                           pair, shots prefixed <device>-<size>-, one sheet, normal text after
+#   vysu mwait ios|android "<text>" [--gone] [--timeout <s>] | --idle [--timeout <s>]   one line, exit 0 / 1
 #   vysu mrelaunch ios|android [--textsize normal|large|xl] [--appearance light|dark] [--lang <l>]   kill + relaunch,
 #                                           wait for the screen
-#   vysu mflow ios|android <file|-> [--shots <name>]   scripted steps (tap "…" / tap t:<i18n.key> / sleep / shot /
-#                                           relaunch…) → contact sheet
+#   vysu mflow ios|android <file|-> [--shots <name>] [--keep-going]   the steps of a file, as `mdo` runs
+#                                           them (tap t:<i18n.key> too) → ✓ / ✗ lines + contact sheet
 #   vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] -- "<step>" …   record the screen while the steps run →
 #                                           normalized H.264 clip + motion report + events.json (each step in clip
 #                                           seconds, with the point it tapped)
@@ -189,6 +203,8 @@ export VYSU_ENGINE
 . "$VYSU_ENGINE/lib/shots.sh"
 # shellcheck source=lib/flow.sh
 . "$VYSU_ENGINE/lib/flow.sh"
+# shellcheck source=lib/mdo.sh
+. "$VYSU_ENGINE/lib/mdo.sh"
 # shellcheck source=lib/video.sh
 . "$VYSU_ENGINE/lib/video.sh"
 # shellcheck source=lib/services.sh
@@ -229,6 +245,8 @@ case "$cmd" in
   mtap) vysu_mtap "$@";;
   mrelaunch) vysu_mrelaunch "$@";;
   mflow) vysu_mflow "$@";;
+  mdo) vysu_mdo "$@";;
+  mwait) vysu_mwait "$@";;
   mrec) vysu_mrec "$@";;
   mlog) vysu_mlog "$@";;
   push) vysu_push "$@";;
