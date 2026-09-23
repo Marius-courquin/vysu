@@ -39,6 +39,7 @@ async function main(argv: string[]): Promise<number> {
     if (!ENGINE_COMMANDS.has(name)) {
       const file = projectCommandPath(name);
       if (file) return await execProjectCommand(file, args.slice(1));
+      return await (await import('./web/passthrough.ts')).passthrough(name, args.slice(1));
     }
     return await legacy(args);
   } catch (e) {

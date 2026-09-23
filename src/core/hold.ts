@@ -231,6 +231,18 @@ export async function lockWho(dir: string): Promise<string> {
 const held = new Set<string>();
 let releaseRegistered = false;
 
+// Whose pid a lock carries. A vysu that another one starts for the length of a call — the
+// primitives a bash auth connector calls back into, one process each — takes its locks in the name
+// of that parent: a lock the parent holds is its own, one it takes outlives it and goes when the
+// parent exits, and nothing it holds is left free between two of the connector's calls.
+let holderPid = 0;
+function holder(): number {
+  if (holderPid) return holderPid;
+  const parent = Number(process.env.VYSU_LOCK_HOLDER);
+  holderPid = parent > 0 && parent !== process.pid && pidAlive(parent) ? parent : process.pid;
+  return holderPid;
+}
+
 // Every lock carrying this pid, and only those, whichever way the command ends.
 function releaseAll(): void {
   const dir = config().locks;
@@ -238,6 +250,15 @@ function releaseAll(): void {
     const d = join(dir, r);
     if (lockPid(d) === process.pid) rmSync(d, { recursive: true, force: true });
   }
+}
+// For a process whose children take locks in its name: it may take none itself and still has theirs
+// to give back. What their locks say is running is its command, not the child's internal one.
+export function releaseOnExit(): { VYSU_LOCK_HOLDER: string; VYSU_LOCK_CMD: string } {
+  if (!releaseRegistered) {
+    releaseRegistered = true;
+    onCleanup(releaseAll, true);
+  }
+  return { VYSU_LOCK_HOLDER: String(process.pid), VYSU_LOCK_CMD: commandLine() };
 }
 
 // Waits for a foreign lock or claim, then holds the resource until this process exits.
@@ -250,6 +271,10 @@ export async function lockTake(r: string): Promise<void> {
     releaseRegistered = true;
     onCleanup(releaseAll, true);
   }
+  if (lockPid(dir) === holder()) {
+    held.add(r);
+    return;
+  }
   const wait = c.lockWait;
   let i = 0;
   for (;;) {
@@ -259,9 +284,9 @@ export async function lockTake(r: string): Promise<void> {
       if (isDir(dir) && !lockAlive(dir)) rmSync(dir, { recursive: true, force: true });
       if (mkdirOnce(dir)) {
         writeFileSync(join(dir, 'owner'), owner());
-        writeFileSync(join(dir, 'pid'), String(process.pid));
+        writeFileSync(join(dir, 'pid'), String(holder()));
         writeFileSync(join(dir, 'since'), `${nowSeconds()}\n`);
-        writeFileSync(join(dir, 'cmd'), commandLine());
+        writeFileSync(join(dir, 'cmd'), holder() === process.pid ? commandLine() : (process.env.VYSU_LOCK_CMD ?? commandLine()));
         held.add(r);
         claimRenew(r);
         if (i > 0) process.stderr.write(`vysu: ${r} taken after ${Math.floor(i / 2)}s\n`);

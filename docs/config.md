@@ -47,10 +47,10 @@ empty; the command that needs one says which key is missing.
 
 | Key | Meaning | Default | Example |
 |---|---|---|---|
-| `VYSU_AUTH` | a built-in connector (`auth0` · `form` · `none`), `custom` for `.vysu/auth.sh`, or a path | empty (and `custom` when `.vysu/auth.sh` exists) | `auth0` |
+| `VYSU_AUTH` | a built-in connector (`auth0` · `form` · `none`), `custom` for `.vysu/auth.mjs` / `.js` / `.ts` / `.sh`, or a path | empty (and `custom` when one of those exists) | `auth0` |
 
 Options of the `auth0` connector, all optional; the defaults live in
-[`connectors/auth/auth0.sh`](../connectors/auth/auth0.sh) and the contract in
+[`src/connectors/auth/auth0.ts`](../src/connectors/auth/auth0.ts) and the contract in
 [`connectors/auth/README.md`](../connectors/auth/README.md).
 
 | Key | Meaning | Example |
@@ -65,7 +65,7 @@ Options of the `auth0` connector, all optional; the defaults live in
 | `VYSU_AUTH0_AFTER_LOGIN_LABELS` | buttons pressed if they show up after the login | `Continue,Back home` |
 
 Options of the `form` connector — a plain e-mail + password page — all optional; the defaults live
-in [`connectors/auth/form.sh`](../connectors/auth/form.sh).
+in [`src/connectors/auth/form.ts`](../src/connectors/auth/form.ts).
 
 | Key | Meaning | Example |
 |---|---|---|

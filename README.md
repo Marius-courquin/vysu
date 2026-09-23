@@ -143,8 +143,9 @@ Nothing above was committed to your repo: captures, clips and renders live under
 - **Shots folder** — `~/.vysu/<project>/shots/<name>/`: the captures, the diffs, `meta.json` (which
   branch, which API, which viewports), `check.txt`, the contact sheets, and for a recording the
   clip, `events.json`, `motion.txt` and the render. `vysu prune` clears it out.
-- **Connector** — the bash file that knows how your app signs a persona in: a built-in named by
-  `VYSU_AUTH`, or `.vysu/auth.sh`. It is the only place that knows about your identity provider.
+- **Connector** — the file that knows how your app signs a persona in: a built-in named by
+  `VYSU_AUTH`, or `.vysu/auth.mjs` (`.vysu/auth.sh` in bash). It is the only place that knows about
+  your identity provider.
 - **Service** — a command, a port and a health check, declared in the config. `vysu up web`,
   `vysu up all`, `vysu down db` — the engine knows no stack.
 - **Project command** — an executable `.vysu/commands/<name>`, run by `vysu <name>` with every
@@ -245,9 +246,10 @@ vysu down applog && vysu prune --match 'settings' --match 'general'
 ## Writing an auth connector
 
 The built-ins cover a hosted identity provider (`auth0`), a same-origin form (`form`) and no login
-at all (`none`). For anything else, `vysu init` copies a commented template to `.vysu/auth.sh` and
-`VYSU_AUTH='custom'` picks it up. The contract — the five functions to define, the primitives a
-connector may call, and how to test it — is in
+at all (`none`). For anything else, a commented template goes to `.vysu/auth.mjs`
+(`connectors/auth/example.mjs`, which runs wherever vysu runs) or `.vysu/auth.sh`
+(`connectors/auth/example.sh`, macOS and Linux), and is picked up on its own. The contract — the
+functions to define, the primitives a connector may call, and how to test it — is in
 [`connectors/auth/README.md`](connectors/auth/README.md).
 
 ## Updating
