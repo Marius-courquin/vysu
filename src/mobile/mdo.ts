@@ -235,30 +235,45 @@ export async function mdo(argv: string[]): Promise<number> {
   // `-`: the text size the device already has, left alone.
   const tsizes = sizes ? sizes.split(',').map(trim).filter(Boolean) : ['-'];
   let stop = false;
-  for (const d of devs) {
-    mdoUse(p, d);
-    await mdoLock(p);
-    const dslug = slug(d).replace(/-$/, '');
-    for (const size of tsizes) {
-      let nowSize = mstateGet(p, 'textsize', 'normal');
-      let note = '';
-      if (size !== '-' && size !== nowSize) {
-        await mdoSession(p);
-        await quiet(() => mrelaunch(p, ['--textsize', size]));
-        if (!run.changed.includes(d)) run.changed.push(d);
-        note = ' (relaunched)';
-        nowSize = size;
+  // A die between the steps (the next device's lock or claim, its session, the relaunch into a text
+  // size) puts the text sizes back too, as 0.5.1's handler did on any die: a device left in xl text
+  // is the next agent's surprise. A die inside a step has already done it (mdoStep).
+  try {
+    for (const d of devs) {
+      mdoUse(p, d);
+      await mdoLock(p);
+      const dslug = slug(d).replace(/-$/, '');
+      for (const size of tsizes) {
+        let nowSize = mstateGet(p, 'textsize', 'normal');
+        let note = '';
+        if (size !== '-' && size !== nowSize) {
+          await mdoSession(p);
+          // Counted before the relaunch: one that dies halfway may already have changed the size.
+          if (!run.changed.includes(d)) run.changed.push(d);
+          await quiet(() => mrelaunch(p, ['--textsize', size]));
+          note = ' (relaunched)';
+          nowSize = size;
+        }
+        if (matrix) {
+          say(`▸ ${d} · textsize ${nowSize}${note}`);
+          shotRun.prefix = `${dslug}-${nowSize}-`;
+        }
+        if (!(await mdoRun(p, shots, keep, todo))) {
+          stop = true;
+          break;
+        }
       }
-      if (matrix) {
-        say(`▸ ${d} · textsize ${nowSize}${note}`);
-        shotRun.prefix = `${dslug}-${nowSize}-`;
-      }
-      if (!(await mdoRun(p, shots, keep, todo))) {
-        stop = true;
-        break;
-      }
+      if (stop) break;
     }
-    if (stop) break;
+  } catch (e) {
+    // The die that ended the run is the one said; a restore that fails too gets a line of its own.
+    try {
+      await mdoRestore(p);
+    } catch (r) {
+      if (!(r instanceof VysuError)) throw r;
+      tell(`vysu: text size not restored: ${r.message}`);
+    }
+    throw e;
   }
   await mdoRestore(p);
   for (const s of shotRun.taken) say(`shot: ${s}`);
@@ -297,7 +312,13 @@ export async function mwait(argv: string[]): Promise<number> {
   if (!((idle && !text) || (!idle && text))) die(MWAIT_USAGE);
   if (!secondsOk(timeout)) die(`vysu mwait: --timeout takes seconds (not « ${timeout} »)`);
   await mdoLock(p);
-  const r = await captured(() => (idle ? mwaitIdle(p, timeout) : gone ? mwaitGone(p, text, timeout) : mwaitText(p, text, timeout)));
+  let r: { value: boolean; out: string[]; err: string[] };
+  try {
+    r = await captured(() => (idle ? mwaitIdle(p, timeout) : gone ? mwaitGone(p, text, timeout) : mwaitText(p, text, timeout)));
+  } catch (e) {
+    // A die inside the wait is the command's, with its « next: », not an internal error.
+    throw e instanceof Captured ? e.inner : e;
+  }
   if (r.value) {
     say(`✓ ${mdoDetail(r.out)}`);
     return 0;

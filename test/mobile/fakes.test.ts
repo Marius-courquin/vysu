@@ -2,7 +2,7 @@
 // doing it, with no device at all.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fakeAndroid } from './fake-adb.ts';
@@ -44,4 +44,27 @@ test('mobileScale: a density adb does not give is asked again, then a die, never
   assert.equal(f.calls().filter((l) => l.includes('wm density')).length, 2);
   assert.equal(readFileSync(cache, 'utf8'), '0.0');
   assert.equal(f.calls().filter((l) => l.includes('screencap')).length, 0);
+});
+
+// The second device of a matrix is claimed by another agent: the run dies before its steps, and the
+// first device, already relaunched in xl text, is put back first.
+test('mdo: a die between devices still puts the text size back', posix, async () => {
+  const f = fakeAndroid({ emulators: { 'emulator-5596': 'fake_avd', 'emulator-5598': 'other_avd' }, agentDevice: true });
+  Object.assign(f.env, { VYSU_MOBILE_BUNDLE: 'com.example', VYSU_MOBILE_KIND: 'native', VYSU_MOBILE_READY_TEXT: 'Home', VYSU_LOCK_WAIT: '1' });
+  mkdirSync(join(f.state, 'claims'), { recursive: true });
+  const until = Math.floor(Date.now() / 1000) + 600;
+  writeFileSync(join(f.state, 'claims', 'android-other-avd'), `owner=shell:${process.pid}\nuntil=${until}\nminutes=10\nnote=\ndevice=other_avd\n`);
+  const r = await f.vysu(['mdo', 'android', '--devices', 'fake_avd,other_avd', '--textsize', 'xl', '--', 'sleep 0.1'], 60000);
+  assert.equal(r.code, 1, r.stderr);
+  assert.match(r.stderr, /android-other-avd claimed by shell:/);
+  assert.match(r.stdout, /^restored: fake_avd · textsize normal$/m, r.stdout);
+  const scales = f.calls().filter((l) => l.includes('font_scale')).map((l) => l.replace(/.* font_scale /, ''));
+  assert.deepEqual(scales, ['1.3', '1.0']);
+});
+
+test('mwait: a die inside the wait is said with its next line, not as an internal error', posix, async () => {
+  const f = fakeAndroid();
+  const r = await f.vysu(['mwait', 'android', 'Home']);
+  assert.equal(r.code, 1, r.stderr);
+  assert.match(r.stderr, /^vysu: agent-device is not installed\nnext: vysu setup\n$/);
 });

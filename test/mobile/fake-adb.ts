@@ -2,9 +2,9 @@
 // to their AVD name, a screencap that is a tiny PNG, and every call written down with the serial it
 // addressed. A shell script, so the tests that use it skip on Windows.
 import { spawn } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 
 const CLI = join(import.meta.dirname, '..', '..', 'src', 'cli.ts');
@@ -37,6 +37,7 @@ export function tinyPng(): Buffer {
 
 export interface FakeAndroid {
   dir: string;
+  bin: string;
   state: string;
   env: NodeJS.ProcessEnv;
   calls: () => string[];
@@ -44,8 +45,9 @@ export interface FakeAndroid {
 }
 
 // `emulators`: serial → AVD name. `density`: what `wm density` answers ('' = nothing, as a restarting
-// adbd does). The environment names the first AVD, as a config would.
-export function fakeAndroid(o: { emulators?: Record<string, string>; density?: string; extra?: string } = {}): FakeAndroid {
+// adbd does). `agentDevice`: a fake agent-device too, with a session on every emulator and a screen
+// showing « Home »; without it there is none on the PATH. The environment names the first AVD.
+export function fakeAndroid(o: { emulators?: Record<string, string>; density?: string; extra?: string; agentDevice?: boolean } = {}): FakeAndroid {
   const emulators = o.emulators ?? { 'emulator-5598': 'fake_avd' };
   const dir = mkdtempSync(join(tmpdir(), 'vysu-fake-adb-'));
   const bin = join(dir, 'bin');
@@ -81,9 +83,25 @@ exit 0
 `,
   );
   chmodSync(join(bin, 'adb'), 0o755);
+  // node alone, not its folder: a global agent-device beside it would drive a real device.
+  symlinkSync(process.execPath, join(bin, 'node'));
+  if (o.agentDevice) {
+    const sessions = Object.values(emulators).map((a) => `{"name":"fake-android-${a.replaceAll('_', '-')}"}`);
+    writeFileSync(
+      join(bin, 'agent-device'),
+      `#!/bin/sh
+echo "$*" >> '${dir}/agent-device.log'
+case "$*" in
+  "session list --json"*) echo '{"success":true,"data":{"sessions":[${sessions.join(',')}]}}';;
+  *) echo '{"success":true,"data":{"nodes":[{"label":"Home"}]}}';;
+esac
+`,
+    );
+    chmodSync(join(bin, 'agent-device'), 0o755);
+  }
   const env: NodeJS.ProcessEnv = {
     HOME: join(dir, 'home'),
-    PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
+    PATH: `${bin}:/usr/bin:/bin`,
     VYSU_STATE: state,
     VYSU_SHOTS: join(dir, 'shots'),
     VYSU_OWNER: 'test-owner',
@@ -93,6 +111,7 @@ exit 0
   };
   return {
     dir,
+    bin,
     state,
     env,
     calls: () => {
