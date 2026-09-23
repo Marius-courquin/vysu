@@ -89,10 +89,13 @@ in [`connectors/auth/form.sh`](../connectors/auth/form.sh).
 | `VYSU_MOBILE_ENV` | environment exported to Metro and to the native build, space-separated `k=v` | empty | `APP_ENV=staging` |
 | `VYSU_MOBILE_SCHEME` | the dev-client scheme handed to Metro's URL; empty skips the dev-launcher hand-off | empty | `exp+myapp` |
 | `VYSU_MOBILE_READY_TEXT` | texts that prove the app has booted, comma-separated: what `mrelaunch` waits for instead of a delay | empty (a fixed delay) | `Sign in,Welcome` |
-| `VYSU_IOS_DEVICE` | the recent simulator | the last one `vysu up ios --device` remembered, else `iPhone 17 Pro` | `iPhone 17 Pro` |
+| `VYSU_IOS_DEVICE` | the recent simulator: what an owner's commands drive until it chooses another one. A choice (`vysu claim ios --device` / `--any`, `vysu up ios --device`) is remembered per owner and wins over this key; the environment wins over both | the machine's last remembered choice, else `iPhone 17 Pro` | `iPhone 17 Pro` |
 | `VYSU_IOS_OLD_DEVICE` | the old simulator, created by `vysu setup` | `vysu iPhone SE (iOS 18)` | `my iPhone SE (iOS 18)` |
-| `VYSU_ANDROID_AVD` | the default AVD | the last one `vysu up android --avd` remembered, else `vysu_pixel8_api36` | `vysu_pixel8_api36` |
-| `VYSU_ANDROID_AVDS` | the specs `vysu setup` creates: `name:api:device:extra key=value`, `;` apart | the three specs below | see below |
+| `VYSU_IOS_DEVICES` | the iOS pool `vysu claim ios --any` picks from, comma-separated; the clones vysu makes of them (`<name> (vysu N)`) join it | `VYSU_IOS_DEVICE`, `VYSU_IOS_OLD_DEVICE` | `iPhone 17 Pro,my iPhone SE (iOS 18),iPhone 17 Pro B` |
+| `VYSU_IOS_MAX_CLONES` | how many clones `claim ios --any` may make when no pool device is free. A clone is a whole simulator (1-2 GB of RAM once booted); `vysu devices --prune-clones` deletes the ones nobody claims | `1` | `0` |
+| `VYSU_ANDROID_AVD` | the default AVD, chosen the same way as `VYSU_IOS_DEVICE` (`vysu claim android --avd` / `--any`, `vysu up android --avd`) | the machine's last remembered choice, else `vysu_pixel8_api36` | `vysu_pixel8_api36` |
+| `VYSU_ANDROID_AVDS` | the specs `vysu setup` creates: `name:api:device:extra key=value`, `;` apart. Their names are the Android pool of `vysu claim android --any` | the three specs below | see below |
+| `VYSU_ANDROID_MAX_RUNNING` | the emulators running past which `claim android --any` starts no other one (4 GB of RAM each) | `2` | `1` |
 | `VYSU_ANDROID_LOCALE` | the locale forced on the emulator at boot; empty leaves it untouched | empty | `fr-FR` |
 
 The default AVD specs:
@@ -170,8 +173,8 @@ These are not written to `.vysu/config`; they are exported for one command or on
 | `VYSU_DIR` | read-only, exported by the engine: the folder the loaded config sits in, where its themes, connectors, push presets and commands are looked up. `$VYSU_PROJECT_DIR/.vysu` unless `VYSU_CONFIG` names a config elsewhere | resolved from the config |
 | `VYSU_PERSONAS` | the personas file, so one can be tried without moving the state folder | `$VYSU_STATE/personas.env` |
 | `VYSU_SHOTS` | the shots folder | `$VYSU_STATE/shots` |
-| `VYSU_LOCK_WAIT` | seconds a command waits for a busy device or session before giving up | `90` |
-| `VYSU_OWNER` | who a lock or a claim is attributed to | the agent or terminal above the command |
+| `VYSU_LOCK_WAIT` | seconds a command waits for a busy device or session before giving up, and `claim --any` for a free device | `90` |
+| `VYSU_OWNER` | who a lock, a claim and a device choice are attributed to. A detected owner is `<name>:<pid>`: once that process is gone, its claims are dropped | the agent or terminal above the command |
 | `VYSU_ENGINE` | the engine directory, exported to project commands and to the render script | resolved from `bin/vysu` |
 | `VYSU_UI_GLOBS` | read by `templates/hooks/stop-reminder.sh` only: which changed files count as UI | `**/*.tsx,**/*.vue,**/*.svelte,**/*.css` |
 
