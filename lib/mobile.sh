@@ -688,8 +688,9 @@ mreset_args() { # platform → the mrelaunch flags that put it back to the defau
 
 # One step, then what the screen shows: that is how an agent drives a device without a press, a
 # sleep, a snapshot and a grep per action. Everything below reads agent-device's own snapshot
-# (`snapshot -i --json`) through py/screen.py, one file per device: the device is locked by the
-# command writing it, so there is never a second writer, and nothing is left behind but one file.
+# (`snapshot -i --json`) through py/screen.py, one file per device (and its .keys, .out, .err,
+# .said beside it): the device is locked by the command writing them, so there is never a second
+# writer, and each command overwrites what the last one left instead of piling up temp files.
 msnap_file() { # platform → this device's last snapshot
   local dev="$ANDROID_AVD"; [ "$1" = android ] || dev="$IOS_DEVICE"
   printf '%s/.snap-%s-%s.json' "$STATE" "$1" "$(slug "$dev")"
