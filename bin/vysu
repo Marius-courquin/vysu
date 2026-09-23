@@ -63,7 +63,11 @@
 #                                           + motion report + frames/ + events.json (each step in clip seconds,
 #                                           with the box it clicked); --mp4 is a no-op, the clip is always mp4
 #   vysu lang <persona> <lang>              language of the web app (localStorage VYSU_LANG_STORAGE_KEY), then reload
-#   vysu sheet <name> [--cols N] [--max N] [--open]   contact sheet(s) ≤ 1568 px so they stay legible + index.html
+#   vysu sheet <name> [--cols N] [--max N] [--only "<glob>,…"] [--strip] [--open]   contact sheet(s) ≤ 1568 px
+#                                           so they stay legible + index.html (six phone captures: one page);
+#                                           --only: the captures a glob names, in that order (a .prev.png or a
+#                                           -changed.png only when the glob spells it); --strip: one row at one
+#                                           scale, a before / after pair → sheet-strip.png
 #   vysu sheet <name> --compare [--against <name>]   before / after / zones triptych (compare.png) + slider page
 #                                           (compare.html); renders through the `render` session:
 #                                           `vysu render <agent-browser args…>` to look at index.html / compare.html

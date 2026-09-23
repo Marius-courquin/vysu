@@ -393,17 +393,23 @@ PY
 }
 
 # The one image an agent reads back. An image is downsized to a 1568 px long edge first, so a tall
-# sheet of everything comes back as unreadable thumbnails for the same 1800 tokens: the grid is
-# sized to fit inside that square, and past --max captures the sheet is split into pages. Marked
-# diffs come first, a baseline sits next to its current. index.html keeps them all, for a human.
+# sheet of everything comes back as unreadable thumbnails for the same 1800 tokens: every page fits
+# inside that square (py/sheet.py picks the columns), and past --max captures the folder is split
+# into pages of even size. A baseline sits next to its current; a marked diff and the capture an
+# mshot replaced are left out unless --only names them. --strip is one row at one scale: a before
+# and an after side by side. index.html keeps them all, for a human.
+# Composed with Pillow, not rendered in the browser: it used to wait on a shared `render` session
+# and come back blank when an image had not loaded yet.
 vysu_sheet() {
-  local name="${1:-}"; [ -n "$name" ] || die "usage: vysu sheet <name> [--cols N] [--max N] [--open] [--compare [--against <name>]]"
+  local name="${1:-}"; [ -n "$name" ] || die "usage: vysu sheet <name> [--cols N] [--max N] [--only \"<glob>,…\"] [--strip] [--open] [--compare [--against <name>]]"
   shift
-  local cols="" max=6 want_open=0 compare=0 against=""
+  local cols="" max=6 want_open=0 compare=0 against="" only="" strip=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --cols) cols="$2"; shift 2;;
       --max) max="$2"; shift 2;;
+      --only) only="$2"; shift 2;;
+      --strip) strip=1; shift;;
       --open) want_open=1; shift;;
       --compare) compare=1; shift;;
       --against) against="$2"; shift 2;;
@@ -422,70 +428,15 @@ vysu_sheet() {
     [ "$want_open" != 1 ] || open "$(printf '%s\n' "$out" | grep '\.html$' | head -1)" 2>/dev/null || true
     return
   fi
-  local html="$dir/index.html"
-  rm -f "$dir"/sheet.png "$dir"/sheet-*.png
-  # The heredoc stays out of a command substitution: bash 3.2 mis-reads a quote inside one.
-  python3 - "$dir" "$name" "$cols" "$max" "$SHEET_EDGE" <<'PY'
-import math, os, sys, time
-from PIL import Image
-
-directory, name, cols, max_per_page, edge = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
-files = [f for f in os.listdir(directory) if f.endswith(".png") and not f.startswith(("sheet", "compare"))]
-files.sort(key=lambda f: os.path.getmtime(os.path.join(directory, f)))
-changed = [f for f in files if f.endswith("-changed.png")]
-rest = [f for f in files if not f.endswith("-changed.png")]
-bases = {f[: -len("-base.png")] + ".png": f for f in rest if f.endswith("-base.png")}
-order = list(changed)
-for f in rest:
-    if f.endswith("-base.png"):
-        continue
-    if f in bases:
-        order.append(bases[f])
-    order.append(f)
-order += [f for f in rest if f.endswith("-base.png") and f not in order]
-if not order:
-    sys.exit("vysu: no capture in %s" % directory)
-
-widest = max(Image.open(os.path.join(directory, f)).width for f in order)
-cols = int(cols) if cols else (2 if widest >= 768 else 3)
-pages = [order[i : i + max_per_page] for i in range(0, len(order), max_per_page)]
-gap, pad, chrome = 12, 16, 30  # chrome: the figure padding, border and caption line
-# A 1fr column gives the width; the height is what has to be capped, or three rows of a landscape
-# capture leave the square and get downsized into mush.
-rows = max(1, math.ceil(min(len(order), max_per_page) / cols))
-thumb_h = (edge - 2 * pad - 32 - rows * (gap + chrome)) // rows
-
-out = ["""<!doctype html><meta charset="utf-8"><title>%s</title>
-<style>body{margin:0;background:#e5e7eb;font:12px/1.4 system-ui,sans-serif;color:#111}
-section{width:%dpx;box-sizing:border-box;padding:%dpx;background:#f3f4f6;display:grid;gap:%dpx;
-grid-template-columns:repeat(%d,1fr);align-items:start}
-h1{grid-column:1/-1;font-size:14px;margin:0}
-figure{margin:0;background:#fff;border:1px solid #d1d5db;border-radius:6px;padding:6px;min-width:0}
-img{display:block;max-width:100%%;max-height:%dpx;width:auto;height:auto;margin:0 auto}
-figcaption{margin-top:4px;color:#4b5563;font-variant-numeric:tabular-nums}</style>""" % (name, edge, pad, gap, cols, thumb_h)]
-stamp = time.strftime("%Y-%m-%d %H:%M")
-for i, page in enumerate(pages, 1):
-    out.append('<section id="p%d"><h1>%s — %s%s</h1>' % (i, name, stamp, " — %d/%d" % (i, len(pages)) if len(pages) > 1 else ""))
-    for f in page:
-        out.append('<figure><img src="%s" alt="%s"><figcaption>%s</figcaption></figure>' % (f, f, f))
-    out.append("</section>")
-open(os.path.join(directory, "index.html"), "w").write("\n".join(out))
-PY
-  local pages; pages="$(grep -c '<section id="p' "$html")"
-  # One rendered PNG per page: the cheapest thing for an agent to read back.
-  # Tall enough to hold a whole page: an element screenshot is a crop of the viewport, not a scroll.
-  bcmd set viewport $((SHEET_EDGE + 40)) $((SHEET_EDGE + 120))
-  bcmd open "file://$html"
-  bcmd wait 600
-  local i=1 sheets=() png
-  while [ "$i" -le "$pages" ]; do
-    png="$dir/sheet-$i.png"; [ "$pages" = 1 ] && png="$dir/sheet.png"
-    bcmd screenshot "#p$i" "$png"
-    sheets+=("$png"); i=$((i + 1))
-  done
-  brun render | bboxes >/dev/null
-  echo "$html"; printf '%s\n' "${sheets[@]}"
-  [ "$want_open" = 1 ] && open "$html" || true
+  local sheet="$PY/sheet.py"; [ -f "$sheet" ] || die "sheet.py missing ($sheet)"
+  local sargs=(--name "$name" --max "$max" --edge "$SHEET_EDGE")
+  [ -z "$cols" ] || sargs+=(--cols "$cols")
+  [ -z "$only" ] || sargs+=(--only "$only")
+  [ "$strip" = 0 ] || sargs+=(--strip)
+  # sheet.py says on stderr why it composed nothing (no capture, a glob that matches none).
+  local out; out="$("$sheet" "$dir" "${sargs[@]}")" || exit 1
+  printf '%s\n' "$out"
+  [ "$want_open" = 1 ] && open "$(printf '%s\n' "$out" | head -1)" || true
 }
 
 vysu_mark() { python3 "$MARK" "$@"; }
