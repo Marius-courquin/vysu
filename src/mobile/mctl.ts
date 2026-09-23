@@ -672,7 +672,7 @@ export async function mburst(p: string, args: string[]): Promise<boolean> {
   rmSync(raw, { recursive: true, force: true });
   writeFileSync(join(dir, `${p}-burst.txt`), `${out.split('\n')[0] ?? ''}\n`);
   say(out);
-  metaWrite(dir, {
+  await metaWrite(dir, {
     kind: 'mobile',
     platform: p,
     device: devices.of(p),

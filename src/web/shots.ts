@@ -192,7 +192,7 @@ export async function shots(persona: string, name: string, args: string[], print
   }
 
   const repo = c.webRepo;
-  metaWrite(dir, {
+  await metaWrite(dir, {
     kind: 'web',
     persona,
     url,

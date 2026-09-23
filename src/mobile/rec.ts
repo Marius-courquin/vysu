@@ -192,7 +192,7 @@ export async function mrec(argv: string[]): Promise<number> {
   if (take.code !== 0) exit(take.code);
   rmSync(rows, { force: true });
   evStop();
-  metaWrite(dir, {
+  await metaWrite(dir, {
     kind: 'mobile',
     platform,
     device: devices.of(platform),

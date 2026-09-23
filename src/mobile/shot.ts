@@ -265,7 +265,7 @@ export async function mshot(p: string, args: string[]): Promise<boolean> {
   say(shot);
   if (full) say(indent(stitch));
   const dev = devices.of(p);
-  metaWrite(dir, {
+  await metaWrite(dir, {
     kind: 'mobile',
     platform: p,
     device: dev,

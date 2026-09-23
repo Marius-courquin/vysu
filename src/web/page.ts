@@ -267,7 +267,7 @@ export async function webStep(persona: string, shots: string, step: string, prin
 // What a web flow or a recording was taken against, in the file `vysu report` already reads.
 export async function webMeta(dir: string, persona: string, extra: Record<string, string>): Promise<void> {
   const repo = config().webRepo;
-  metaWrite(dir, {
+  await metaWrite(dir, {
     kind: 'web',
     persona,
     lang: webLang || config().get('LANG'),

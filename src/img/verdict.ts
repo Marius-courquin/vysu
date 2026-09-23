@@ -20,6 +20,7 @@ import { isoLocal, sleep } from '../core/text.ts';
 import { parseArgs, type ParserSpec } from './args.ts';
 import { pyJson, pyJsonParse, pySplitlines, pyStrip } from './fmt.ts';
 import type { Io } from './tools.ts';
+import { nextTmp, withMetaLock } from '../core/meta.ts';
 
 const ZONES_SHOWN = 3;
 
@@ -55,49 +56,6 @@ export function parseDiffText(text: string): DiffSummary {
   return out;
 }
 
-// A turn each at a folder's meta.json: two mshots into one folder (an iPhone and an Android at once)
-// each read it, changed it and wrote it back, and one verdict was lost, or the rename found the
-// other's temporary file already gone. The lock is a directory beside it holding its pid, taken by
-// mkdir; one whose process is gone, or older than a read-modify-write could ever take, is taken over.
-const STALE_MS = 5000;
-let tmpSeq = 0;
-
-function lockHolder(lock: string): { pid: number; age: number } | null {
-  try {
-    const age = Date.now() - statSync(lock).mtimeMs;
-    let pid = 0;
-    try {
-      pid = Number(readFileSync(join(lock, 'pid'), 'utf8').trim()) || 0;
-    } catch {
-      pid = 0;
-    }
-    return { pid, age };
-  } catch {
-    return null;
-  }
-}
-
-export async function withMetaLock<T>(dir: string, fn: () => T): Promise<T> {
-  const lock = join(dir, '.meta.json.lock');
-  for (;;) {
-    try {
-      mkdirSync(lock);
-      break;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-    }
-    const h = lockHolder(lock);
-    if (h && (h.age > STALE_MS || (h.pid && !pidAlive(h.pid)))) rmSync(lock, { recursive: true, force: true });
-    else await sleep(10);
-  }
-  try {
-    writeFileSync(join(lock, 'pid'), String(process.pid));
-    return fn();
-  } finally {
-    rmSync(lock, { recursive: true, force: true });
-  }
-}
-
 // The capture's entry under `verdicts` in meta.json, written through a temporary file so a reader
 // never sees half of it. Floats already there stay floats: the file keeps the spelling (« 30.0 ») it
 // was written with.
@@ -120,7 +78,7 @@ function recordVerdictNow(dir: string, capture: string, entry: Record<string, un
   const verdicts = meta.verdicts && typeof meta.verdicts === 'object' && !Array.isArray(meta.verdicts) ? (meta.verdicts as Record<string, unknown>) : {};
   meta.verdicts = verdicts;
   verdicts[capture] = entry;
-  const tmp = `${path}.${process.pid}-${++tmpSeq}.tmp`;
+  const tmp = `${path}.${process.pid}-${nextTmp()}.tmp`;
   writeFileSync(tmp, pyJson(meta, { indent: 1, ascii: false }));
   renameSync(tmp, path);
 }
