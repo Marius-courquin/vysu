@@ -297,17 +297,24 @@ async function dumpFromDir(files: string[], indices: number[], outDir: string, s
   }
 }
 
-// One ffmpeg pass picking the wanted frames: `select` counts frames after `fps`, as the scan does.
+// Frames picked per ffmpeg pass: one `select` naming every wanted frame of a two-minute take grew past
+// what ffmpeg's expression parser takes, and the whole dump failed.
+const DUMP_BATCH = 40;
+
+// ffmpeg passes picking the wanted frames: `select` counts frames after `fps`, as the scan does.
 async function dumpFromVideo(path: string, fps: number, crop: string, indices: number[], outDir: string, scale: number, io: Io): Promise<void> {
-  let chain = `${videoFilter(fps, crop)},select='${indices.map((i) => `eq(n\\,${i})`).join('+')}'`;
-  // Device frames are 3x: a 1x dump costs an agent ~470 tokens to read instead of ~1500.
-  if (scale && scale !== 1) chain += `,scale=iw/${pyG(scale)}:ih/${pyG(scale)}`;
   const staging = join(outDir, '.motion-dump');
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(staging, { recursive: true });
-  const r = await run('ffmpeg', ['-v', 'error', '-y', '-i', path, '-vf', chain, '-fps_mode', 'passthrough', join(staging, '%05d.png')]);
-  if (r.stderr) io.err(r.stderr);
-  if (r.code !== 0) throw new Error(`Command 'ffmpeg' returned non-zero exit status ${r.code}.`);
+  for (let start = 0; start < indices.length; start += DUMP_BATCH) {
+    const batch = indices.slice(start, start + DUMP_BATCH);
+    let chain = `${videoFilter(fps, crop)},select='${batch.map((i) => `eq(n\\,${i})`).join('+')}'`;
+    // Device frames are 3x: a 1x dump costs an agent ~470 tokens to read instead of ~1500.
+    if (scale && scale !== 1) chain += `,scale=iw/${pyG(scale)}:ih/${pyG(scale)}`;
+    const r = await run('ffmpeg', ['-v', 'error', '-y', '-i', path, '-vf', chain, '-fps_mode', 'passthrough', join(staging, `b${String(start).padStart(5, '0')}-%05d.png`)]);
+    if (r.stderr) io.err(r.stderr);
+    if (r.code !== 0) throw new Error(`Command 'ffmpeg' returned non-zero exit status ${r.code}.`);
+  }
   const written = readdirSync(staging).filter((f) => f.endsWith('.png')).sort();
   written.forEach((f, i) => {
     if (i < indices.length) renameSync(join(staging, f), join(outDir, `${frameName(indices[i]!)}.png`));

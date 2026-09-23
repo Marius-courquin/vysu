@@ -14,7 +14,7 @@ import { config } from '../core/ctx.ts';
 import { run } from '../core/proc.ts';
 import { pyRound } from '../core/py.ts';
 import { parseArgs, type ParserSpec } from './args.ts';
-import { float, num, pyFixed, pyFloat, pyG, pyJson, pyJsonParse, pySplit, pySplitlines, pyStrip, pyStrRepr, shlexSplit, type PyFloat } from './fmt.ts';
+import { float, num, pyFixed, pyFloat, pyG, pyJson, pyJsonParse, pyRoundTo, pySigned, pySplit, pySplitlines, pyStrip, pyStrRepr, shlexSplit, type PyFloat } from './fmt.ts';
 import type { Io } from './tools.ts';
 
 const ACTIONS = ['tap', 'fill', 'key', 'go', 'relaunch'];
@@ -120,6 +120,101 @@ export function isoMillis(t: number): string {
   );
 }
 
+// Seconds between sending a touch and the touch landing: agent-device's round trip to the device,
+// the browser's to its page.
+const TOUCH_LATENCY: Record<string, number> = { mobile: 0.15, web: 0.05 };
+
+// A step's seconds in the clip, kept as numbers beside the step that prints them as floats.
+export interface Timed {
+  start: number;
+  end: number;
+  at?: number;
+}
+export interface Row {
+  step: Record<string, unknown>;
+  t: Timed;
+}
+
+// The raw rows a take appended, one step each: « i start end ok target label line at », tab-separated,
+// in the clock the take ran on; `t0` is the clip's first frame in that clock.
+export function readRows(text: string, t0: number, kind: string, platform: string): Row[] {
+  const rows: Row[] = [];
+  for (const raw of pySplitlines(text)) {
+    if (!pyStrip(raw)) continue;
+    const cells = raw.split('\t');
+    while (cells.length < 8) cells.push('');
+    const [i, start, end, ok, target, override, line, at] = cells as [string, string, string, string, string, string, string, string];
+    const { verb, label, extra } = parseStep(line, kind, platform, override);
+    const step: Record<string, unknown> = { i: Number(pyStrip(i)), line, verb };
+    if (label) step.label = label;
+    const t: Timed = { start: pyRoundTo(pyFloat(start)! - t0, 2), end: pyRoundTo(pyFloat(end)! - t0, 2) };
+    step.start = float(t.start);
+    step.end = float(t.end);
+    // When the step touched the screen: the clock it sent its first press at, plus the driver's own
+    // round trip before the touch lands. A tap reads the screen first, so its start is not it.
+    if (at) {
+      t.at = pyRoundTo(pyFloat(at)! - t0 + (TOUCH_LATENCY[kind] ?? 0), 2);
+      step.at = float(t.at);
+    }
+    step.ok = ok !== 'false';
+    Object.assign(step, extra);
+    const box = targetOf(target);
+    if (box) step.target = box;
+    rows.push({ step, t });
+  }
+  return rows;
+}
+
+// The clip's clock is anchored on the instant the recorder was asked to stop, but a recorder keeps
+// writing for a moment after that (simctl for up to ~2.5 s), so every step can land seconds late in
+// the clip. The screen says where the truth is: a touch is followed by the screen reacting. The offset
+// that puts a motion onset (motion.txt, the raw take's own timeline) shortly after the most touches is
+// the clock's error; it is applied only when it is clear (most touches agree).
+const REACTION: [number, number] = [0.02, 0.9];
+
+// The offset, in hundredths of a second within ±4 s, for these touches against that motion report.
+export function reactionOffset(motion: string, touches: number[]): number {
+  const rate = /(\d+) frames @ ([\d.]+) fps/.exec(motion);
+  if (!rate) return 0;
+  const fps = pyFloat(rate[2]!) ?? NaN;
+  const onsets = [...motion.matchAll(/^f(\d+)[–-]f\d+/gm)].map((m) => Number(m[1]) / fps);
+  if (!onsets.length) return 0;
+  const agreeing = (offset: number): number =>
+    touches.filter((t) => onsets.some((o) => t + offset + REACTION[0] <= o && o <= t + offset + REACTION[1])).length;
+  let best = 0;
+  let score = agreeing(0);
+  for (let k = -400; k <= 400; k++) {
+    const candidate = k / 100;
+    const s = agreeing(candidate);
+    if (s > score || (s === score && Math.abs(candidate) < Math.abs(best))) {
+      best = candidate;
+      score = s;
+    }
+  }
+  // Clear means: most touches agree, and clearly more than without any shift.
+  if (score < Math.max(3, 0.6 * touches.length) || score - agreeing(0) < 2) return 0;
+  return best;
+}
+
+export function anchorOnReactions(dir: string, rows: Row[]): number {
+  const touches = rows.filter((r) => r.step.verb === 'tap' && r.t.at !== undefined).map((r) => r.t.at!);
+  const path = join(dir, 'motion.txt');
+  if (touches.length < 3 || !existsSync(path)) return 0;
+  return reactionOffset(readFileSync(path, 'utf8'), touches);
+}
+
+// Every second of every step moved by the clock's error.
+export function shiftRows(rows: Row[], offset: number): void {
+  for (const r of rows) {
+    for (const key of ['start', 'end', 'at'] as const) {
+      const v = r.t[key];
+      if (v === undefined) continue;
+      r.t[key] = pyRoundTo(v + offset, 2);
+      r.step[key] = float(r.t[key]!);
+    }
+  }
+}
+
 export interface EventsArgs {
   dir: string;
   rows: string;
@@ -158,22 +253,13 @@ export async function takeEvents(a: EventsArgs): Promise<string> {
     unit = 'pt';
   }
 
-  const steps: Array<Record<string, unknown>> = [];
-  for (const raw of pySplitlines(readFileSync(a.rows, 'utf8'))) {
-    if (!pyStrip(raw)) continue;
-    const cells = raw.split('\t');
-    while (cells.length < 7) cells.push('');
-    const [i, start, end, ok, target, override, line] = cells as [string, string, string, string, string, string, string];
-    const { verb, label, extra } = parseStep(line, a.kind, a.platform, override);
-    const step: Record<string, unknown> = { i: Number(pyStrip(i)), line, verb };
-    if (label) step.label = label;
-    step.start = float(Number(pyFixed(pyFloat(start)! - t0, 2)));
-    step.end = float(Number(pyFixed(pyFloat(end)! - t0, 2)));
-    step.ok = ok !== 'false';
-    Object.assign(step, extra);
-    const box = targetOf(target);
-    if (box) step.target = box;
-    steps.push(step);
+  const rows = readRows(readFileSync(a.rows, 'utf8'), t0, a.kind, a.platform);
+  const steps = rows.map((r) => r.step);
+  const offset = anchorOnReactions(a.dir, rows);
+  let said = '';
+  if (offset) {
+    shiftRows(rows, offset);
+    said = `events.json: re-anchored on the screen's own reactions, ${pySigned(offset, 2)} s\n`;
   }
 
   const events = {
@@ -188,7 +274,7 @@ export async function takeEvents(a: EventsArgs): Promise<string> {
     steps,
   };
   writeFileSync(join(a.dir, 'events.json'), pyJson(events, { indent: 1, ascii: false }));
-  return `events.json: ${steps.length} step(s) · clip ${a.clip} · ${pyFixed(duration, 1)} s @ ${pyG(fps)} fps · ${w}×${h} ${unit}`;
+  return `${said}events.json: ${steps.length} step(s) · clip ${a.clip} · ${pyFixed(duration, 1)} s @ ${pyG(fps)} fps · ${w}×${h} ${unit}`;
 }
 
 // A number as Python held it: an int stays an int through min() and round(), a float prints « .0 ».

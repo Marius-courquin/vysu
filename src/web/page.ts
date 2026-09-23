@@ -7,8 +7,9 @@ import { die, VysuError } from '../core/errors.ts';
 import { i18nLabel, langCheck } from '../core/i18n.ts';
 import { lockTake, resourceOf } from '../core/hold.ts';
 import { metaWrite, repoBranch, repoSha } from '../core/meta.ts';
-import { ev } from '../core/rec.ts';
+import { ev, evTouch, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
+import { js as paceJs } from '../img/pace.ts';
 import { ab, bboxes, bcmd, brun, evalValue, lastLine } from './ab.ts';
 import { boxOfJs, chromeJs, EXPAND_JS, langReadJs, RESTORE_JS, WARM_JS } from './js.ts';
 import { shellWords, StepSyntax } from './words.ts';
@@ -121,6 +122,7 @@ export async function webBoxOf(persona: string, label: string, field: boolean): 
 // running.
 export async function webClick(persona: string, label: string): Promise<boolean> {
   if (ev.rows) ev.target = await webBoxOf(persona, label, false);
+  evTouch();
   const tries = [
     ['find', 'role', 'button', 'click', '--name', label],
     ['find', 'role', 'link', 'click', '--name', label],
@@ -143,6 +145,16 @@ export async function webClick(persona: string, label: string): Promise<boolean>
 // By <label>, then by placeholder (a search box carries no label).
 export async function webFill(persona: string, label: string, value: string): Promise<boolean> {
   if (ev.rows) ev.target = await webBoxOf(persona, label, true);
+  // While a take records, the field is emptied (which focuses it), then typed into from the page
+  // itself at a person's pace: one input event a key, as a keyboard would send them (img/pace.ts).
+  evTouch();
+  if (value && typingHuman()) {
+    const script = Buffer.from(`${paceJs(value)}\n`).toString('base64');
+    const emptied =
+      (await ab(persona, ['find', 'label', label, 'fill', ''], { stderr: 'drop' })).code === 0 ||
+      (await ab(persona, ['find', 'placeholder', label, 'fill', ''], { stderr: 'drop' })).code === 0;
+    if (emptied && (await ab(persona, ['eval', '-b', script], { stderr: 'drop' })).stdout.includes('typed')) return true;
+  }
   for (const how of ['label', 'placeholder']) {
     if ((await ab(persona, ['find', how, label, 'fill', value], { stderr: 'drop' })).code === 0) return true;
   }

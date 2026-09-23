@@ -4,7 +4,7 @@
 // frames are streamed out of ffmpeg, not written: only the ones the report names land in
 // `<name>/frames/` (`--crop x,y,w,h` in points narrows the scan).
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, openSync, closeSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, openSync, closeSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { CLIP_FPS } from '../core/config.ts';
@@ -12,16 +12,17 @@ import { die, exit, onCleanup } from '../core/errors.ts';
 import { which } from '../core/host.ts';
 import { devices, type Platform } from '../core/hold.ts';
 import { metaWrite, repoSha } from '../core/meta.ts';
-import { clipNormalize, ev, evLog, evStart, evStop, now } from '../core/rec.ts';
+import { clipNormalize, evLog, evStart, evStep, evStop, now } from '../core/rec.ts';
+import { run } from '../core/proc.ts';
 import { sleep } from '../core/text.ts';
 import { tool } from '../img/tools.ts';
-import { adb, androidSelect, iosUdid, mobileScale, serial } from './device.ts';
+import { adb, androidSelect, iosFreezeStatusBar, iosUdid, mobileScale, serial } from './device.ts';
 import { say, tell } from './io.ts';
 import { mobileStep } from './steps.ts';
 import { mstateGet } from './state.ts';
 import { adbPath } from './tools.ts';
 
-export const MREC_USAGE = 'usage: vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] -- "<step>" …';
+export const MREC_USAGE = 'usage: vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] [--strict] -- "<step>" …';
 
 // Points → pixels, in ffmpeg's order: w:h:x:y.
 export function cropPixels(crop: string, scale: string): string {
@@ -34,19 +35,42 @@ const exited = (c: ChildProcess): Promise<void> =>
   new Promise((resolve) => {
     if (c.exitCode !== null || c.signalCode !== null) return resolve();
     c.once('close', () => resolve());
+    c.once('error', () => resolve());
   });
+
+// A Mac records one simulator at a time (« Host recording is already in progress »): another
+// session's take is waited for rather than failed into.
+async function waitHostRecorder(): Promise<void> {
+  const wait = config().lockWait;
+  let waited = 0;
+  while ((await run('pgrep', ['-f', 'simctl io .* recordVideo'])).code === 0) {
+    if (waited >= wait) die(`vysu mrec: another simulator is being recorded on this Mac (one at a time), still after ${wait}s`);
+    if (waited === 0) tell('vysu mrec: another simulator is being recorded on this Mac, waiting…');
+    await sleep(2000);
+    waited += 2;
+  }
+}
+
+// The last line a recorder said, its « Note: » lines aside.
+export function recorderSaid(text: string): string {
+  const lines = text.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines.filter((l) => !l.startsWith('Note:')).at(-1) ?? '';
+}
 
 export async function mrec(argv: string[]): Promise<number> {
   const [p = '', name = ''] = argv;
   if (!p || !name) die(MREC_USAGE);
   let fps = '60';
   let crop = '';
+  let strict = false;
   let steps: string[] = [];
   let sawSteps = false;
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--fps') fps = argv[++i] ?? '';
     else if (a === '--crop') crop = argv[++i] ?? '';
+    else if (a === '--strict') strict = true;
     else if (a === '--') {
       steps = argv.slice(i + 1);
       sawSteps = true;
@@ -68,14 +92,23 @@ export async function mrec(argv: string[]): Promise<number> {
   // a half-written mp4, and the next `vysu mrec` would record on top of it. The recorder in flight is
   // stopped whichever way vysu ends.
   let child: ChildProcess;
+  let adbSaid = '';
   if (platform === 'android') {
-    child = spawn(adbPath(), ['-s', serial.value, 'shell', 'screenrecord', '--bit-rate', '8000000', '--time-limit', '180', '/sdcard/vysu-rec.mp4'], { stdio: 'ignore' });
+    child = spawn(adbPath(), ['-s', serial.value, 'shell', 'screenrecord', '--bit-rate', '8000000', '--time-limit', '180', '/sdcard/vysu-rec.mp4'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const keep = (b: Buffer): void => void (adbSaid = (adbSaid + b.toString()).slice(-4000));
+    child.stdout?.on('data', keep);
+    child.stderr?.on('data', keep);
   } else {
+    // The 9:41 status bar is set when the device is claimed, and a relaunch or a reset since can have
+    // dropped it: a take that shows the real clock halfway through is frozen again here.
+    await iosFreezeStatusBar();
+    await waitHostRecorder();
     const log = openSync(join(config().logs, 'mrec.log'), 'w');
     child = spawn('xcrun', ['simctl', 'io', await iosUdid(), 'recordVideo', '--codec', 'h264', '--force', video], { stdio: ['ignore', log, log] });
     closeSync(log);
   }
-  child.on('error', () => undefined);
+  let failed = '';
+  child.on('error', (e) => void (failed = e.message));
   let stopped = false;
   const recStop = async (): Promise<void> => {
     if (stopped) return;
@@ -86,19 +119,36 @@ export async function mrec(argv: string[]): Promise<number> {
   };
   const forget = onCleanup(recStop);
   await sleep(3000);
+  // A recorder that could not start has already exited: stop here, before the steps run blind and act
+  // on a screen nobody films (they typed a description into the photo picker's search once).
+  if (failed || child.exitCode !== null || child.signalCode !== null) {
+    let said = failed || adbSaid;
+    if (platform === 'ios' && !failed) {
+      try {
+        said = readFileSync(join(config().logs, 'mrec.log'), 'utf8');
+      } catch {
+        said = '';
+      }
+    }
+    die(`vysu mrec: the recorder did not start: ${recorderSaid(said)}`);
+  }
   const rows = join(dir, 'events.jsonl');
   writeFileSync(rows, '');
   evStart(rows);
   for (const step of steps) {
     say(`▸ ${step}`);
-    ev.target = '';
-    ev.label = '';
+    evStep();
     const t0 = now();
     // A step that fails — a label that is not on screen — is worth saying, not worth losing the take
     // for: the rest is played, and the clip is read back as usual.
     const ok = await mobileStep(platform, name, step);
     if (!ok) tell(`vysu mrec: step failed: ${step}`);
     evLog(step, t0, now(), ok);
+    // --strict: a demo take that has lost its screen stops acting on it (the clip is still kept).
+    if (!ok && strict) {
+      tell('vysu mrec: --strict: stopped after the failed step, the rest is not played');
+      break;
+    }
   }
   await sleep(1000);
   // The instant the last frame is asked for, not the one the recorder finishes writing: simctl and

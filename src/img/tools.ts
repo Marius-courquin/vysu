@@ -19,6 +19,7 @@ export type Tool =
   | 'frame'
   | 'mark'
   | 'motion'
+  | 'pace'
   | 'screen'
   | 'screencap'
   | 'stitch'
@@ -33,6 +34,7 @@ const helpers: Record<Tool, () => Promise<{ main: ToolMain }>> = {
   frame: () => import('./frame.ts'),
   mark: () => import('./mark.ts'),
   motion: () => import('./motion.ts'),
+  pace: () => import('./pace.ts'),
   screen: () => import('./screen.ts'),
   screencap: () => import('./screencap.ts'),
   stitch: () => import('./stitch.ts'),

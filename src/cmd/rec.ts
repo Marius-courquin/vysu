@@ -9,7 +9,7 @@ import { config } from '../core/ctx.ts';
 import { die, exit, onCleanup } from '../core/errors.ts';
 import { lockTake, resourceOf } from '../core/hold.ts';
 import { which } from '../core/host.ts';
-import { clipNormalize, ev, evLog, evStart, evStop, now } from '../core/rec.ts';
+import { clipNormalize, evLog, evStart, evStep, evStop, now } from '../core/rec.ts';
 import { tool } from '../img/tools.ts';
 import { ab, lastLine } from '../web/ab.ts';
 import { isFile, readLines } from '../web/lines.ts';
@@ -57,6 +57,9 @@ export async function run(args: string[]): Promise<void> {
   const dir = join(config().shots, name);
   mkdirSync(dir, { recursive: true });
   rmSync(join(dir, 'frames'), { recursive: true, force: true });
+  // The last take's motion report must not be read as this one's: take re-anchors the clock on the
+  // motion.txt it finds, and the web one is only written after it.
+  rmSync(join(dir, 'motion.txt'), { force: true });
   const video = join(dir, `web.${ext}`);
   await lockTake(resourceOf(persona));
   await webLangInit(persona);
@@ -75,8 +78,7 @@ export async function run(args: string[]): Promise<void> {
   const print = (s: string): void => void process.stdout.write(s);
   for (const step of steps) {
     print(`▸ ${step}\n`);
-    ev.target = '';
-    ev.label = '';
+    evStep();
     const t0 = now();
     // A failed step must not leave ffmpeg recording for good: the clip is stopped either way.
     const ok = await webStep(persona, name, step, print);

@@ -282,13 +282,14 @@ export const calls = {
     cli: ['find', query, 'press', '--first'],
     lib: (c, b) => c.interactions.find!({ ...b, query, action: 'click', first: true }),
   }),
-  fill: (target: string | [number, number], text: string): Call => ({
-    cli: ['fill', ...(Array.isArray(target) ? target.map(String) : [target]), text],
-    lib: (c, b) => c.interactions.fill!({ ...b, ...(Array.isArray(target) ? { x: target[0], y: target[1] } : targetOf(target)), text }),
+  // `delayMs`: the pause between two keys (agent-device's --delay-ms); 0 types at the driver's speed.
+  fill: (target: string | [number, number], text: string, delayMs = 0): Call => ({
+    cli: ['fill', ...(Array.isArray(target) ? target.map(String) : [target]), text, ...(delayMs > 0 ? ['--delay-ms', String(delayMs)] : [])],
+    lib: (c, b) => c.interactions.fill!({ ...b, ...(Array.isArray(target) ? { x: target[0], y: target[1] } : targetOf(target)), text, delayMs: delayMs > 0 ? delayMs : undefined }),
   }),
-  type: (text: string): Call => ({
-    cli: ['type', text],
-    lib: (c, b) => c.interactions.type!({ ...b, text }),
+  type: (text: string, delayMs = 0): Call => ({
+    cli: ['type', text, ...(delayMs > 0 ? ['--delay-ms', String(delayMs)] : [])],
+    lib: (c, b) => c.interactions.type!({ ...b, text, delayMs: delayMs > 0 ? delayMs : undefined }),
   }),
   keyboard: (action: 'status' | 'return' | 'dismiss'): Call => ({
     cli: ['keyboard', action],
