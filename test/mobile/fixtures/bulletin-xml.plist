@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>list</key>
+	<array>
+		<integer>1</integer>
+		<integer>-3</integer>
+		<integer>70000</integer>
+		<integer>1099511627776</integer>
+	</array>
+	<key>name</key>
+	<string>Élan 😀</string>
+	<key>ratio</key>
+	<real>0.5</real>
+	<key>sectionInfo</key>
+	<dict>
+		<key>com.apple.Other</key>
+		<data>
+		AAE=
+		</data>
+		<key>fr.example.app</key>
+		<data>
+		YnBsaXN0MDDUAQIDBAUGHyJZJGFyY2hpdmVyWCRvYmplY3RzVCR0b3BYJHZl
+		cnNpb25fEA9OU0tleWVkQXJjaGl2ZXKmBwgPFRYcVSRudWxs0wkKCwwNDlYk
+		Y2xhc3NZc2VjdGlvbklEXxATc2VjdGlvbkluZm9TZXR0aW5nc4AEgAOAAtMJ
+		EBESExRfEBNhdXRob3JpemF0aW9uU3RhdHVzXxARc2hvd3NJbkxvY2tTY3Jl
+		ZW6ABRACCV5mci5leGFtcGxlLmFwcNIXGBkaWCRjbGFzc2VzWiRjbGFzc25h
+		bWWiGhtdQkJTZWN0aW9uSW5mb1hOU09iamVjdNIXGB0eoh4bXxAVQkJTZWN0
+		aW9uSW5mb1NldHRpbmdz0SAhVHJvb3SAARIAAYagAAgAEQAbACQAKQAyAEQA
+		SwBRAFgAXwBpAH8AgQCDAIUAjACiALYAuAC6ALsAygDPANgA4wDmAPQA/QEC
+		AQUBHQEgASUBJwAAAAAAAAIBAAAAAAAAACMAAAAAAAAAAAAAAAAAAAEs
+		</data>
+	</dict>
+	<key>version</key>
+	<integer>2</integer>
+	<key>when</key>
+	<date>2026-09-23T20:00:00Z</date>
+</dict>
+</plist>

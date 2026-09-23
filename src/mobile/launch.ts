@@ -11,7 +11,7 @@ import { commaList, sleep } from '../core/text.ts';
 import { adCall, calls, sessionClose, sessionName, sessionNames, type Answer } from './agent.ts';
 import { applogStart } from './applog.ts';
 import { adb, adbShell, androidSelect, iosUdid, serial, sim, waitAndroidBoot, waitAndroidShell } from './device.ts';
-import { quiet, say, why } from './io.ts';
+import { quiet, say, trace, why } from './io.ts';
 import { bundleErrorSince, linesAfter, metroIsIsolated, metroLines, metroLog, metroNeed, metroPort, metroTag, metroUrl } from './metro.ts';
 import { appearance, textsize } from './settings.ts';
 import { hasExact, nodesOf, onDevMenu, onLauncher, redbox, redboxMessage } from './snap.ts';
@@ -147,6 +147,7 @@ export const iosLocaleOf = (lang: string): string => androidLocaleOf(lang).repla
 // a VIEW intent, the one way in: its launcher never reloads the last app by itself (a plain launch sat
 // on it for the ten seconds the old relaunch waited before handing the URL over).
 export async function handBundle(p: Platform, lang = ''): Promise<void> {
+  trace(`hand bundle ${p}`);
   launchState.handedAt = nowS();
   const bundle = config().get('MOBILE_BUNDLE');
   const port = metroPort();
@@ -161,6 +162,7 @@ export async function handBundle(p: Platform, lang = ''): Promise<void> {
     else await sim('launch', [bundle, '--initialUrl', url]);
   }
   recordMetro(p, port);
+  trace(`handed ${p}`);
 }
 
 // Start the app. In expo mode with a dev-client scheme, straight into this owner's Metro. Otherwise
@@ -210,6 +212,7 @@ export async function waitBundled(p: Platform, log: string, from: number, budget
   for (;;) {
     let last = '';
     for (const l of linesAfter(log, from).split('\n')) if (re.test(l)) last = l;
+    trace(`bundled? ${last || '(nothing yet)'}`);
     if (last.includes(`${tag} Bundled `)) {
       launchState.bundledAt = nowS();
       recordMetro(p, metroPort());
@@ -226,6 +229,7 @@ export async function waitBundled(p: Platform, log: string, from: number, budget
     // restart. Twice at most, then the budget decides.
     if (config().get('MOBILE_SCHEME') && handed < 2 && nowS() - launchState.handedAt >= 20 && nowS() - looked >= 5) {
       looked = nowS();
+      trace('launcher?');
       if ((p === 'android' || (await sessionOpen('ios'))) && (await mobileOnLauncher(p))) {
         await handBundle(p, launchState.lang);
         handed++;
@@ -284,6 +288,7 @@ export async function waitReady(p: Platform, budget: number): Promise<0 | 1 | 2>
       }
     }
     const nodes = nodesOf(a.data);
+    trace(`ready? ${a.ok ? `${nodes.length} nodes` : errorText(a)}`);
     if (dismissed < 3 && onDevMenu(nodes)) {
       dismissed++;
       // The intro has a button; the Android menu behind it is a bottom sheet with none, which the
@@ -305,6 +310,7 @@ export async function waitReady(p: Platform, budget: number): Promise<0 | 1 | 2>
       return 1;
     }
     if (handed < 2 && config().get('MOBILE_SCHEME') && nowS() - launchState.handedAt >= 20 && (await mobileOnLauncher(p, nodes))) {
+      trace(`on the launcher: ${nodes.map((n) => n.label ?? '').filter(Boolean).slice(0, 30).join(' | ')}`);
       handed++;
       const log = metroLog();
       const from = metroLines(log);

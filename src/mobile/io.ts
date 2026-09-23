@@ -84,3 +84,10 @@ export function lastLine(text: string): string {
   const l = lines(text);
   return l[l.length - 1] ?? '';
 }
+
+// VYSU_DEBUG=mobile: when each wait started and what it saw, on stderr, stamped from the start of
+// the command. Silent otherwise.
+const t0 = Date.now();
+export function trace(text: string): void {
+  if (process.env.VYSU_DEBUG === 'mobile') process.stderr.write(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${text}\n`);
+}

@@ -276,9 +276,11 @@ export function androidPermissionState(dump: string, perm: string): string {
 const permState = async (bundle: string, perm: string): Promise<string> => androidPermissionState(await adbShell(['dumpsys', 'package', bundle]), perm);
 
 // The line of a `pm` failure worth reading: the exception's own message, not « Exception occurred ».
+// A class name has capitals (java.lang.SecurityException): the bash engine's lower-case pattern never
+// matched one, and printed « Exception occurred while executing » instead.
 export function pmError(out: string): string {
   const ls = crlf(out).split('\n');
-  const line = ls.find((l) => /^[a-z.]+(Exception|Error): /.test(l)) ?? ls.find((l) => l !== '') ?? '';
+  const line = ls.find((l) => /^[A-Za-z.]+(Exception|Error): /.test(l)) ?? ls.find((l) => l !== '') ?? '';
   const at = line.indexOf(': ');
   return at >= 0 ? line.slice(at + 2) : line;
 }

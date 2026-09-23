@@ -1,0 +1,55 @@
+--- bundle error from 0
+Unable to resolve module ./missing (apps/mobile/src/a.ts) · bundled fine since
+--- bundle error from 13
+(none)
+--- filter plain
+iOS Bundled 765ms apps/mobile/index.js (1 module)
+ LOG  [boot Simulator iOS] fonts loaded +883ms
+ ERROR  [query] ["users","context"] [ApiError: Request failed with status code 401: GET https://api.prep.nidz.fr/api/v1/users/context]
+    at fetchQuery (http://localhost:8081/index.bundle:1:2)
+    at other (x)
+ ERROR  [query] ["users","context"] [ApiError: Request failed with status code 401: GET https://api.prep.nidz.fr/api/v1/users/context]
+ WARN  [RNScreens] tabBarMinimizeBehavior is supported for iOS >= 26
+ INFO  🌐 i18next is made possible by our own product, Locize — consider powering your project
+[1m iOS Bundling failed 1234ms apps/mobile/index.js (1 module)[0m
+ERROR  SyntaxError: /Users/x/proj/apps/mobile/app/(tabs)/index.tsx: Unexpected token (12:4)
+ LOG  [boot Simulator iOS] unrelated
+Unable to resolve module ./missing from "/Users/x/proj/apps/mobile/src/a.ts": the file does not exist
+iOS Bundled 812ms apps/mobile/index.js (1 module)
+2026-09-23 21:04:05.123 E  Nidz[123:abcd] [com.facebook.react.log:javascript] TypeError: undefined is not an object — éléments accentués qui dépassent la limite de deux cents octets pour vérifier la coupe au milieu dun caractère multi-octets éééééééééééééééééééééééééééééééééééééé
+09-23 21:04:05.123 E/ReactNativeJS( 1234): Error: boom
+09-23 21:04:06.123 E/ReactNativeJS( 1234): Error: boom
+--- filter errors
+ ERROR  [query] ["users","context"] [ApiError: Request failed with status code 401: GET https://api.prep.nidz.fr/api/v1/users/context] ×2
+    at fetchQuery (http://localhost:8081/index.bundle:1:2)
+ WARN  [RNScreens] tabBarMinimizeBehavior is supported for iOS >= 26
+[1m iOS Bundling failed 1234ms apps/mobile/index.js (1 module)[0m
+ERROR  SyntaxError: /Users/x/proj/apps/mobile/app/(tabs)/index.tsx: Unexpected token (12:4)
+Unable to resolve module ./missing from "/Users/x/proj/apps/mobile/src/a.ts": the file does not exist
+E TypeError: undefined is not an object — éléments accentués qui dépassent la limite de deux cents octets pour vérifier la coupe au milieu dun caractère multi-octets 
+E Error: boom ×2
+--- filter errors ignore
+ ERROR  [query] ["users","context"] [ApiError: Request failed with status code 401: GET https://api.prep.nidz.fr/api/v1/users/context] ×2
+    at fetchQuery (http://localhost:8081/index.bundle:1:2)
+ WARN  [RNScreens] tabBarMinimizeBehavior is supported for iOS >= 26
+[1m iOS Bundling failed 1234ms apps/mobile/index.js (1 module)[0m
+ERROR  SyntaxError: /Users/x/proj/apps/mobile/app/(tabs)/index.tsx: Unexpected token (12:4)
+Unable to resolve module ./missing from "/Users/x/proj/apps/mobile/src/a.ts": the file does not exist
+E TypeError: undefined is not an object — éléments accentués qui dépassent la limite de deux cents octets pour vérifier la coupe au milieu dun caractère multi-octets 
+E Error: boom ×2
+(3 lines ignored by VYSU_MLOG_IGNORE)
+--- filter plain ignore
+iOS Bundled 765ms apps/mobile/index.js (1 module)
+ ERROR  [query] ["users","context"] [ApiError: Request failed with status code 401: GET https://api.prep.nidz.fr/api/v1/users/context]
+    at fetchQuery (http://localhost:8081/index.bundle:1:2)
+    at other (x)
+ ERROR  [query] ["users","context"] [ApiError: Request failed with status code 401: GET https://api.prep.nidz.fr/api/v1/users/context]
+ WARN  [RNScreens] tabBarMinimizeBehavior is supported for iOS >= 26
+[1m iOS Bundling failed 1234ms apps/mobile/index.js (1 module)[0m
+ERROR  SyntaxError: /Users/x/proj/apps/mobile/app/(tabs)/index.tsx: Unexpected token (12:4)
+Unable to resolve module ./missing from "/Users/x/proj/apps/mobile/src/a.ts": the file does not exist
+iOS Bundled 812ms apps/mobile/index.js (1 module)
+2026-09-23 21:04:05.123 E  Nidz[123:abcd] [com.facebook.react.log:javascript] TypeError: undefined is not an object — éléments accentués qui dépassent la limite de deux cents octets pour vérifier la coupe au milieu dun caractère multi-octets éééééééééééééééééééééééééééééééééééééé
+09-23 21:04:05.123 E/ReactNativeJS( 1234): Error: boom
+09-23 21:04:06.123 E/ReactNativeJS( 1234): Error: boom
+(3 lines ignored by VYSU_MLOG_IGNORE)
