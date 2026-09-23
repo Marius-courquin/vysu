@@ -1,0 +1,22 @@
+{
+  "name": "vysu",
+  "private": true,
+  "type": "module",
+  "description": "Look at a real app the way a reviewer does, in tokens an agent can afford.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "sharp": "0.35.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.9.2",
+    "opentype.js": "^2.0.0",
+    "typescript": "7.0.2"
+  }
+}

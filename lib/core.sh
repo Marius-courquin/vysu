@@ -18,7 +18,7 @@ die() {
   kill -USR1 "$VYSU_PID" 2>/dev/null; exit 1
 }
 log() { echo "vysu: $*" >&2; }
-usage() { awk 'NR > 1 { if (substr($0, 1, 1) != "#") exit; print }' "$VYSU_ENGINE/bin/vysu"; }
+usage() { cat "$VYSU_ENGINE/src/usage.txt"; }
 slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | tr -s '-'; }
 deprecated() { echo "vysu: « $1 » is the old spelling — use « $2 » (it still works for now)" >&2; }
 

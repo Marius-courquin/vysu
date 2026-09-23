@@ -4,3 +4,5 @@ remotion/node_modules/
 remotion/out/
 remotion/public/takes/
 .DS_Store
+node_modules/
+.bench/
