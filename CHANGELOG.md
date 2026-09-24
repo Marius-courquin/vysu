@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — the TypeScript engine
+## 0.6.0 — 2026-09-24
 
 The engine is TypeScript now, run as it is by Node: it runs on Windows as well as macOS and Linux,
 and it stopped paying a bash fork per helper, a Python start-up per image and a Node start-up per
