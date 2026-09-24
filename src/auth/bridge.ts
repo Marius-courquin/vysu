@@ -126,5 +126,7 @@ export function bashConnector(file: string): AuthConnector {
     },
     mobileLogin: async (_v, platform, persona) => void (await must('auth_mobile_login', [platform, persona])),
     mobileLogout: async (_v, platform) => (await call(file, 'auth_mobile_logout', [platform], false)).code === 0,
+    // A connector without the function answers 127, which reads as « not signed in »: mlogin logs in.
+    mobileSignedIn: async (_v, platform) => (await call(file, 'auth_mobile_signed_in', [platform], false)).code === 0,
   };
 }

@@ -107,3 +107,9 @@ export async function mobileLogout(v, platform) {
   if (!(await v.mobPressIf(platform, opt(v, 'MENU_LABEL', 'Menu')))) return false;
   return (await v.mobWaitText(platform, out, 5000)) && (await v.mobPressIf(platform, out));
 }
+
+// Optional: someone is signed in on the screen as it stands, looked at without moving the app. With
+// vysu's record of the persona, `vysu mlogin` then skips a login the device already holds.
+export async function mobileSignedIn(v, platform) {
+  return v.mobWaitText(platform, opt(v, 'MENU_LABEL', 'Menu'), 1500);
+}

@@ -2,7 +2,9 @@
 import { rmSync } from 'node:fs';
 import { config } from '../core/ctx.ts';
 import { die, onCleanup } from '../core/errors.ts';
-import { lockTake, type Platform } from '../core/hold.ts';
+import { lockTake, platformLock, type Platform } from '../core/hold.ts';
+import { personaRequire } from '../core/personas.ts';
+import { mobileSessionOpen, mstateGet } from '../mobile/api.ts';
 import { abRaw, lastLine, restoreFile, sessionRunning, setAuthTestSession, webLockOf } from '../web/ab.ts';
 import { sleep } from '../core/text.ts';
 import { context, stepsOn } from './context.ts';
@@ -14,9 +16,23 @@ export async function login(persona: string, url: string): Promise<void> {
   await a.connector.webLogin(context(), persona, url);
 }
 
-export async function mlogin(platform: string, persona: string): Promise<void> {
+// A login costs one to three minutes (the identity provider's pages typed into a system web view),
+// and checkers asked, again and again, for the persona their device already held: when vysu's record
+// says it is that persona and the app, as it stands, shows someone signed in, there is nothing to do.
+// The record alone is not enough (the app's data cleared, a logout by hand); --force logs in anyway.
+// The device is locked before the record is read: another agent's login waited out behind the lock
+// would otherwise answer the look at the screen, for a record read before it began.
+export async function mlogin(platform: string, persona: string, force = false): Promise<void> {
   const a = await authLoad();
-  await a.connector.mobileLogin(context(), platform as Platform, persona);
+  const p = platform as Platform;
+  const { email } = personaRequire(persona);
+  const signedIn = a.connector.mobileSignedIn;
+  if (!force && signedIn) await platformLock(p);
+  if (!force && signedIn && mstateGet(p, 'persona') === persona && (await mobileSessionOpen(p)) && (await signedIn(context(), p))) {
+    console.log(`${p}: already logged in as ${persona} (${email}), left as it is (--force logs in again)`);
+    return;
+  }
+  await a.connector.mobileLogin(context(), p, persona);
 }
 
 // The API access token of a persona's session, or '' (undefined: the connector has none to give).

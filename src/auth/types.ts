@@ -69,4 +69,8 @@ export interface AuthConnector {
   mobileLogin(v: AuthContext, platform: Platform, persona: string): Promise<void>;
   // Optional: sign whoever is signed in out, for mlogin. True when it did.
   mobileLogout?(v: AuthContext, platform: Platform): Promise<boolean | void>;
+  // Optional: whether someone is signed in on the screen the app is on, looked at in a second or two
+  // without moving it (a control only a signed-in app draws). With vysu's record of the persona, it
+  // lets `mlogin` skip a login the device already holds.
+  mobileSignedIn?(v: AuthContext, platform: Platform): Promise<boolean>;
 }

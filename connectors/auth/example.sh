@@ -102,3 +102,9 @@ auth_mobile_logout() { # platform
     && mob_wait_text "$platform" "$out" 5000 >/dev/null 2>&1 \
     && mob_press_if "$platform" "$out" >/dev/null 2>&1
 }
+
+# Optional: exit 0 when someone is signed in on the screen as it stands (a look, not a press). With
+# vysu's record of the persona, `vysu mlogin` then skips a login the device already holds.
+auth_mobile_signed_in() { # platform
+  mob_wait_text "$1" "$(myapp_opt MENU_LABEL Menu)" 1500 >/dev/null 2>&1
+}

@@ -34,6 +34,7 @@ export async function webLogin(v, persona, url)     // the session is open on <u
 export async function webToken(v, persona)          // the access token, or undefined
 export async function mobileLogin(v, platform, persona)  // the app is installed; return with it logged in, on its home
 export async function mobileLogout(v, platform)     // optional: sign whoever is signed in out; true when it did
+export async function mobileSignedIn(v, platform)   // optional: someone is signed in on the screen as it stands
 ```
 
 ```bash
@@ -43,6 +44,7 @@ auth_web_login     <persona> <url>
 auth_web_token     <persona>           # print the access token, or nothing at all
 auth_mobile_login  <platform> <persona>
 auth_mobile_logout <platform>          # optional; `auth_mobile_logout() { : ; }` when the app has no way out
+auth_mobile_signed_in <platform>       # optional; exit 0 when someone is signed in on the screen as it stands
 ```
 
 A module may also export them as the properties of a default object.
@@ -69,6 +71,11 @@ What each receives, and what it must leave behind:
   closed, and a press there lands on whatever lies under them), confirm a dialog if the app asks, and
   when the way out is not on the screen the app was left on, `mobileRelaunch` and try again from its
   root.
+- **`mobileSignedIn`** is optional: whether someone is signed in on the screen the app is on, looked
+  at in a second or two without pressing, relaunching or waiting long (a control only the signed-in
+  app draws, such as the menu holding the logout). When vysu's record already names the persona asked
+  for and this answers true, `vysu mlogin` leaves the device as it is instead of logging in again
+  (`--force` logs in anyway). Without it, every `mlogin` runs `mobileLogin`.
 
 Failing is `v.die('<what was expected, and the option that names it>')` (bash: `die "…"`). It ends
 vysu with the message and gives every lock back — never `process.exit`, never a silent return.

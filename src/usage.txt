@@ -26,7 +26,10 @@
 #                                           `vysu down metro` hands the device back to the shared Metro
 #                                           (VYSU_METRO_PORT, 8081) on its next relaunch
 #   vysu ios|android <agent-device args…>   passthrough on the chosen simulator / emulator
-#   vysu mlogin ios|android <persona>       log the persona in inside the app (one install = one session)
+#   vysu mlogin ios|android <persona> [--force]   log the persona in inside the app (one install = one
+#                                           session); a device vysu recorded with that persona, whose app
+#                                           shows someone signed in, is left as it is (--force: log in anyway).
+#                                           A login takes one to three minutes: give the call a 5-minute timeout
 #   vysu mshot ios|android <name> [label] [--baseline <name>] [--no-prev]
 #              [--full [--step 150] [--max 12] [--top <pt>] [--bottom <pt>]]
 #                                           screenshot (1x, steady status bar) into the shots folder; --full scrolls

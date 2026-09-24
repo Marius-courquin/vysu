@@ -119,6 +119,9 @@ export const connector: AuthConnector = {
 
   mobileLogout: (v, platform) => logout(v, platform),
 
+  // The menu that holds the logout is drawn by the signed-in app only: the door has none.
+  mobileSignedIn: (v, platform) => v.mobWaitText(platform, opt(v, 'MENU_LABEL', 'Menu'), 1500),
+
   async mobileLogin(v, platform, persona) {
     const { email, password } = v.personaRequire(persona);
     const door = opt(v, 'DOOR_TEXT', 'Se connecter');
