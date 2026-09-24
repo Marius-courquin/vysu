@@ -21,7 +21,7 @@ const HINTS: Record<Need, Record<Os, string>> = {
     // The distributions ship an older Node than the engine needs: NodeSource's is the current one.
     apt: 'curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && sudo apt-get install -y nodejs',
     dnf: 'sudo dnf install nodejs',
-    linux: 'https://nodejs.org/en/download (>= 22.18)',
+    linux: 'https://nodejs.org/en/download (>= 22.6)',
     windows: 'winget install OpenJS.NodeJS.LTS',
   },
   ffmpeg: {

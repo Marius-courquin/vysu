@@ -11,7 +11,7 @@
 # What it does, in order:
 #   1. git clone https://github.com/Marius-courquin/vysu into $env:VYSU_INSTALL_DIR (default
 #      $HOME\vysu), or `git pull` when it is already there;
-#   2. checks node >= 22.18, which the engine runs on, and installs the engine's own dependencies in
+#   2. checks node >= 22.6, which the engine runs on, and installs the engine's own dependencies in
 #      its folder (`npm ci --omit=dev`: sharp, for sheets and diffs);
 #   3. adds <engine>\bin to your user PATH (the one every new terminal reads) and to this session's:
 #      `vysu` is bin\vysu.cmd;
@@ -77,16 +77,17 @@ function Install-Vysu {
     Say-Ok "engine: cloned into $Dir"
   }
 
-  # The engine is TypeScript that Node runs as it is (type stripping, 22.18 and later), on its own
+  # The engine is TypeScript that Node runs as it is (type stripping: 22.18 and later, 22.6 with a flag
+  # bin/vysu.mjs adds), on its own
   # node_modules: sharp, which every contact sheet and diff composes with.
   Say-Head 'node'
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Stop-Install "node is missing $Dash the engine runs on it (>= 22.18)" 'winget install OpenJS.NodeJS.LTS'
+    Stop-Install "node is missing $Dash the engine runs on it (>= 22.6)" 'winget install OpenJS.NodeJS.LTS'
   }
   $nodeVersion = (node --version)
   # No double quote inside: Windows PowerShell 5.1 does not escape them for a native command.
-  node -e 'const v = process.versions.node.split(''.'').map(Number); process.exit(v[0] > 22 || (v[0] === 22 && v[1] >= 18) ? 0 : 1)'
-  if ($LASTEXITCODE -ne 0) { Stop-Install "node $nodeVersion is below 22.18, which the engine needs" 'winget upgrade OpenJS.NodeJS.LTS' }
+  node -e 'const v = process.versions.node.split(''.'').map(Number); process.exit(v[0] > 22 || (v[0] === 22 && v[1] >= 6) ? 0 : 1)'
+  if ($LASTEXITCODE -ne 0) { Stop-Install "node $nodeVersion is below 22.6, which the engine needs" 'winget upgrade OpenJS.NodeJS.LTS' }
   Say-Ok "node: $nodeVersion"
   # npm.cmd, not npm: under a restricted execution policy, npm.ps1 is refused.
   Push-Location $Dir

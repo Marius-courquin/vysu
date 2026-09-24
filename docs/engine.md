@@ -1,6 +1,7 @@
 # The engine
 
-vysu is TypeScript that Node ≥ 22.18 runs as it is (type stripping, no build step). This page is for
+vysu is TypeScript that Node ≥ 22.6 runs as it is (type stripping, no build step; below 22.18
+`bin/vysu.mjs` adds the flag that turns it on). This page is for
 whoever changes it: where things live, the few APIs everything is built on, the contracts between
 the parts, and how a change is checked. What vysu does for its users is in the
 [README](../README.md), the design choices in [design.md](design.md), every config key in

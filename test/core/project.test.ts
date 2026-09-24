@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TS_FLAGS } from '../node-ts.ts';
 
 const cli = join(import.meta.dirname, '..', '..', 'src', 'cli.ts');
 const alive = (pid: number): boolean => {
@@ -27,7 +28,7 @@ test('a signal to vysu reaches the project command, and its status is the comman
     `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(pidFile)}, String(process.pid));\nsetTimeout(() => {}, 30000);\n`,
   );
   const env = { ...process.env, VYSU_STATE: join(dir, 'state'), VYSU_SHOTS: join(dir, 'shots') };
-  const vysu = spawn(process.execPath, [cli, 'sleeper'], { cwd: dir, env, stdio: 'ignore' });
+  const vysu = spawn(process.execPath, [...TS_FLAGS, cli, 'sleeper'], { cwd: dir, env, stdio: 'ignore' });
   const status = new Promise<number | null>((resolve) => vysu.on('close', (code) => resolve(code)));
   for (let i = 0; i < 100 && !existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 50));
   const pid = Number(readFileSync(pidFile, 'utf8'));

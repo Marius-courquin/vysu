@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TS_FLAGS } from '../node-ts.ts';
 
 const cli = join(import.meta.dirname, '..', '..', 'src', 'cli.ts');
 
@@ -14,7 +15,7 @@ test('persona add reads both answers from a pipe, and a closed stdin is an empty
   mkdirSync(join(dir, '.vysu'));
   writeFileSync(join(dir, '.vysu', 'config'), "VYSU_PROJECT='p'\n");
   const env = { ...process.env, VYSU_STATE: join(dir, 'state'), VYSU_SHOTS: join(dir, 'shots'), VYSU_NO_COLOR: '1' };
-  const add = (name: string, input: string) => spawnSync(process.execPath, [cli, 'persona', 'add', name], { cwd: dir, env, input, encoding: 'utf8' });
+  const add = (name: string, input: string) => spawnSync(process.execPath, [...TS_FLAGS, cli, 'persona', 'add', name], { cwd: dir, env, input, encoding: 'utf8' });
 
   let r = add('alice', 'a@b.c\nhunter2\n');
   assert.equal(r.status, 0, r.stderr);

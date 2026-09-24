@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TS_FLAGS } from '../node-ts.ts';
 import { pathToFileURL } from 'node:url';
 
 const CLI = pathToFileURL(join(import.meta.dirname, '..', '..', 'src', 'cli.ts')).href;
@@ -12,7 +13,7 @@ const CLI = pathToFileURL(join(import.meta.dirname, '..', '..', 'src', 'cli.ts')
 // vysu with process.platform set to another system: host.ts reads it once, when it loads.
 function vysuOn(platform: string, args: string[], env: NodeJS.ProcessEnv): { status: number | null; stderr: string } {
   const code = `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(platform)} }); await import(${JSON.stringify(CLI)});`;
-  const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', code, '--', '_', ...args], { env, encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync(process.execPath, [...TS_FLAGS, '--disable-warning=ExperimentalWarning', '--input-type=module', '-e', code, '--', '_', ...args], { env, encoding: 'utf8', timeout: 20000 });
   return { status: r.status, stderr: r.stderr };
 }
 

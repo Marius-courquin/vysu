@@ -5,7 +5,7 @@
   "description": "Look at a real app the way a reviewer does, in tokens an agent can afford.",
   "license": "MIT",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22.6"
   },
   "scripts": {
     "test": "node --test \"test/**/*.test.ts\"",

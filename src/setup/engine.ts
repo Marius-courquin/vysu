@@ -158,7 +158,8 @@ export async function toolsCheck(mode: 'install' | 'report'): Promise<void> {
 
 // --- what the engine runs on -------------------------------------------------------------------
 
-export const NODE_MIN = '22.18.0';
+// 22.18 and later run the engine as it is; from 22.6 bin/vysu.mjs runs it with the flag that strips types.
+export const NODE_MIN = '22.6.0';
 
 // The node the drivers run on. Under Node it is this very process; under bun it is whatever `node`
 // the PATH has, since agent-browser and agent-device need one.

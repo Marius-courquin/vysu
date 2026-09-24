@@ -24,7 +24,7 @@ before touching anything: the comments carry the reasons, and the reasons stay t
   replacing six calls) is kept as is.
 - **No behaviour change for Nidz.** Every `nv` command keeps its semantics under `vysu`. The
   non-regression is the two flows `web-tour` and `mobile-tour` plus a `walk` against prep.
-- **Small dependency surface.** Node ≥ 22.18, which runs the engine and `agent-browser` and
+- **Small dependency surface.** Node ≥ 22.6, which runs the engine and `agent-browser` and
   `agent-device`, and sharp (`npm ci --omit=dev` in the engine) for the images. Remotion is
   installed on first `vysu video`. No npm package for vysu itself: install is `git clone`,
   `npm ci` + PATH.
@@ -314,7 +314,7 @@ is written to the global file `~/.vysu/devices.env`, below the project config in
 
 `vysu setup` (machine-wide, idempotent, ~90 % of the onboarding):
 
-1. Node ≥ 22.18 and the engine's dependencies (prints the install line of the machine — brew, apt
+1. Node ≥ 22.6 and the engine's dependencies (prints the install line of the machine — brew, apt
    or dnf, winget — when missing);
 2. `agent-browser` and `agent-device` installed globally through npm, Chrome for Testing downloaded;
 3. Xcode: simulators present, iOS 18 runtime present or the `xcodebuild -downloadPlatform` line;
@@ -424,7 +424,7 @@ irm https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.ps1 | ie
 The cost of a tool like this is in its plumbing — a fork per config value, a `ps` per level of the
 owner walk, an interpreter's start-up per image helper, an `lsof` per port question — and in the
 systems it cannot run on. The engine is TypeScript that Node runs as it is (type stripping, Node ≥
-22.18, no build step), and keeps every observable behaviour from one version to the next: the same
+22.6, no build step), and keeps every observable behaviour from one version to the next: the same
 commands and options, the same lines on stdout and stderr, the same exit codes, the same files
 (shots folders, `meta.json`, `events.json`, verdicts, locks, claims, device choices, state files),
 so two versions installed side by side share one state folder and wait on each other's locks.

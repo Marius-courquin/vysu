@@ -1,7 +1,8 @@
-# The engine on the three systems it runs on, and on the two Node lines it supports (22 from 22.18,
-# which strips types without a flag, and 24). No device, no browser, no network beyond npm: the type
-# check, the unit tests, then the launcher and every command that needs neither (test/platform/smoke.ts),
-# then the installer of the platform against this very checkout.
+# The engine on the three systems it runs on, and on the two Node lines it supports: 22 (types
+# stripped without a flag from 22.18; from 22.6 bin/vysu.mjs adds the flag, checked with 22.12 on
+# Linux) and 24. No device, no browser, no network beyond npm: the type check, the unit tests, then the
+# launcher and every command that needs neither (test/platform/smoke.ts), then the installer of the
+# platform against this very checkout.
 name: ci
 
 on:
@@ -16,11 +17,18 @@ jobs:
   engine:
     name: ${{ matrix.os }} · node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
+    env:
+      NODE_OPTIONS: ${{ matrix.node_options }}
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
         node: [22, 24]
+        include:
+          - os: ubuntu-latest
+            node: 22.12
+            # Below 22.18 Node strips types only when asked: the test runner and the smoke script too.
+            node_options: --experimental-strip-types --disable-warning=ExperimentalWarning
     steps:
       - uses: actions/checkout@v5
 

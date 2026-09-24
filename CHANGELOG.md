@@ -7,14 +7,15 @@ and it stopped paying a bash fork per helper, a Python start-up per image and a 
 device call. Every command was compared with 0.5.1 on real shots folders, pages and devices; the
 lock, claim, device-choice and state files are unchanged, so both versions can run side by side.
 
-- **macOS, Linux and Windows.** Node ≥ 22.18 and `npm ci --omit=dev` in the engine folder (for
-  `sharp`), nothing to build: Node strips the types. No bash, Python, numpy, Pillow, perl, openssl,
+- **macOS, Linux and Windows.** Node ≥ 22.6 and `npm ci --omit=dev` in the engine folder (for
+  `sharp`), nothing to build: Node strips the types (from 22.18 by itself; below, `bin/vysu.mjs` runs
+  the engine with the flag that asks for it, so a project pinned to Node 22.12 keeps its vysu). No bash, Python, numpy, Pillow, perl, openssl,
   sqlite3, lsof or curl on the engine's paths any more. `install.ps1` installs on Windows (PowerShell
   5.1, `bin\vysu.cmd`); `install.sh` checks Node and installs the dependencies; `vysu update` re-runs
   `npm ci` when the lock file changed. Android works on the three systems, iOS on macOS (one line
   says so elsewhere). CI runs the engine on the three systems with Node 22 and 24.
   `VYSU_RUNTIME=bun` runs it on Bun instead. The first thing Node runs is `bin/vysu.mjs`: on a Node
-  older than 22.18 it says so in one line, and on a checkout without its dependencies — a machine
+  older than 22.6 it says so in one line, and on a checkout without its dependencies — a machine
   whose 0.5.1 updater just pulled this version — the first command installs them, once, while the
   others wait. `vysu update` installs beside the live `node_modules` and swaps it in, so the agents
   running vysu meanwhile keep theirs.

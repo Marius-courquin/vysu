@@ -9,7 +9,7 @@ video. It works the same for Claude Code, Codex, or a human in a terminal.
 
 ## Install
 
-One line on a Mac or a Linux box with `git` and Node ≥ 22.18:
+One line on a Mac or a Linux box with `git` and Node ≥ 22.6:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Marius-courquin/vysu/main/install.sh | bash
@@ -51,7 +51,7 @@ vysu setup                     # node tools, the browser, simulators, emulators
 Every line of the installer and of `vysu setup` says exactly one of three things — `✓` it is fine,
 with the version; `!` it is missing and optional, with what it unlocks and the command; `✗` it is
 missing and required, with the command — and `setup` ends on the counts, the exact commands to run
-and the two next steps. It exits 1 when something required is missing (Node ≥ 22.18, the engine's
+and the two next steps. It exits 1 when something required is missing (Node ≥ 22.6, the engine's
 dependencies, `agent-browser`, `agent-device`), 0 otherwise, so a script can branch on it. Every command it prints
 is the one for your machine: Homebrew on macOS, apt or dnf on Linux, winget on Windows.
 
@@ -300,7 +300,7 @@ project that has its own definition of done writes a thin overlay skill on top.
 
 ## Requirements
 
-- **Node ≥ 22.18**: the engine is TypeScript that Node runs as it is (type stripping, no build
+- **Node ≥ 22.6**: the engine is TypeScript that Node runs as it is (type stripping, no build
   step), and `agent-browser` and `agent-device` run on it too. The engine's own dependencies
   (`npm ci --omit=dev` in its folder, which the installers and `vysu update` run) are sharp and
   nothing else. `VYSU_RUNTIME=bun` runs the engine on Bun instead (`bin/vysu` and `bin\vysu.cmd`

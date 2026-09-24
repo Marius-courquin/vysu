@@ -10,7 +10,7 @@
 # What it does, in order:
 #   1. git clone https://github.com/Marius-courquin/vysu into $VYSU_INSTALL_DIR (default ~/vysu),
 #      or `git pull` when it is already there;
-#   2. checks node >= 22.18, which the engine runs on (TypeScript, no build step), and installs the
+#   2. checks node >= 22.6, which the engine runs on (TypeScript, no build step), and installs the
 #      engine's own dependencies in its folder (`npm ci --omit=dev`: sharp, for sheets and diffs);
 #   3. links bin/vysu into the first directory that is BOTH already on your PATH and writable
 #      (/opt/homebrew/bin, /usr/local/bin, ~/.local/bin, ~/bin) — no shell file is touched then;
@@ -61,7 +61,7 @@ hint() { # git | node | gh
   elif command -v dnf >/dev/null; then
     case "$1" in git) echo "sudo dnf install git";; node) echo "sudo dnf install nodejs";; gh) echo "sudo dnf install gh && gh auth login";; esac
   else
-    case "$1" in git) echo "https://git-scm.com/downloads";; node) echo "https://nodejs.org/en/download (>= 22.18)";; gh) echo "https://cli.github.com";; esac
+    case "$1" in git) echo "https://git-scm.com/downloads";; node) echo "https://nodejs.org/en/download (>= 22.6)";; gh) echo "https://cli.github.com";; esac
   fi
 }
 
@@ -87,12 +87,13 @@ else
 fi
 chmod +x "$DIR/bin/vysu"
 
-# 2. The engine is TypeScript that Node runs as it is (type stripping, 22.18 and later), on its own
+# 2. The engine is TypeScript that Node runs as it is (type stripping: 22.18 and later, 22.6 with a flag
+# bin/vysu.mjs adds), on its own
 # node_modules: sharp, which every contact sheet and diff composes with.
 head_ "node"
-command -v node >/dev/null || die "node is missing — the engine runs on it (>= 22.18)" "$(hint node)"
-node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 18) ? 0 : 1)' \
-  || die "node $(node --version) is below 22.18, which the engine needs" "$(hint node)"
+command -v node >/dev/null || die "node is missing — the engine runs on it (>= 22.6)" "$(hint node)"
+node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \
+  || die "node $(node --version) is below 22.6, which the engine needs" "$(hint node)"
 ok "node: $(node --version)"
 command -v npm >/dev/null || die "npm is missing — it comes with node" "$(hint node)"
 (cd "$DIR" && npm ci --omit=dev --no-audit --no-fund --loglevel=error >/dev/null) \

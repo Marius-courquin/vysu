@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TS_FLAGS } from '../node-ts.ts';
 import { deflateSync } from 'node:zlib';
 
 const CLI = join(import.meta.dirname, '..', '..', 'src', 'cli.ts');
@@ -124,7 +125,7 @@ esac
     vysu: (args, timeoutMs = 20000) =>
       new Promise((resolve) => {
         const t0 = Date.now();
-        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], { env, cwd: join(dir, 'proj'), stdio: ['ignore', 'pipe', 'pipe'] });
+        const child = spawn(process.execPath, [...TS_FLAGS, '--disable-warning=ExperimentalWarning', CLI, ...args], { env, cwd: join(dir, 'proj'), stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', (b: Buffer) => (stdout += b.toString()));
