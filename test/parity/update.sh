@@ -16,26 +16,28 @@ W="${1:?usage: test/parity/update.sh <scratch dir>}"
 mkdir -p "$W"
 W="$(cd "$W" && pwd -P)/update-$$"
 mkdir -p "$W"
-BRANCH="$(git -C "$ENGINE" rev-parse --abbrev-ref HEAD)"
+# A detached engine (a frozen checkout) gets a branch of its own in the scratch origin.
+BRANCH="$(git -C "$ENGINE" symbolic-ref -q --short HEAD || echo parity-update)"
 # This engine adds the dependency lines: when package-lock.json moved, it runs npm ci.
 KNOWN='^· engine: package-lock.json changed|^✓ engine: dependencies installed'
 FAILED=0
 
-git clone -q --bare "$ENGINE" "$W/origin.git"
-git clone -q --branch "$BRANCH" "$W/origin.git" "$W/work"
+git clone -q --bare "$ENGINE" "$W/origin.git" || exit 2
+git -C "$W/origin.git" fetch -q "$ENGINE" "+HEAD:refs/heads/$BRANCH" || exit 2
+git clone -q --branch "$BRANCH" "$W/origin.git" "$W/work" || exit 2
 (
-  cd "$W/work"
+  cd "$W/work" || exit 2
   git config user.email parity@example.com && git config user.name parity
   printf '9.9.9\n' > VERSION
   { printf '# Changelog\n\n## 9.9.9 — 2099-01-01\n\nA release that only exists in this test.\n\n'; tail -n +3 CHANGELOG.md; } > CHANGELOG.new && mv CHANGELOG.new CHANGELOG.md
   printf '\n' >> package-lock.json
   git commit -qam 'chore(release): 9.9.9' && git push -q origin "$BRANCH"
-)
+) || exit 2
 
 for mode in branch detached; do
   for side in ref ts; do
     E="$W/$mode/$side/engine"
-    git clone -q --branch "$BRANCH" "$W/origin.git" "$E"
+    git clone -q --branch "$BRANCH" "$W/origin.git" "$E" || exit 2
     if [ "$mode" = branch ]; then git -C "$E" reset -q --hard HEAD~1; else git -C "$E" checkout -q --detach HEAD~1; fi
     (cd "$E" && npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1)
     mkdir -p "$W/$mode/$side/proj"

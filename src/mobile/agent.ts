@@ -293,12 +293,51 @@ export async function sessionClose(name: string): Promise<void> {
   await adPlain(['close', '--session', name]);
 }
 
+// A snapshot as the CLI prints it. agent-device's client serialisation leaves out a label or an
+// identifier of 24 characters or more that repeats its nearest ancestor's, and marks the node
+// `inheritsLabel` / `inheritsIdentifier`; its library answers with the tree as the daemon holds it.
+// 0.5.1 read the CLI's shape, and so do the screen line and its delta: without this, the children of
+// a wrapper that names itself after a post carry that title into « screen: … » (an iOS feed card's
+// button and its full-screen scroller both said « Un logo pour le panneau de l'entrée ? »).
+type TreeNode = { index?: unknown; parentIndex?: unknown; label?: unknown; identifier?: unknown };
+export function asPrinted<T>(data: T): T {
+  const nodes = (data as { nodes?: unknown } | null)?.nodes;
+  if (!Array.isArray(nodes) || nodes.length === 0) return data;
+  const byIndex = new Map((nodes as TreeNode[]).map((n) => [n?.index, n]));
+  const ancestors = (n: TreeNode, pick: (a: TreeNode) => unknown): string | undefined => {
+    let a = typeof n.parentIndex === 'number' ? byIndex.get(n.parentIndex) : undefined;
+    while (a) {
+      const v = pick(a);
+      if (typeof v === 'string' && v.length > 0) return v;
+      a = typeof a.parentIndex === 'number' ? byIndex.get(a.parentIndex) : undefined;
+    }
+    return undefined;
+  };
+  const printed = (nodes as TreeNode[]).map((n) => {
+    if (!n || typeof n !== 'object') return n;
+    const label = typeof n.label === 'string' && n.label.length >= 24 && n.label === ancestors(n, (a) => a.label);
+    const id = typeof n.identifier === 'string' && n.identifier.length >= 24 && n.identifier === ancestors(n, (a) => a.identifier);
+    if (!label && !id) return n;
+    const o: Record<string, unknown> = { ...n };
+    if (label) {
+      delete o.label;
+      o.inheritsLabel = true;
+    }
+    if (id) {
+      delete o.identifier;
+      o.inheritsIdentifier = true;
+    }
+    return o;
+  });
+  return { ...(data as object), nodes: printed } as T;
+}
+
 // --- the calls vysu makes most -------------------------------------------------------------------
 
 export const calls = {
   snapshot: (o: { interactive?: boolean; forceFull?: boolean; timeoutMs?: number }): Call => ({
     cli: ['snapshot', ...(o.interactive ? ['-i'] : []), ...(o.forceFull ? ['--force-full'] : []), ...(o.timeoutMs ? ['--timeout', String(o.timeoutMs)] : [])],
-    lib: (c, b) => c.capture.snapshot!({ ...b, interactiveOnly: o.interactive || undefined, forceFull: o.forceFull || undefined, timeoutMs: o.timeoutMs }),
+    lib: async (c, b) => asPrinted(await c.capture.snapshot!({ ...b, interactiveOnly: o.interactive || undefined, forceFull: o.forceFull || undefined, timeoutMs: o.timeoutMs })),
   }),
   // A selector (`label="…"`, `text="…"`, `role="button" label="…"`), a ref, or a point.
   press: (target: string, o: { settle?: boolean } = {}): Call => ({

@@ -20,7 +20,7 @@ for d in $(cd "$shots" && ls -d */full-frames 2>/dev/null | cut -d/ -f1); do
   mkdir -p "$in/stitch/$d"; cp -p "$shots/$d"/full-frames/*.png "$in/stitch/$d/"
 done
 # A device-pixel capture is one at least 1000 px wide: the width is the PNG header's, bytes 16-19.
-first_raw="$(cd "$shots" && ls */android-*.png 2>/dev/null | while read -r f; do node -e 'process.exit(require("fs").readFileSync(process.argv[1]).readUInt32BE(16) >= 1000 ? 0 : 1)' "$shots/$f" && echo "$f"; done | head -12)"
+first_raw="$(cd "$shots" && ls */android-*.png 2>/dev/null | while read -r f; do node -e 'process.exit(require("fs").readFileSync(process.argv[1]).readUInt32BE(16) >= 1000 ? 0 : 1)' "$shots/$f" && echo "$f"; done | head -12)"  || true  # head closes the pipe early: SIGPIPE under pipefail
 for f in $first_raw; do cp -p "$shots/$f" "$in/raw/$(echo "$f" | tr / _)"; done
 for f in $(cd "$shots" && ls */*.png | grep -i -E 'login|email|auth' | head -40); do cp -p "$shots/$f" "$in/fields/$(echo "$f" | tr / _)"; done
 cp -p "$state"/.snap-*.json "$state"/.snap-*.json.keys "$in/snap/" 2>/dev/null || true
