@@ -19,9 +19,9 @@ import { adCall, calls } from './agent.ts';
 import { buildBplist, parseBplist, readPlistFile, Uid, type PDict, type PValue } from './bplist.ts';
 import { adb, adbShell, androidSdkLevel, androidSelect, iosUdid, mobileScale, sim } from './device.ts';
 import { lines, quiet, say, tell, why } from './io.ts';
-import { mobileKind, mobileLoadBundle, mobPressAny, mrelaunch } from './launch.ts';
+import { appRunning, appUp, mobileKind, mobileLoadBundle, mobPressAny, mrelaunch } from './launch.ts';
 import { mscreenLine } from './screen.ts';
-import { nodesOf, alertStarting, onLauncher, signature } from './snap.ts';
+import { nodesOf, alertStarting, signature } from './snap.ts';
 import { mstateGet, mstateSet } from './state.ts';
 import { mobileStep } from './steps.ts';
 import { adbPath, crlf, xcrun } from './tools.ts';
@@ -35,38 +35,9 @@ const isPlatform = (p: string): p is Platform => p === 'ios' || p === 'android';
 const isInt = (s: string | undefined): boolean => !!s && /^[0-9]+$/.test(s);
 const isNum = (s: string | undefined): boolean => !!s && s !== '.' && /^[0-9.]+$/.test(s) && !/\..*\./.test(s);
 
-// Is the app's process alive? iOS: launchd names an app « UIKitApplication:<id>[…] » and lists it with
-// a pid while it runs, « - » once it has exited. A permission change on either platform ends it.
-async function appRunning(p: Platform, bundle: string): Promise<boolean> {
-  if (p === 'android') return (await adbShell(['pidof', bundle])).trim() !== '';
-  await iosLock();
-  const list = (await xcrun(['simctl', 'spawn', await iosUdid(), 'launchctl', 'list'])).stdout;
-  return list.split('\n').some((l) => {
-    const f = l.trim().split(/\s+/);
-    return /^[0-9]+$/.test(f[0] ?? '') && (f[2] ?? '').startsWith(`UIKitApplication:${bundle}[`);
-  });
-}
-
 // --- mopen ---------------------------------------------------------------------------------------
 
 const snapNodes = async (p: Platform): Promise<ReturnType<typeof nodesOf>> => nodesOf((await adCall(p, calls.snapshot({ interactive: true }))).data);
-
-// Up = running AND past Expo's launcher. A cold deep link is the one that goes wrong: a dev-client not
-// yet handed its bundle opens on the launcher and keeps the link there (seen on both platforms with the
-// real app: a raw cold `am start -d` / `simctl openurl` parks it on « Development Build » for good), and
-// a second link lands there too. Android answers in one `dumpsys window` (the launcher and its error
-// page are both DevLauncher* activities); iOS needs a snapshot, the price of not handing a link to the
-// launcher. The error page (« There was a problem loading the project »: a bundle request that timed
-// out) is just as deaf to a link.
-async function appUp(p: Platform, bundle: string): Promise<boolean> {
-  if (!(await appRunning(p, bundle))) return false;
-  if (mobileKind() !== 'expo') return true;
-  if (p === 'android') {
-    const focus = (await adbShell(['dumpsys', 'window'])).split('\n').find((l) => l.includes('mCurrentFocus')) ?? '';
-    return !focus.includes('DevLauncher');
-  }
-  return !onLauncher(await snapNodes('ios'));
-}
 
 // A route is appended to VYSU_MOBILE_DEEPLINK (« myapp:/// » + « discussions/42 »); anything holding
 // « :// » is already a URL and goes as it is (an https universal link included).

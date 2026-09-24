@@ -51,14 +51,14 @@ the app reads normally.
 
 ```bash
 vysu claim ios --any                          # a free simulator, yours for the task (renewed on use)
-vysu up ios | android                         # Metro (shared, VYSU_METRO_PORT) + device; --build: native (5-10 min)
+vysu up ios | android                         # Metro (shared, VYSU_METRO_PORT) + device + the app on its bundle; --build: native (5-10 min)
 vysu mlogin ios alice                         # once per persona and install (the state persists)
 vysu mdo ios --shots s1 -- 'open notifications' 'wait idle' 'shot list' \
     'tap "Incidents" --wait "Récents"' 'expect no "Page introuvable"' 'shot incidents'
 vysu mwait ios "Welcome" --timeout 15         # or --gone, --idle: instead of any sleep
 vysu mtap ios "Help" --wait "FAQ"             # by label, then text, then "contains", settled
 vysu mshot ios <name> [label] [--full]        # 1x; the same label again says « vs previous: … »
-vysu mreload ios                              # this device's JS only, in place (4-12 s)
+vysu mreload ios                              # this device's JS only, in place (3-10 s)
 vysu mlog mark … vysu mlog --errors [--device]   # what the app logged since the mark, errors only
 vysu ios snapshot -i | press @e21~s4 --settle # the raw driver, when no verb above fits
 vysu release ios --reset
@@ -191,8 +191,11 @@ By default every session shares **one Metro** (`VYSU_METRO_PORT`, 8081) serving 
 an edit anywhere reloads every device, and a file that does not compile breaks every screen.
 `vysu mlog` then starts with `metro: bundle failed since the mark: <error> (<file>)` and `mrelaunch`
 stops in seconds with the same line instead of waiting for a bundle that will not come: the cause
-may be another session's edit. Judge a screen after `vysu mreload` (this device only, 4-12 s)
-rather than after whatever Fast Refresh last happened. `mrelaunch` prints its time
+may be another session's edit. Judge a screen after `vysu mreload` (this device only, 3-10 s)
+rather than after whatever Fast Refresh last happened. A reload the app does not start within 5 s,
+or that fetches no bundle within 10 s of starting, becomes a relaunch at once, and the line before
+it says why (`the page took the reload but the app never started it, relaunching instead`).
+`mrelaunch` prints its time
 (`relaunched in 13s (bundled after 8s)`), reopens a lost agent-device session and clears Expo's dev
 menu and its intro (`VYSU_MOBILE_DISMISS_LABELS`).
 
@@ -280,7 +283,8 @@ ran between which clip seconds, with the **point it touched** in points. From th
   `vysu adb shell input swipe …` (your emulator, under its lock), never a raw `adb`. The dev-launcher
   bubble can cover a tab bar item.
 - A recreated simulator (new UDID, different density) means `vysu cache clear`.
-- "Development Build" on screen means the dev-client is waiting for the Metro URL (handled by
-  `mlogin`); "Cannot find native module" means a stale APK / app -> `vysu up <platform> --build`;
+- "Development Build" on screen means the dev-client is waiting for the Metro URL, which a bare
+  `vysu <platform> open` never gives it: `vysu mrelaunch <platform>` (what `up`, `mdo`, `mopen` and
+  `mlogin` start the app with) lands on the bundle directly; "Cannot find native module" means a stale APK / app -> `vysu up <platform> --build`;
   an `UnableToResolveError` on a file that exists means Metro is older than the file ->
   `vysu down metro` then `vysu up <platform>`.

@@ -14,7 +14,7 @@ import { sheet } from '../img/sheet.ts';
 import { adCall, calls } from './agent.ts';
 import { androidSelect, androidSerial, forgetSerial } from './device.ts';
 import { Captured, captured, quiet, say, tell } from './io.ts';
-import { mobileApp, mrelaunch, sessionOpen } from './launch.ts';
+import { appUp, mobileApp, mobileKind, mrelaunch, relaunch, sessionOpen } from './launch.ts';
 import { mscreen, mscreenReset, snapFile, snapState } from './screen.ts';
 import { mobileStep, mwaitGone, mwaitIdle, mwaitText, shotRun } from './steps.ts';
 import { mstateGet } from './state.ts';
@@ -51,9 +51,19 @@ async function mdoReady(p: Platform, device: string): Promise<void> {
   } else if (!(await androidSerial())) die(`android: ${device} is not running`, `vysu up android --avd ${device}`);
 }
 // Reading the tree needs an agent-device session on that device; the first one on a simulator costs
-// the runner's build (up to a minute), which is why it is only opened when missing.
+// the runner's build (up to a minute), which is why it is only opened when missing. Opening it starts
+// a stopped app, and agent-device starts a dev-client without the Metro URL: on Expo's launcher, where
+// Android stays (an `mdo` right after `vysu up android` read « Fetch development servers » for its
+// whole 60 s wait, 2026-09-24). A dev-client that is not up is started onto its bundle instead, which
+// opens the session on the way.
 async function mdoSession(p: Platform): Promise<void> {
   if (await sessionOpen(p)) return;
+  const bundle = config().get('MOBILE_BUNDLE');
+  if (mobileKind() === 'expo' && config().get('MOBILE_SCHEME') && bundle && !(await appUp(p, bundle))) {
+    tell(`vysu: ${bundle} is not up on ${devices.of(p)}: starting it on this owner's Metro`);
+    await quiet(() => relaunch(p, { who: 'vysu mdo' }));
+    if (await sessionOpen(p)) return;
+  }
   tell(`vysu: opening an agent-device session on ${devices.of(p)} (the first one takes up to a minute)`);
   if (!(await adCall(p, calls.open(mobileApp(p), { foreground: true }))).ok) {
     die(`${p}: no agent-device session on ${devices.of(p)}`, `vysu ${p} open "${mobileApp(p)}" --foreground`);

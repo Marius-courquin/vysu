@@ -48,6 +48,9 @@ export async function run(args: string[]): Promise<number> {
     case 'mobile_app':
       out(mobile.mobileApp(platform(a)));
       return 0;
+    case 'mobile_relaunch':
+      await mobile.mobileRelaunch(platform(a));
+      return 0;
     case 'mobile_load_bundle':
       await mobile.mobileLoadBundle(platform(a));
       return 0;

@@ -99,10 +99,7 @@ export const connector: AuthConnector = {
     const app = v.mobileApp(platform);
     if (!app) v.die('mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set');
     await v.mobilePrepare(platform);
-    if ((await v.mobTry(platform, 'open', app, '--foreground', '--relaunch', '--timeout', '600000')).code !== 0) {
-      v.die(`${platform}: cannot open the app (vysu up ${platform} --build?)`);
-    }
-    await v.mobileLoadBundle(platform);
+    await v.mobileRelaunch(platform);
     v.step(`open ${app}`);
     await v.mobPressAny(platform, 'Autoriser,Allow'); // push permission, asked at first boot
     if ((await v.mobTry(platform, 'wait', 'role="textfield"', '20000')).code !== 0) v.die(`${platform}: no text field on the login screen`);

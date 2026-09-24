@@ -13,7 +13,8 @@
 #                                           down metro: this owner's isolated Metro (else the shared one, only
 #                                           when this owner started it); down applog: the log tails, JS ones included
 #   vysu up ios|android [--build] [--reinstall] [--avd <name>] [--device <name>]   the device, and what runs in
-#                                           front of the app: Metro in expo mode, nothing in native mode
+#                                           front of the app: Metro in expo mode, then the app started straight onto
+#                                           it (left as it is when it already runs there), nothing in native mode
 #                                           (VYSU_MOBILE_KIND) where `up` installs the app from VYSU_IOS_APP_PATH /
 #                                           VYSU_ANDROID_APK and tails its log; --build runs VYSU_MOBILE_BUILD_IOS /
 #                                           _ANDROID in the background; --device / --avd are remembered for this owner
@@ -58,7 +59,9 @@
 #                                           wait for the screen (dev menu and launcher cleared on the way, the
 #                                           agent-device session reopened when it is gone)
 #   vysu mreload ios|android                this device's JS only, reloaded in place (not every app on the Metro);
-#                                           falls back to mrelaunch when the device has no inspector page of its own
+#                                           falls back to mrelaunch, saying why, when the device has no inspector
+#                                           page of its own, or its app does not start the reload within 5 s or
+#                                           fetch no bundle within 10 s of starting it
 #   vysu mflow ios|android <file|-> [--shots <name>] [--keep-going]   the steps of a file, as `mdo` runs
 #                                           them (tap t:<i18n.key> too) → ✓ / ✗ lines + contact sheet
 #   vysu mrec ios|android <name> [--fps 60] [--crop x,y,w,h] [--strict] -- "<step>" …   record the screen while the steps run →

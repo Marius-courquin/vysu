@@ -10,8 +10,9 @@
 //   VYSU_AUTH0_DOOR_TEXT          [Se connecter]                  the mobile door screen's text
 //   VYSU_AUTH0_HOME_TEXT          [Bienvenue]                     the text that proves the login
 //   VYSU_AUTH0_PASSWORD_TEXT      [mot de passe]                  the password page's own text
-//   VYSU_AUTH0_MENU_LABEL         [Menu]                          mobile: the side menu
+//   VYSU_AUTH0_MENU_LABEL         [Menu]                          mobile: the control that opens the menu holding the logout
 //   VYSU_AUTH0_LOGOUT_LABEL       [Se déconnecter]                mobile: logging another persona out
+//   VYSU_AUTH0_LOGOUT_CONFIRM_LABELS [the logout label]           mobile: the button of a dialog confirming the logout
 //   VYSU_AUTH0_AFTER_LOGIN_LABELS [Entrer directement,Retour à l'accueil]   buttons pressed if they show up
 import type { AuthConnector, AuthContext } from '../../auth/types.ts';
 import { exit } from '../../core/errors.ts';
@@ -32,10 +33,52 @@ async function firstField(v: AuthContext, platform: Platform): Promise<[string, 
   return [String(Math.floor(box.x + Math.floor(box.w / 2))), String(Math.floor(box.y + Math.floor(box.h / 2)))];
 }
 
+// The buttons on screen that carry one of these labels (as the selectors read them, whatever the case:
+// Nidz's gate screens draw « SE DÉCONNECTER »), each by its ref in this snapshot and its box.
+export function buttonsLabelled(snapshotJson: string, labels: string[]): Array<{ ref: string; box: string }> {
+  let nodes: Array<{ ref?: string; type?: string; label?: string; rect?: unknown }> = [];
+  try {
+    const d = JSON.parse(snapshotJson) as { data?: { nodes?: typeof nodes } };
+    nodes = d.data?.nodes ?? [];
+  } catch {
+    return [];
+  }
+  const want = labels.map((l) => l.toLocaleLowerCase('fr'));
+  return nodes
+    .filter((n) => /button/i.test((n.type ?? '').split('.').pop() ?? '') && want.includes((n.label ?? '').toLocaleLowerCase('fr')) && n.ref)
+    .map((n) => ({ ref: n.ref!, box: JSON.stringify(n.rect ?? null) }));
+}
+
+// One try at the logout from the screen the app is on. The app's way out sits behind its menu (Nidz V2:
+// the avatar button « Menu » of the tab bar, then the drawer's « Se déconnecter », no dialog) or, on a
+// screen with no menu (an access request, an address to verify), on the screen itself, often behind a
+// dialog that confirms it with a button of the same label. The menu is opened first whenever there is
+// one: on Android the drawer's rows stay in the tree while it is closed (a 1 px sliver at x=0 that
+// reads as hittable), and a logout pressed there taps the edge of whatever lies under it.
+async function logoutHere(v: AuthContext, platform: Platform): Promise<boolean> {
+  const door = opt(v, 'DOOR_TEXT', 'Se connecter');
+  const out = opt(v, 'LOGOUT_LABEL', 'Se déconnecter');
+  const confirm = v.labels(opt(v, 'LOGOUT_CONFIRM_LABELS', out));
+  if ((await v.mobPressIf(platform, opt(v, 'MENU_LABEL', 'Menu'))) && !(await v.mobWaitText(platform, out, 5000))) return false;
+  // Which buttons already carry a confirm label: the dialog's is the one that was not there. Its place
+  // in the tree says nothing (iOS lists the dialog's window before the screen under it, so the last
+  // match was the gate's own button again), and both read as hittable.
+  const before = new Set(buttonsLabelled((await v.mobTry(platform, 'snapshot', '-i', '--json')).stdout, confirm).map((b) => b.box));
+  if (!(await v.mobPressIf(platform, out))) return false;
+  if (await v.mobWaitText(platform, door, 6000)) return true;
+  const fresh = buttonsLabelled((await v.mobTry(platform, 'snapshot', '-i', '--json')).stdout, confirm).find((b) => !before.has(b.box));
+  if (fresh) await v.mobTry(platform, 'press', `@${fresh.ref}`, '--settle');
+  return v.mobWaitText(platform, door, 15000);
+}
+
+// The keychain / keystore outlives a reinstall, so another persona may still be signed in. Tried where
+// the app is, then once more from a cold start: whatever screen, sheet or image viewer the app was left
+// on (a viewer over the tab bar once hid « Menu » from the whole login), a relaunch is back on its
+// root, where the menu is.
 async function logout(v: AuthContext, platform: Platform): Promise<boolean> {
-  // The keychain / keystore outlives a reinstall, so another persona may still be signed in: side
-  // menu → logout.
-  return (await v.mobPressIf(platform, opt(v, 'MENU_LABEL', 'Menu'))) && (await v.mobPressIf(platform, opt(v, 'LOGOUT_LABEL', 'Se déconnecter')));
+  if (await logoutHere(v, platform)) return true;
+  await v.mobileRelaunch(platform);
+  return logoutHere(v, platform);
 }
 
 export const connector: AuthConnector = {
@@ -86,17 +129,15 @@ export const connector: AuthConnector = {
     if (!app) v.die('mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set');
 
     await v.mobilePrepare(platform);
-    // The first open on a new simulator runtime builds agent-device's XCTest runner: give it room.
-    if ((await v.mobTry(platform, 'open', app, '--foreground', '--relaunch', '--timeout', '600000')).code !== 0) {
-      v.die(`${platform}: cannot open the dev-client (vysu up ${platform} --build?)`);
-    }
-    await v.mobileLoadBundle(platform);
+    // Straight onto the bundle, on the app's root, with Expo's dev menu and its intro cleared on the
+    // way (only while their own texts show). The dismissal this connector used to press blind,
+    // « Close,Fermer » then « Continue,Continuer », found the app's own « Fermer »: the full-screen
+    // backdrop of Nidz's closed drawer, pressed at its centre, opened the post under it in an image
+    // viewer that then hid « Menu » from the logout (iOS 18 and API 30, 2026-09-24).
+    await v.mobileRelaunch(platform);
     await v.mobPressAny(platform, 'Autoriser,Allow'); // push permission, asked at first boot
-    await v.mobPressAny(platform, 'Close,Fermer'); // the dev menu, when it opens on top of the door
-    await v.mobPressAny(platform, 'Continue,Continuer'); // its first-launch intro on a fresh install
-    if (!(await v.mobWaitText(platform, door, 8000))) {
-      await logout(v, platform);
-      if (!(await v.mobWaitText(platform, door, 15000))) v.die(`${platform}: not on the door screen and no way to log out from here`);
+    if (!(await v.mobWaitText(platform, door, 8000)) && !(await logout(v, platform))) {
+      v.die(`${platform}: not on the door screen and no way to log out from here`);
     }
     if (!(await v.mobPressIf(platform, door))) await v.mob(platform, 'press', `text="${door}"`, '--settle');
     await v.mobPressAny(platform, 'Continuer,Continue'); // iOS consent: « … wants to use auth0.com to sign in »

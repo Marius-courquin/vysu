@@ -51,6 +51,10 @@ export async function mobFields(platform: Platform): Promise<string> {
 export function mobileApp(platform: Platform): string {
   return launch.mobileApp(platform);
 }
+// The app killed and started straight onto its bundle, its first screen up and its session open.
+export async function mobileRelaunch(platform: Platform): Promise<void> {
+  return launch.mobileRelaunch(platform);
+}
 // The dev-client hand-off: the app on its JS bundle, not on the launcher.
 export async function mobileLoadBundle(platform: Platform): Promise<void> {
   return launch.mobileLoadBundle(platform);

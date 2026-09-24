@@ -56,6 +56,7 @@ export function context(): AuthContext {
     mobWaitText: (platform, text, ms = 8000) => mobile.mobWaitText(platform, text, ms),
     mobFields: async (platform: Platform) => parseBoxes(await mobile.mobFields(platform)),
     mobileApp: (platform) => mobile.mobileApp(platform),
+    mobileRelaunch: (platform) => mobile.mobileRelaunch(platform),
     mobileLoadBundle: (platform) => mobile.mobileLoadBundle(platform),
     mobilePrepare: (platform) => mobile.mobilePrepare(platform),
     mstateSet: (platform, key, value) => mobile.mstateSet(platform, key, value),

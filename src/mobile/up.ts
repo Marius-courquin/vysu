@@ -14,9 +14,10 @@ import { sleep } from '../core/text.ts';
 import { applogStart, applogStop } from './applog.ts';
 import { adb, adbShell, androidSerial, forgetSerial, iosFreezeStatusBar, iosUdid, serial, waitAndroidBoot, waitAndroidSerial, waitAndroidShell } from './device.ts';
 import { say } from './io.ts';
-import { mobileKind, mrelaunch, quietDevMenu } from './launch.ts';
+import { appUp, mobileApp, mobileKind, mrelaunch, quietDevMenu, relaunch } from './launch.ts';
 import { metroDown, metroIsIsolated, metroIsolatedUp, metroNeed, metroPort, metroSharedUp, worktreeMobileDir } from './metro.ts';
 import { startEmulator } from './pool.ts';
+import { mstateGet } from './state.ts';
 import { crlf, xcrun } from './tools.ts';
 
 // What `up <platform> --build` runs. A native project names it (`xcodebuild …`, `./gradlew …`); an
@@ -160,6 +161,7 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
   }
   const port = metroPort();
   const artifact = appArtifact(p, mdir);
+  let launch = false;
   if (p === 'android') {
     await androidLock();
     const avd = devices.android;
@@ -191,8 +193,10 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
       else say(`android: no dev-client on ${avd} (vysu up android --build)`);
     } else if (kind === 'native') say(`android: ${bundle} already installed on ${avd}`);
     if (kind === 'expo') {
-      if (await installed('android', bundle)) await quietDevMenu('android', bundle);
-      say(`android: Metro on ${port}, ${avd} booted on ${serial.value} → vysu android open ${bundle} --foreground`);
+      const has = await installed('android', bundle);
+      if (has) await quietDevMenu('android', bundle);
+      launch = has && !!config().get('MOBILE_SCHEME');
+      say(`android: Metro on ${port}, ${avd} booted on ${serial.value}${launch ? '' : ` → vysu android open ${bundle} --foreground`}`);
     } else {
       await applogStart('android');
       say(`android: ${avd} booted on ${serial.value} → vysu android open ${bundle} --foreground`);
@@ -212,8 +216,10 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
       else say(`ios: no dev-client on ${dev} (vysu up ios --build)`);
     } else if (kind === 'native') say(`ios: ${bundle} already installed on ${dev}`);
     if (kind === 'expo') {
-      if (await installed('ios', bundle)) await quietDevMenu('ios', bundle);
-      say(`ios: Metro on ${port}, ${dev} booted → vysu ios open "${config().get('IOS_APP')}" --foreground`);
+      const has = await installed('ios', bundle);
+      if (has) await quietDevMenu('ios', bundle);
+      launch = has && !!config().get('MOBILE_SCHEME');
+      say(`ios: Metro on ${port}, ${dev} booted${launch ? '' : ` → vysu ios open "${config().get('IOS_APP')}" --foreground`}`);
     } else {
       await applogStart('ios');
       say(`ios: ${dev} booted → vysu ios open "${config().get('IOS_APP')}" --foreground`);
@@ -222,6 +228,13 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
   // The device is pointed at the isolated Metro now, and proves it: the relaunch waits for that
   // Metro's own « Bundled » line.
   if (isolated) await mrelaunch(p, []);
+  else if (launch) {
+    // The app, started onto this owner's Metro, unless it already runs there past the launcher. The
+    // hint this line replaced (`vysu <platform> open … --foreground`) started a dev-client without the
+    // Metro URL: Expo's launcher, which Android never leaves by itself.
+    if ((await appUp(p, bundle)) && mstateGet(p, 'metro') === `localhost:${port}`) say(`${p}: ${mobileApp(p)} already up on :${port}`);
+    else say(await relaunch(p, { who: `vysu up ${p}` }));
+  }
 }
 
 // `vysu down metro`: this owner's isolated Metro, or the shared one when this owner started it.

@@ -63,9 +63,9 @@ auth_mobile_login() { # platform persona
   persona_require "$persona"
   local app; app="$(mobile_app "$platform")"
   [ -n "$app" ] || die "mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set"
-  mob "$platform" open "$app" --foreground --relaunch --timeout 600000 >/dev/null 2>&1 \
-    || die "$platform: cannot open the app (vysu up $platform --build?)"
-  mobile_load_bundle "$platform"   # a fresh dev-client sits on Expo's launcher until it is handed the url
+  # Killed and started again straight onto its bundle, on its root screen, whatever it was left on;
+  # vysu ends here, with the reason, when the app cannot start.
+  mobile_relaunch "$platform"
   step "open $app"
 
   # A system dialog that may or may not be there, in whatever language the device is in.
@@ -95,7 +95,10 @@ auth_mobile_login() { # platform persona
 
 # Optional: `mlogin` calls it when another persona is signed in. `{ : ; }` when the app has no way out.
 auth_mobile_logout() { # platform
-  local platform="$1"
+  local platform="$1" out; out="$(myapp_opt LOGOUT_LABEL 'Se déconnecter')"
+  # The menu first, then its logout row once it shows: a row pressed while its menu is still closed
+  # (or opening) taps whatever lies under it.
   mob_press_if "$platform" "$(myapp_opt MENU_LABEL Menu)" >/dev/null 2>&1 \
-    && mob_press_if "$platform" "$(myapp_opt LOGOUT_LABEL 'Se déconnecter')" >/dev/null 2>&1
+    && mob_wait_text "$platform" "$out" 5000 >/dev/null 2>&1 \
+    && mob_press_if "$platform" "$out" >/dev/null 2>&1
 }

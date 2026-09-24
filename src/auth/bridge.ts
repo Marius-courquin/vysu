@@ -35,6 +35,7 @@ mob_press_all() { _vysu mob_press_all "$@"; }
 mob_wait_text() { _vysu mob_wait_text "$@"; }
 mob_fields() { _vysu mob_fields "$@"; }
 mobile_app() { _vysu mobile_app "$@"; }
+mobile_relaunch() { _vysu mobile_relaunch "$@"; }
 mobile_load_bundle() { _vysu mobile_load_bundle "$@"; }
 mstate_set() { _vysu mstate_set "$@"; }
 persona_var() { _vysu persona_var "$@"; }

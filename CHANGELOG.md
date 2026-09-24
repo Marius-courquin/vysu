@@ -59,6 +59,35 @@ lock, claim, device-choice and state files are unchanged, so both versions can r
   taps meant for what lay under it (`tap Notifications` opened the dev menu). A shake still opens
   the menu.
 - `VYSU_DEBUG=mobile` traces what a relaunch waited for.
+- **`mreload` knows within seconds whether the reload landed.** The page's acknowledgement proved
+  nothing (the device answers before it reloads), so an app that never fetched its bundle cost the
+  whole 60 s before anything happened. The reload now watches its own device's JS context through
+  the inspector: a reload the app does not start within 5 s, that fetches no bundle within 10 s of
+  starting, or whose app leaves Metro half way (killed, crashed) becomes a relaunch at once, with a
+  line that says which, instead of ending on « Metro never served the … bundle in 60s ». On Android
+  it puts `adb reverse` back first: an adbd restart since the launch had sent the reload to the
+  dev-launcher's « Unable to load script » page (18 s with the hand-off, 5 s now). A reload that
+  goes well takes what it took: 3-4 s on the iOS 18 simulator, 5-6 s on the API 30 emulator.
+- **Every start of the app lands on its bundle.** agent-device's `open` starts a dev-client without
+  the Metro URL, on Expo's launcher, which Android never leaves by itself. `up` now starts the app
+  straight onto this owner's Metro (and leaves it alone when it already runs there) instead of
+  printing `→ vysu <platform> open …`; `mdo` does the same when it has to open a session on an app
+  that is not up (it used to wait out its step on « Fetch development servers »: 62 s and a failed
+  step on the API 30 emulator, 11 s to the app now); the auth connectors start a login with the new
+  primitive `mobileRelaunch` (`mobile_relaunch` in bash) instead of `open --relaunch` and a hand-off
+  (the bundle 1.5 s sooner, one launch instead of two). A launch the system refuses (the app not
+  installed) ends the relaunch at once with the reason, where it used to wait three minutes for
+  Metro.
+- **`mlogin` switches persona again** (auth0). It pressed « Close,Fermer » and « Continue,Continuer »
+  blind to clear Expo's dev menu; « Fermer » is also the accessible name of the full-screen backdrop
+  of the app's closed drawer, pressed at its centre: a post's image viewer opened over the tab bar,
+  and the logout died on « not on the door screen and no way to log out from here » (iOS 18 and
+  API 30). The relaunch clears the dev menu under its own guard now. The logout opens the menu,
+  presses its row once it shows (on Android the rows sit in the tree while the drawer is closed),
+  confirms a dialog by its new button (`VYSU_AUTH0_LOGOUT_CONFIRM_LABELS`, the logout label by
+  default), and when the way out is not on the screen the app was left on, tries once more from a
+  cold start. Verified both ways on both platforms, from a pushed screen and from Nidz's pending
+  access request with its confirmation dialog.
 
 ## 0.5.1 — 2026-09-23
 

@@ -4,7 +4,7 @@
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
-import { iosLock, owner, type Platform } from '../core/hold.ts';
+import { devices, iosLock, owner, type Platform } from '../core/hold.ts';
 import { langCheck } from '../core/i18n.ts';
 import { run } from '../core/proc.ts';
 import { commaList, sleep } from '../core/text.ts';
@@ -50,9 +50,9 @@ export const SNAPSHOT_TIMEOUT = 15000;
 // The session a snapshot needs, reopened quietly when it is gone (a daemon restart, a `close`): agents
 // used to re-run `open --foreground` by hand after every relaunch. `open` without --relaunch only
 // brings the running app forward; the first one on a new runtime builds agent-device's runner.
-export async function sessionEnsure(p: Platform): Promise<boolean> {
+export async function sessionEnsure(p: Platform, timeoutMs = openTimeout(p)): Promise<boolean> {
   if (await sessionOpen(p)) return true;
-  return (await adCall(p, calls.open(mobileApp(p), { timeoutMs: openTimeout(p) }))).ok;
+  return (await adCall(p, calls.open(mobileApp(p), { timeoutMs }))).ok;
 }
 
 const errorText = (a: Answer): string => `${a.error.code ?? ''}: ${a.error.message ?? ''} ${JSON.stringify(a.error.details ?? {})}`;
@@ -161,31 +161,37 @@ export const iosLocaleOf = (lang: string): string => androidLocaleOf(lang).repla
 // (expo-dev-launcher's initialUrlFromProcessInfo), which also spares the « Open in … ? » confirmation
 // iOS 18 puts in front of a custom-scheme URL sent by simctl. Android takes the dev-client deep link as
 // a VIEW intent, the one way in: its launcher never reloads the last app by itself (a plain launch sat
-// on it for the ten seconds the old relaunch waited before handing the URL over).
-export async function handBundle(p: Platform, lang = ''): Promise<void> {
+// on it for the ten seconds the old relaunch waited before handing the URL over). False when the
+// system refused the launch (the app is not installed, or declares no such scheme): `am start` says
+// so on an « Error: » line and still exits 0, `simctl launch` exits 4.
+export async function handBundle(p: Platform, lang = ''): Promise<boolean> {
   trace(`hand bundle ${p}`);
   launchState.handedAt = nowS();
   const bundle = config().get('MOBILE_BUNDLE');
   const port = metroPort();
   const url = metroUrl(port);
+  let ok: boolean;
   if (p === 'android') {
     await adb(['reverse', `tcp:${port}`, `tcp:${port}`]);
     const enc = url.replaceAll(':', '%3A').replaceAll('/', '%2F');
-    await adb(['shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', `${config().get('MOBILE_SCHEME')}://expo-development-client/?url=${enc}`, bundle]);
+    const r = await adb(['shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', `${config().get('MOBILE_SCHEME')}://expo-development-client/?url=${enc}`, bundle]);
+    ok = !/^Error/m.test(crlf(`${r.stdout}${r.stderr}`));
   } else {
     await sim('terminate', [bundle]);
-    if (lang) await sim('launch', [bundle, '--initialUrl', url, '-AppleLanguages', `(${lang})`, '-AppleLocale', iosLocaleOf(lang)]);
-    else await sim('launch', [bundle, '--initialUrl', url]);
+    if (lang) ok = (await sim('launch', [bundle, '--initialUrl', url, '-AppleLanguages', `(${lang})`, '-AppleLocale', iosLocaleOf(lang)])).code === 0;
+    else ok = (await sim('launch', [bundle, '--initialUrl', url])).code === 0;
   }
-  recordMetro(p, port);
-  trace(`handed ${p}`);
+  if (ok) recordMetro(p, port);
+  trace(`handed ${p}${ok ? '' : ': the launch was refused'}`);
+  return ok;
 }
 
 // Start the app. In expo mode with a dev-client scheme, straight into this owner's Metro. Otherwise
 // Android goes through the launcher intent (`am start` needs the activity name, which only the app
 // knows); iOS takes the language per launch, which is why `--lang` is its own pair of arguments here
-// and a system setting on the other platform.
-export async function mobileLaunch(p: Platform, bundle: string, lang = ''): Promise<void> {
+// and a system setting on the other platform. False when the system refused the launch (`monkey`
+// exits 252 on a package it cannot find).
+export async function mobileLaunch(p: Platform, bundle: string, lang = ''): Promise<boolean> {
   if (mobileKind() === 'expo' && config().get('MOBILE_SCHEME')) return handBundle(p, lang);
   if (p === 'android') {
     // Metro is reachable as localhost from the emulator: an expo concern, and adbd restarts drop it.
@@ -193,12 +199,39 @@ export async function mobileLaunch(p: Platform, bundle: string, lang = ''): Prom
       const port = metroPort();
       await adb(['reverse', `tcp:${port}`, `tcp:${port}`]);
     }
-    await adb(['shell', 'monkey', '-p', bundle, '-c', 'android.intent.category.LAUNCHER', '1']);
-  } else if (lang) {
-    await sim('launch', [bundle, '-AppleLanguages', `(${lang})`, '-AppleLocale', iosLocaleOf(lang)]);
-  } else {
-    await sim('launch', [bundle]);
+    return (await adb(['shell', 'monkey', '-p', bundle, '-c', 'android.intent.category.LAUNCHER', '1'])).code === 0;
   }
+  if (lang) return (await sim('launch', [bundle, '-AppleLanguages', `(${lang})`, '-AppleLocale', iosLocaleOf(lang)])).code === 0;
+  return (await sim('launch', [bundle])).code === 0;
+}
+
+// Is the app's process alive? iOS: launchd names an app « UIKitApplication:<id>[…] » and lists it with
+// a pid while it runs, « - » once it has exited. A permission change on either platform ends it.
+export async function appRunning(p: Platform, bundle: string): Promise<boolean> {
+  if (p === 'android') return (await adbShell(['pidof', bundle])).trim() !== '';
+  await iosLock();
+  const list = (await xcrun(['simctl', 'spawn', await iosUdid(), 'launchctl', 'list'])).stdout;
+  return list.split('\n').some((l) => {
+    const f = l.trim().split(/\s+/);
+    return /^[0-9]+$/.test(f[0] ?? '') && (f[2] ?? '').startsWith(`UIKitApplication:${bundle}[`);
+  });
+}
+
+// Up = running AND past Expo's launcher. A cold deep link is the one that goes wrong: a dev-client not
+// yet handed its bundle opens on the launcher and keeps the link there (seen on both platforms with the
+// real app: a raw cold `am start -d` / `simctl openurl` parks it on « Development Build » for good), and
+// a second link lands there too. Android answers in one `dumpsys window` (the launcher and its error
+// page are both DevLauncher* activities); iOS needs a snapshot, the price of not handing a link to the
+// launcher. The error page (« There was a problem loading the project »: a bundle request that timed
+// out) is just as deaf to a link.
+export async function appUp(p: Platform, bundle: string): Promise<boolean> {
+  if (!(await appRunning(p, bundle))) return false;
+  if (mobileKind() !== 'expo') return true;
+  if (p === 'android') {
+    const focus = (await adbShell(['dumpsys', 'window'])).split('\n').find((l) => l.includes('mCurrentFocus')) ?? '';
+    return !focus.includes('DevLauncher');
+  }
+  return !onLauncher(nodesOf((await snapshotNodes('ios', { interactive: true })).data));
 }
 
 export async function snapshotNodes(p: Platform, o: { interactive?: boolean; forceFull?: boolean; timeoutMs?: number }): Promise<Answer> {
@@ -276,8 +309,9 @@ export async function mobileLoadBundle(p: Platform): Promise<void> {
 // its first-run intro, pressed away by VYSU_MOBILE_DISMISS_LABELS only while the menu's own texts are
 // on screen (an app button that happens to say « Close » is never pressed), and the launcher, handed
 // the URL again. The session the snapshots need is reopened when it is gone or bound elsewhere.
-// 0 ready, 1 not within the budget, 2 a red box.
-export async function waitReady(p: Platform, budget: number): Promise<0 | 1 | 2> {
+// 0 ready, 1 not within the budget, 2 a red box. `openMs`: how long the session may take to open (the
+// first one on a new simulator runtime builds agent-device's XCTest runner).
+export async function waitReady(p: Platform, budget: number, openMs = openTimeout(p)): Promise<0 | 1 | 2> {
   launchState.notReady = `ready text not seen (vysu ${p} snapshot -i)`;
   const ready = commaList(config().get('MOBILE_READY_TEXT'));
   // Without them, a fixed delay is all there is.
@@ -285,7 +319,7 @@ export async function waitReady(p: Platform, budget: number): Promise<0 | 1 | 2>
     await sleep(5000);
     return 0;
   }
-  if (!(await sessionEnsure(p))) {
+  if (!(await sessionEnsure(p, openMs))) {
     launchState.notReady = `screen not checked, no agent-device session (vysu ${p} open …)`;
     return 1;
   }
@@ -396,13 +430,35 @@ export async function mrelaunch(p: Platform, args: string[]): Promise<void> {
     }
   }
   langCheck(lang);
+  say(await relaunch(p, { size, mode, lang }));
+}
+
+export interface RelaunchOptions {
+  size?: string;
+  mode?: string;
+  lang?: string;
+  // Who the errors name: `vysu mrelaunch`, `vysu up android`…
+  who?: string;
+  // How long the agent-device session may take to open (openTimeout by default).
+  openMs?: number;
+  // How long the first screen may take to show one of VYSU_MOBILE_READY_TEXT once bundled (60 s).
+  readyS?: number;
+}
+
+// The relaunch itself, for every command that starts the app: `mrelaunch`, `up`, `mdo` on an app that
+// is not running, the auth connectors (mobileRelaunch). It answers the line `mrelaunch` prints. Every
+// one of them lands on the bundle directly: an agent-device `open` of a stopped dev-client starts it
+// without the Metro URL, on Expo's launcher, where Android stays (an `mdo` after `up` read « Fetch
+// development servers » for its whole 60 s wait, 2026-09-24) and iOS reopens its last URL or not.
+export async function relaunch(p: Platform, o: RelaunchOptions = {}): Promise<string> {
+  const { size = '', mode = '', lang = '', who = 'vysu mrelaunch' } = o;
   const bundle = config().need('MOBILE_BUNDLE', 'the app id on both platforms');
   const kind = mobileKind();
   const start = nowS();
   launchState.bundledAt = 0;
   if (p === 'android') await androidSelect();
   else await iosLock();
-  if (kind === 'expo') await metroNeed('vysu mrelaunch', p);
+  if (kind === 'expo') await metroNeed(who, p);
   if (p === 'android') await adb(['shell', 'am', 'force-stop', bundle]);
   else await sim('terminate', [bundle]);
   if (size) await quiet(() => textsize(p, size));
@@ -424,12 +480,15 @@ export async function mrelaunch(p: Platform, args: string[]): Promise<void> {
   }
   if (lang) mstateSet(p, 'lang', lang);
   launchState.lang = lang;
+  // A launch the system refuses (the app is not installed) is said at once: it used to show as Metro
+  // never serving the bundle, three minutes later.
+  const refused = (): never => die(`${who}: ${bundle} did not start on ${devices.of(p)} (not installed?)`, `vysu up ${p} --build`);
   if (kind === 'expo') {
     await quietDevMenu(p, bundle);
     const log = metroLog();
     const from = metroLines(log);
-    await mobileLaunch(p, bundle, lang);
-    await waitBundled(p, log, from, 180, 'vysu mrelaunch');
+    if (!(await mobileLaunch(p, bundle, lang))) refused();
+    await waitBundled(p, log, from, 180, who);
     // This device's own JS console, for `vysu mlog <platform> --device`: started once, it follows the
     // app through every later relaunch.
     try {
@@ -440,10 +499,26 @@ export async function mrelaunch(p: Platform, args: string[]): Promise<void> {
   } else {
     // Native: nothing sits between the launch and the first frame, so there is nothing to wait for
     // but the app itself: VYSU_MOBILE_READY_TEXT below, or the fixed delay when it names nothing.
-    await mobileLaunch(p, bundle, lang);
+    if (!(await mobileLaunch(p, bundle, lang))) refused();
   }
   let note = '';
-  if ((await waitReady(p, 60)) !== 0) note = `, ${launchState.notReady}`;
+  if ((await waitReady(p, o.readyS ?? 60, o.openMs)) !== 0) note = `, ${launchState.notReady}`;
   const split = launchState.bundledAt ? ` (bundled after ${launchState.bundledAt - start}s)` : '';
-  say(`${p}: relaunched in ${nowS() - start}s${split}${size ? ` (text size ${size})` : ''}${mode ? ` (${mode})` : ''}${lang ? ` (${lang})` : ''}${note}`);
+  return `${p}: relaunched in ${nowS() - start}s${split}${size ? ` (text size ${size})` : ''}${mode ? ` (${mode})` : ''}${lang ? ` (${lang})` : ''}${note}`;
+}
+
+// The primitive an auth connector starts a login with: the app killed and started straight onto its
+// bundle, its first screen up and the agent-device session open, printing nothing. A connector used to
+// `open --relaunch` through agent-device, which starts a dev-client without the Metro URL: Expo's
+// launcher, then a hand-off and a second launch (mobileLoadBundle), and the dev menu cleared by
+// labels pressed blind. The session may take its time: the first one on a new simulator runtime
+// builds agent-device's XCTest runner, which the connectors gave ten minutes. The first screen does
+// not: a connector waits for its own texts next, and a screen the project's ready texts do not name
+// (Nidz's pending access request) held the whole 60 s of a relaunch before anything else happened.
+// About 5 s after the bundle is what a first screen takes; 25 s leave the launcher's re-hand room.
+export async function mobileRelaunch(p: Platform): Promise<void> {
+  // A bash connector calls this as `vysu __prim`, a process that has addressed no emulator yet.
+  if (p === 'android') await androidSelect();
+  await quiet(() => relaunch(p, { who: p, openMs: 600000, readyS: 25 }));
+  if (!(await sessionOpen(p))) die(`${p}: cannot open the app (vysu up ${p} --build?)`);
 }

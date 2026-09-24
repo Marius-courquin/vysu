@@ -30,6 +30,12 @@ export interface AuthContext {
   // platform's accessibility cannot read (a login in SafariViewService on iOS 18).
   mobFields(platform: Platform): Promise<Box[]>;
   mobileApp(platform: Platform): string;
+  // The app killed and started straight onto its bundle (this owner's Metro, no dev-client launcher),
+  // its first screen up and the agent-device session open: where a login starts. From any screen,
+  // sheet or viewer the app was left on, it is back on its root. Dies when the app cannot start.
+  mobileRelaunch(platform: Platform): Promise<void>;
+  // A dev-client sitting on Expo's launcher handed this owner's Metro, then waited for; a no-op
+  // anywhere else. What a connector that opens the app itself calls after its `open`.
   mobileLoadBundle(platform: Platform): Promise<void>;
   // Before the app is opened: the device locked, and on Android Metro's port reversed onto it.
   mobilePrepare(platform: Platform): Promise<void>;
