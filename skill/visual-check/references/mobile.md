@@ -49,10 +49,20 @@ agent-device. On an older iOS simulator, agent-device may fail to read the syste
 ("requires a valid viewport"); the connector then falls back to geometry plus keyboard. The rest of
 the app reads normally.
 
+A device vysu recorded with that persona, whose app shows someone signed in (the connector's
+`mobileSignedIn`), is left as it is: `mlogin` answers « already logged in » in a couple of seconds,
+so asking for the persona a claim already names costs nothing (`--force` logs in anyway). Never log
+out by hand to help it: that is `mlogin`'s job, and it does it from any screen.
+
+**Long commands**: a login takes one to three minutes, `up` longer, a `mrelaunch` or a `claim --any`
+that boots a device a minute or two. Give those calls a 5-minute timeout: an agent's shell tool
+often stops at 2 minutes and moves the command to the background, where its answer is lost and the
+next command races it.
+
 ```bash
 vysu claim ios --any                          # a free simulator, yours for the task (renewed on use)
 vysu up ios | android                         # Metro (shared, VYSU_METRO_PORT) + device + the app on its bundle; --build: native (5-10 min)
-vysu mlogin ios alice                         # once per persona and install (the state persists)
+vysu mlogin ios alice                         # once per persona and install; a no-op when it already holds alice
 vysu mdo ios --shots s1 -- 'open notifications' 'wait idle' 'shot list' \
     'tap "Incidents" --wait "Récents"' 'expect no "Page introuvable"' 'shot incidents'
 vysu mwait ios "Welcome" --timeout 15         # or --gone, --idle: instead of any sleep
@@ -90,9 +100,17 @@ claim of an agent whose process is gone is dropped by the next command that meet
 ## Driving a screen in one call: `vysu mdo`
 
 A dozen tool calls (press, sleep, snapshot, grep, capture) become one: each step prints one line,
-`✓ 3 tap "Continuer" · Tapped …` or `✗ 3 tap "Publier" · nothing labelled « Publier »`, followed by
-`screen: <up to 6 labels> (<n> nodes, +added −removed, keyboard)`; the first ✗ stops the run with
-exit 1 (`--keep-going` marks it and goes on). Steps, one per argument or per line of a file (`-` for
+`✓ 3 tap "Continuer" · Tapped …` or `✗ 3 tap "Publier" · nothing labelled « Publier » · closest on
+screen: « Publier une annonce »`, followed by `screen: <up to 6 labels> (<n> nodes, +added −removed,
+keyboard)`; the first ✗ stops the run with exit 1 (`--keep-going` marks it and goes on).
+
+**Copy labels, never write them from memory**: it is the most common failed step (« Ampoule grillée
+dans le hall B » for the « Ampoule grillée hall d'entrée » on screen). A `tap`, `wait` or `scroll-to`
+that misses says where the label is instead: on screen but under a bar or a sheet, laid out off the
+screen (`scroll-to` it), or absent, with the labels that read like it, else what the screen holds.
+Take the next label from there or from the `screen:` line. A row that `stays under a bar or a sheet
+at the end of the list` cannot be scrolled out from under the floating bar: report it, it is a
+finding about the app. Steps, one per argument or per line of a file (`-` for
 stdin, `#` comments):
 
 | Step | What it does |

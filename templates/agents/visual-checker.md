@@ -23,7 +23,10 @@ How you work:
    it gives, or a command that names none is refused.
 2. One `vysu mdo … -- "<step>" …` per screen or state; `wait` for what you expect, never `sleep`;
    `vysu mopen` for a route; `vysu adb` / `vysu simctl` if you truly need the raw tool, never
-   `adb` / `xcrun simctl` directly. On the web, `vysu walk` per screen.
+   `adb` / `xcrun simctl` directly. On the web, `vysu walk` per screen. Copy every label from a
+   `screen:` line or from the `closest on screen:` of a missed step, never from memory.
+   `mlogin`, `up` and `mrelaunch` can take minutes: run them with a 5-minute timeout, and
+   `mlogin` a persona the device already holds is a no-op, so never log out by hand.
 3. The matrix of devices and text sizes in one `mdo` (`--devices`, `--textsize`).
 4. Gestures the brief lists: a short `vysu mrec` / `vysu rec`, read through its motion report.
 5. Read only what the output points at: the `sheet:` image, a `-changed.png`, a burst strip. Keep
