@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.1 — 2026-09-24
+
+From a second audit of the agent sessions (23-24/09, vysu 0.5.x): the device work had moved to
+checker sub-agents and `mdo`, and what was left to cost was guessing — labels written from memory,
+and logins asked for again.
+
+- **A missed label says where it is, or what reads like it.** 34 of the 49 failed `mdo` steps of one
+  evening were taps on a label that was not on screen, most of them a label from memory (« Ampoule
+  grillée dans le hall B » for the « Ampoule grillée hall d'entrée » on screen), and half the
+  `scroll-to`s failed the same way. A `tap`, a `wait` or a `scroll-to` that misses now says whether the
+  label is on screen but under a bar or a sheet, laid out off the screen (`scroll-to` it), or absent,
+  with up to three labels that read like it — accents, case, a cut label (« Ma resi… ») and word stems
+  forgiven — else what the screen holds. A `scroll-to` gathers what resembled it on every screen it
+  went through, and names a row that stays under a bar at the end of the list: nothing scrolls it out
+  from under the floating tab bar, a finding about the app. Under `mdo` and `mwait`, which print the
+  screen line themselves, an absent label with nothing alike adds nothing to it. `screen near` is the
+  helper's new verb.
+- **`mlogin` leaves a device that already holds the persona.** A login is one to three minutes of the
+  identity provider's pages typed into a system web view; checkers asked again and again for the
+  persona their device held, and thirteen calls ran past their shell's two-minute timeout. When vysu's
+  record names that persona and the connector sees someone signed in on the screen as it stands, `mlogin`
+  answers « already logged in » in under a second; `--force` logs in anyway. The record alone is not
+  trusted: after a logout by hand, the same `mlogin` logs in (verified on the iOS 18 simulator: 70 s,
+  then 0.3 s for the next call). The device is locked before the record is read, so a login another
+  agent ran behind the lock is not mistaken for this one. Connectors get an optional
+  `mobileSignedIn(v, platform)` (bash: `auth_mobile_signed_in`); auth0 looks for the menu that holds the
+  logout. A connector without it logs in as before.
+- `mlogin` refuses a platform other than ios or android, and a persona that starts with `-`
+  (`mlogin android --help` looked for a persona called `--help`).
+- The visual-check skill, its brief and the visual-checker agent: labels are copied from a screen
+  line or from a missed step's closest labels, and `mlogin`, `up` and `mrelaunch` get a 5-minute
+  timeout.
+
 ## 0.6.0 — 2026-09-24
 
 The engine is TypeScript now, run as it is by Node: it runs on Windows as well as macOS and Linux,
