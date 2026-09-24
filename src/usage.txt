@@ -13,7 +13,8 @@
 #                                           down metro: this owner's isolated Metro (else the shared one, only
 #                                           when this owner started it); down applog: the log tails, JS ones included
 #   vysu up ios|android [--build] [--reinstall] [--avd <name>] [--device <name>]   the device, and what runs in
-#                                           front of the app: Metro in expo mode, nothing in native mode
+#                                           front of the app: Metro in expo mode, then the app started straight onto
+#                                           it (left as it is when it already runs there), nothing in native mode
 #                                           (VYSU_MOBILE_KIND) where `up` installs the app from VYSU_IOS_APP_PATH /
 #                                           VYSU_ANDROID_APK and tails its log; --build runs VYSU_MOBILE_BUILD_IOS /
 #                                           _ANDROID in the background; --device / --avd are remembered for this owner

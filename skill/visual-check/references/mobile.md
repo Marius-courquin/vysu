@@ -51,7 +51,7 @@ the app reads normally.
 
 ```bash
 vysu claim ios --any                          # a free simulator, yours for the task (renewed on use)
-vysu up ios | android                         # Metro (shared, VYSU_METRO_PORT) + device; --build: native (5-10 min)
+vysu up ios | android                         # Metro (shared, VYSU_METRO_PORT) + device + the app on its bundle; --build: native (5-10 min)
 vysu mlogin ios alice                         # once per persona and install (the state persists)
 vysu mdo ios --shots s1 -- 'open notifications' 'wait idle' 'shot list' \
     'tap "Incidents" --wait "Récents"' 'expect no "Page introuvable"' 'shot incidents'
@@ -283,7 +283,8 @@ ran between which clip seconds, with the **point it touched** in points. From th
   `vysu adb shell input swipe …` (your emulator, under its lock), never a raw `adb`. The dev-launcher
   bubble can cover a tab bar item.
 - A recreated simulator (new UDID, different density) means `vysu cache clear`.
-- "Development Build" on screen means the dev-client is waiting for the Metro URL (handled by
-  `mlogin`); "Cannot find native module" means a stale APK / app -> `vysu up <platform> --build`;
+- "Development Build" on screen means the dev-client is waiting for the Metro URL, which a bare
+  `vysu <platform> open` never gives it: `vysu mrelaunch <platform>` (what `up`, `mdo`, `mopen` and
+  `mlogin` start the app with) lands on the bundle directly; "Cannot find native module" means a stale APK / app -> `vysu up <platform> --build`;
   an `UnableToResolveError` on a file that exists means Metro is older than the file ->
   `vysu down metro` then `vysu up <platform>`.

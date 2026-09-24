@@ -71,11 +71,9 @@ export async function mobileLogin(v, platform, persona) {
   if (!app) v.die('mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set');
   // The device locked, and on Android Metro's port reversed onto it.
   await v.mobilePrepare(platform);
-  if ((await v.mobTry(platform, 'open', app, '--foreground', '--relaunch', '--timeout', '600000')).code !== 0) {
-    v.die(`${platform}: cannot open the app (vysu up ${platform} --build?)`);
-  }
-  // A fresh dev-client sits on Expo's launcher until it is handed the url.
-  await v.mobileLoadBundle(platform);
+  // Killed and started again straight onto its bundle, on its root screen, whatever it was left on;
+  // vysu ends here, with the reason, when the app cannot start.
+  await v.mobileRelaunch(platform);
   v.step(`open ${app}`);
 
   // A system dialog that may or may not be there, in whatever language the device is in.

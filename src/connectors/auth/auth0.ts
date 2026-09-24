@@ -86,11 +86,10 @@ export const connector: AuthConnector = {
     if (!app) v.die('mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set');
 
     await v.mobilePrepare(platform);
-    // The first open on a new simulator runtime builds agent-device's XCTest runner: give it room.
-    if ((await v.mobTry(platform, 'open', app, '--foreground', '--relaunch', '--timeout', '600000')).code !== 0) {
-      v.die(`${platform}: cannot open the dev-client (vysu up ${platform} --build?)`);
-    }
-    await v.mobileLoadBundle(platform);
+    // Straight onto the bundle, on the app's root: an agent-device `open --relaunch` started the
+    // dev-client without the Metro URL, on Expo's launcher, which then took a hand-off and a second
+    // launch.
+    await v.mobileRelaunch(platform);
     await v.mobPressAny(platform, 'Autoriser,Allow'); // push permission, asked at first boot
     await v.mobPressAny(platform, 'Close,Fermer'); // the dev menu, when it opens on top of the door
     await v.mobPressAny(platform, 'Continue,Continuer'); // its first-launch intro on a fresh install

@@ -22,10 +22,7 @@ export const connector: AuthConnector = {
   async mobileLogin(v, platform, persona) {
     const app = v.mobileApp(platform);
     if (!app) v.die('mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set');
-    if ((await v.mobTry(platform, 'open', app, '--foreground', '--relaunch', '--timeout', '600000')).code !== 0) {
-      v.die(`${platform}: cannot open the app (vysu up ${platform} --build?)`);
-    }
-    await v.mobileLoadBundle(platform);
+    await v.mobileRelaunch(platform);
     v.step(`open ${app}`);
     v.mstateSet(platform, 'persona', persona);
     console.log(`${platform}: ${app} opened (this app asks for no login)`);

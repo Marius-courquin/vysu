@@ -17,6 +17,7 @@ interface Script {
   absent?: string[]; // labels no press / wait finds
   fields?: Box[];
   cfg?: Record<string, string>;
+  refuse?: boolean; // mobileRelaunch dies: the app cannot start
 }
 
 function fake(s: Script = {}): { v: AuthContext; calls: string[]; out: string[] } {
@@ -57,6 +58,10 @@ function fake(s: Script = {}): { v: AuthContext; calls: string[]; out: string[] 
       return s.fields ?? [];
     },
     mobileApp: () => 'Nidz (prep)',
+    async mobileRelaunch(p) {
+      calls.push(`relaunch ${p}`);
+      if (s.refuse) throw new Error(`die: ${p}: fr.nidz did not start on the device (not installed?)`);
+    },
     async mobileLoadBundle(p) {
       calls.push(`bundle ${p}`);
     },
@@ -96,7 +101,6 @@ async function capture(fn: () => Promise<void>): Promise<string[]> {
   return lines;
 }
 
-const OPEN = (p: string): string => `try ${p} open Nidz (prep) --foreground --relaunch --timeout 600000`;
 const AFTER = "Entrer directement,Retour à l'accueil";
 
 test('auth0 on android: the door, the Custom Tab, both fields by role', async () => {
@@ -104,8 +108,7 @@ test('auth0 on android: the door, the Custom Tab, both fields by role', async ()
   const out = await capture(() => auth0.mobileLogin(v, 'android', 'alice'));
   assert.deepEqual(calls, [
     'prepare android',
-    OPEN('android'),
-    'bundle android',
+    'relaunch android',
     'pressAny android Autoriser,Allow',
     'pressAny android Close,Fermer',
     'pressAny android Continue,Continuer',
@@ -185,8 +188,7 @@ test('form on mobile: labels first, then the role; home by the project text', as
   const out = await capture(() => form.mobileLogin(v, 'ios', 'alice'));
   assert.deepEqual(calls, [
     'prepare ios',
-    OPEN('ios'),
-    'bundle ios',
+    'relaunch ios',
     'step open Nidz (prep)',
     'pressAny ios Autoriser,Allow',
     'try ios wait role="textfield" 20000',
@@ -210,10 +212,10 @@ test('form on mobile: labels first, then the role; home by the project text', as
 test('none on mobile: the app opened, nobody logged in', async () => {
   const { v, calls } = fake();
   const out = await capture(() => none.mobileLogin(v, 'android', 'alice'));
-  assert.deepEqual(calls, [OPEN('android'), 'bundle android', 'step open Nidz (prep)', 'mstate android persona=alice']);
+  assert.deepEqual(calls, ['relaunch android', 'step open Nidz (prep)', 'mstate android persona=alice']);
   assert.deepEqual(out, ['android: Nidz (prep) opened (this app asks for no login)']);
-  const shut = fake({ failing: ['android open Nidz (prep) --foreground --relaunch --timeout 600000'] });
-  await assert.rejects(none.mobileLogin(shut.v, 'android', 'alice'), /die: android: cannot open the app \(vysu up android --build\?\)/);
+  const shut = fake({ refuse: true });
+  await assert.rejects(none.mobileLogin(shut.v, 'android', 'alice'), /die: android: fr.nidz did not start on the device/);
 });
 
 test('the bash bridge: cfg, step, die and the credentials of a stub connector', { skip: process.platform === 'win32' }, async () => {

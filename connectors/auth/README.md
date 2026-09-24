@@ -58,8 +58,9 @@ What each receives, and what it must leave behind:
   prints it on stdout, nothing else). No token is a valid answer (`none` and a cookie-session app
   give exactly that: `undefined`, or nothing printed) and never an error.
 - **`mobileLogin`** is given `ios` or `android` and a persona. The app is installed and may be
-  anywhere — on its door, already signed in as someone else, or sitting on a dev-client launcher.
-  Return with it logged in as the persona and on its home screen, and record who that is:
+  anywhere — on its door, already signed in as someone else, or sitting on a dev-client launcher;
+  `mobileRelaunch` starts from its root screen whichever it was. Return with it logged in as the
+  persona and on its home screen, and record who that is:
   `v.mstateSet(platform, 'persona', persona)` (bash: `mstate_set "$platform" persona "$persona"`)
   — one install is one session, and the next agent reads that back through `vysu claim` instead of
   opening the app to find out.
@@ -84,7 +85,8 @@ connector as functions.
 | `mobPressAll(platform, 'a,b')` | `mob_press_all <platform> "<a>,<b>"` | press each of them that is there, in order |
 | `mobWaitText(platform, text, ms)` | `mob_wait_text <platform> "<text>" <ms>` | wait for a text to show up |
 | `mobFields(platform)` → `[{x, y, w, h}]` | `mob_fields <platform>` (JSON) | the text fields **read from a capture**, boxes in points, top to bottom — for a surface the platform's accessibility cannot read (see below) |
-| `mobileApp(platform)` · `mobileLoadBundle(platform)` | `mobile_app` · `mobile_load_bundle` | the app to open, and the dev-client hand-off |
+| `mobileRelaunch(platform)` | `mobile_relaunch <platform>` | the app killed and started again straight onto its bundle (this owner's Metro, never Expo's launcher), on its root screen whatever it was left on, the dev menu cleared, the agent-device session open: where a login starts. Ends vysu with the reason when the app cannot start |
+| `mobileApp(platform)` · `mobileLoadBundle(platform)` | `mobile_app` · `mobile_load_bundle` | the app to open, and the dev-client hand-off for a connector that opens the app itself (an agent-device `open` starts a dev-client on Expo's launcher) |
 | `mobilePrepare(platform)` | `ios_lock` · `android_select` | before the app is opened: the device locked, and on Android Metro's port reversed onto it |
 | `mstateSet(platform, 'persona', name)` | `mstate_set <platform> persona <name>` | record who the install is signed in as |
 | `personaRequire(persona)` → `{ email, password }` | `persona_require <persona>` (sets `$PERSONA_EMAIL` / `$PERSONA_PASSWORD`) | load the credentials |
