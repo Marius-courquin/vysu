@@ -9,11 +9,12 @@ import { i18nLabel } from '../core/i18n.ts';
 import { ev, evTouch, now, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
 import { chunks, RUN_BEAT_MS } from '../img/pace.ts';
+import { nearWords, type Near } from '../img/screen.ts';
 import { ad, adCall, calls, parseAnswer, type Answer, type Call } from './agent.ts';
 import { lines, quiet, say, tell, why } from './io.ts';
 import { mrelaunch } from './launch.ts';
 import { mnet, mopen, mperm } from './mctl.ts';
-import { mscreen, msnap, screenPy, snapFile, snapState } from './screen.ts';
+import { mnear, mnearOf, mscreen, msnap, screenFollows, screenPy, snapFile, snapState, withNear } from './screen.ts';
 import { mshot } from './shot.ts';
 import { mstateGet } from './state.ts';
 import { firstSentence, msOf, plainWords, pyG, secondsOk, shellWords, WordsError } from './words.ts';
@@ -31,10 +32,16 @@ const firstLine = (s: unknown): string => (typeof s === 'string' && s ? (s.split
 // Every press goes through --json: the answer carries the point that was hit (data.x / data.y), the
 // only place a tap's coordinates ever exist, and a recording needs them to draw its ripple. The human
 // line stays what it was — agent-device's own « Tapped label="…" (166, 822) ».
+// Why the last press that found nothing failed, in agent-device's words: all a label that is on
+// screen and still not pressed has to say for itself.
+let pressError = '';
 async function adPress(p: Platform, call: Call): Promise<string | null> {
   evTouch();
   const a = await adCall(p, call);
-  if (!a.ok) return null;
+  if (!a.ok) {
+    pressError = firstSentence(a.error.message || '');
+    return null;
+  }
   ev.target = target(a.data);
   return firstLine(a.data.message);
 }
@@ -101,7 +108,7 @@ export async function mtap(p: Platform, args: string[]): Promise<boolean> {
     (await adPress(p, calls.press(`text="${label}"`, { settle: true }))) ??
     (await adPress(p, calls.findPress(label)));
   if (pressed === null) {
-    tell(`vysu: ${p}: nothing labelled « ${label} » (vysu ${p} snapshot -i)`);
+    tell(`vysu: ${p}: ${await tapMissed(p, label)}`);
     return false;
   }
   if (!wait) {
@@ -114,8 +121,19 @@ export async function mtap(p: Platform, args: string[]): Promise<boolean> {
     return true;
   }
   say(pressed);
-  tell(`vysu: ${p}: tapped, then no « ${wait} » after ${timeout}s`);
+  tell(`vysu: ${p}: ${withNear(`tapped, then no « ${wait} » after ${timeout}s`, await mnear(p, wait))}`);
   return false;
+}
+
+// A label written from memory is the common miss (« Ampoule grillée dans le hall B » for the
+// « Ampoule grillée hall d'entrée » on screen): the answer names what reads like it, or what the
+// screen holds, so the next try is a label copied rather than another guess. A label that is on
+// screen but under the floating tab bar or a sheet is a different miss, and says so.
+async function tapMissed(p: Platform, label: string): Promise<string> {
+  const near = await mnearOf(p, label);
+  if (near?.state === 'in') return `« ${label} » is on screen, but the press failed${pressError ? ` (${pressError})` : ''}`;
+  if (near?.state === 'covered' || near?.state === 'offscreen') return `cannot press « ${label} »: ${nearWords(near)}`;
+  return withNear(`nothing labelled « ${label} »`, nearWords(near, undefined, !screenFollows.on));
 }
 
 // --- waits ---------------------------------------------------------------------------------------
@@ -129,7 +147,9 @@ async function waitText(p: Platform, text: string, s = '10'): Promise<Said> {
   return { ok: false, line: `no « ${text} » after ${s}s` };
 }
 export async function mwaitText(p: Platform, text: string, s = '10'): Promise<boolean> {
-  return answer(p, await waitText(p, text, s));
+  const w = await waitText(p, text, s);
+  if (!w.ok && secondsOk(s)) w.line = withNear(w.line, await mnear(p, text));
+  return answer(p, w);
 }
 
 // has: 0 there, 1 not there, 2 nothing readable (the snapshot failed or the helper could not read it).
@@ -191,12 +211,18 @@ export async function mscrollTo(p: Platform, label = '', max = '8'): Promise<boo
   let i = 0;
   let prev = '';
   let ended = '';
+  // What read like the label on every screen the scroll went through, best first: the label is most
+  // often one written from memory, and its real wording may have gone by two screens up.
+  const seen = new Map<string, number>();
+  let near: Near | null = null;
   for (;;) {
     await msnap(p);
     if ((await screenPy(['has', f, label, '--visible'])).code === 0) {
       say(`« ${label} » on screen after ${i} scroll(s)`);
       return true;
     }
+    near = await mnearOf(p, label, true);
+    for (const [l, score] of near?.closest ?? []) seen.set(l, Math.max(score, seen.get(l) ?? 0));
     if (i >= Number(max)) break;
     const cur = (await screenPy(['sig', f, '--geometry'])).out.replace(/\n$/, '');
     if (i !== 0 && cur === prev) {
@@ -210,7 +236,14 @@ export async function mscrollTo(p: Platform, label = '', max = '8'): Promise<boo
     }
     i++;
   }
-  why(`${p}: no « ${label} » on screen after ${i} scroll(s)${ended}`);
+  const closest = [...seen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  // Under the floating tab bar at the end of the list, a row stays there: nothing scrolls it out, and
+  // that is worth a look in the app rather than another scroll.
+  const where =
+    near?.state === 'covered' && ended === ' (the end of the list)'
+      ? `« ${near.label} » stays under a bar or a sheet at the end of the list`
+      : nearWords(near, closest, !screenFollows.on).replace(/^closest on screen:/, 'closest seen:');
+  why(`${p}: ${withNear(`no « ${label} » on screen after ${i} scroll(s)${ended}`, where)}`);
   return false;
 }
 

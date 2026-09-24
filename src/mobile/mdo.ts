@@ -15,7 +15,7 @@ import { adCall, calls } from './agent.ts';
 import { androidSelect, androidSerial, forgetSerial } from './device.ts';
 import { Captured, captured, quiet, say, tell } from './io.ts';
 import { appUp, mobileApp, mobileKind, mrelaunch, relaunch, sessionOpen } from './launch.ts';
-import { mscreen, mscreenReset, snapFile, snapState } from './screen.ts';
+import { mscreen, mscreenReset, screenFollows, snapFile, snapState } from './screen.ts';
 import { mobileStep, mwaitGone, mwaitIdle, mwaitText, shotRun } from './steps.ts';
 import { mstateGet } from './state.ts';
 import { secondsOk, shellWords } from './words.ts';
@@ -115,6 +115,7 @@ async function mdoStep(p: Platform, shots: string, n: number, step: string): Pro
   let out: string[];
   let err: string[];
   try {
+    screenFollows.on = true;
     const r = await captured(() => mobileStep(p, shots, step));
     ok = r.value;
     out = r.out;
@@ -129,6 +130,7 @@ async function mdoStep(p: Platform, shots: string, n: number, step: string): Pro
     await mdoRestore(p);
     exit(1);
   }
+  screenFollows.on = false;
   if (ok) {
     const detail = step === 'screen' ? '' : mdoDetail(out);
     say(`✓ ${n} ${mdoEcho(step)}${detail ? ` · ${detail}` : ''}`);
@@ -324,7 +326,9 @@ export async function mwait(argv: string[]): Promise<number> {
   await mdoLock(p);
   let r: { value: boolean; out: string[]; err: string[] };
   try {
+    screenFollows.on = true;
     r = await captured(() => (idle ? mwaitIdle(p, timeout) : gone ? mwaitGone(p, text, timeout) : mwaitText(p, text, timeout)));
+    screenFollows.on = false;
   } catch (e) {
     // A die inside the wait is the command's, with its « next: », not an internal error.
     throw e instanceof Captured ? e.inner : e;

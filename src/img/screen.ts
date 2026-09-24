@@ -5,6 +5,7 @@
 //   screen sig <snap.json> [--geometry]
 //   screen field <snap.json> <label>
 //   screen editable <snap.json>
+//   screen near <snap.json> <text>
 //
 // `line` is the one line an agent reads after each step: up to six labels in reading order, then the
 // node count, what changed since the previous snapshot (its keys saved by --save, read by --prev),
@@ -16,7 +17,8 @@
 // screen at rest (`--geometry` adds where each one sits: what tells a scroll that moved from one that
 // did not). `field` prints the centre of the text field a label names (its own label, else the field
 // nearest below a text holding it, else the one unlabelled field on screen, followed by « only »).
-// `editable` answers whether any text field is on screen at all.
+// `editable` answers whether any text field is on screen at all. `near` says where a text that was
+// not found is: on screen but covered, laid out off it, or absent, with the labels that read like it.
 //
 // Exit: 0 yes / printed, 1 no, 2 unreadable snapshot.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -35,6 +37,7 @@ Usage: screen line <snap.json> [--prev <keys>] [--save <keys>] [--keyboard auto|
        screen sig <snap.json> [--geometry]
        screen field <snap.json> <label>
        screen editable <snap.json>
+       screen near <snap.json> <text>
 
 \`line\` is the one line an agent reads after each step: up to six labels in reading order, then the
 node count, what changed since the previous snapshot (its keys saved by --save, read by --prev), the
@@ -46,7 +49,8 @@ asking for its centre inside the viewport and nothing drawn over it (what \`scro
 (\`--geometry\` adds where each one sits: what tells a scroll that moved from one that did not).
 \`field\` prints the centre of the text field a label names (its own label, else the field nearest
 below a text holding it, else the one unlabelled field on screen, followed by « only »).
-\`editable\` answers whether any text field is on screen at all.
+\`editable\` answers whether any text field is on screen at all. \`near\` says where a text that was not
+found is: on screen but covered, laid out off it, or absent, with the labels that read like it.
 
 Exit: 0 yes / printed, 1 no, 2 unreadable snapshot.
 `;
@@ -316,6 +320,113 @@ export function screenHas(snap: Snapshot, text: string, visible = false): number
   return 1;
 }
 
+// A label as a person compares it: no case, no accent, one kind of apostrophe, no ellipsis left by a
+// cut label, words only.
+function plain(text: string): string {
+  return casefold(text)
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/(…|\.\.\.)\s*$/u, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function editDistance(a: string[], b: string[]): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur.push(Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1)));
+    prev = cur;
+  }
+  return prev[b.length]!;
+}
+
+// How much two labels read alike, 0 to 1: the same words (by their first five letters, so a plural
+// or a conjugation still counts), or the same letters, whichever says more; one holding the other
+// whole (a cut label, a row that announces its title then its details) counts for most.
+export function resemblance(a: string, b: string): number {
+  const pa = plain(a);
+  const pb = plain(b);
+  if (!pa || !pb) return 0;
+  if (pa === pb) return 1;
+  const short = pa.length <= pb.length ? pa : pb;
+  if (short.length >= 3 && (pb.includes(pa) || pa.includes(pb))) return 0.85;
+  const stems = (s: string): Set<string> => new Set(s.split(' ').filter((w) => w.length >= 2).map((w) => w.slice(0, 5)));
+  const sa = stems(pa);
+  const sb = stems(pb);
+  let shared = 0;
+  for (const w of sa) if (sb.has(w)) shared++;
+  const words = sa.size + sb.size ? (2 * shared) / (sa.size + sb.size) : 0;
+  const ca = chars(pa).slice(0, 80);
+  const cb = chars(pb).slice(0, 80);
+  const letters = 1 - editDistance(ca, cb) / Math.max(ca.length, cb.length);
+  return Math.max(words, letters);
+}
+
+const NEAR_MIN = 0.5;
+const NEAR_MAX = 3;
+
+export interface Near {
+  // in: on screen and reachable · covered: on screen under a bar or a sheet · offscreen: laid out
+  // beyond the screen · absent: nowhere in the tree.
+  state: 'in' | 'covered' | 'offscreen' | 'absent';
+  // The label that holds the text, when the tree has one.
+  label: string;
+  // Absent: the labels on screen that read most like it, best first, with how much.
+  closest: Array<[string, number]>;
+  // What the screen shows, for when nothing reads like it.
+  labels: string[];
+}
+
+// Where a text that a tap, a wait or a scroll-to did not find actually is. In the tree but out of
+// reach (a row under the floating tab bar, a sheet over the list, a node laid out below the screen)
+// is not the same failure as a label that is not there, and that one is most often a label written
+// from memory: « Ampoule grillée dans le hall B » for the « Ampoule grillée hall d'entrée » on screen.
+export function screenNear(snap: Snapshot, text: string, scale = 1): Near | null {
+  const { nodes } = snap;
+  if (!nodes) return null;
+  const vp = viewport(nodes);
+  const screen = screenNodes(nodes);
+  const needle = casefold(clean(text));
+  const labels = summaryLabels(screen, vp, scale);
+  const holders = needle ? screen.filter((n) => matches(n, needle)) : [];
+  if (holders.length) {
+    const covered = (n: Node): boolean => {
+      const hints = n.presentationHints;
+      return Array.isArray(hints) ? hints.includes('covered') : typeof hints === 'string' && hints.includes('covered');
+    };
+    const reachable = holders.find((n) => onScreen(n, vp, true) && !covered(n));
+    const under = holders.find((n) => onScreen(n, vp, true));
+    const n = reachable ?? under ?? holders[0]!;
+    const state = reachable ? 'in' : under ? 'covered' : 'offscreen';
+    return { state, label: clean(n.label) || clean(n.value), closest: [], labels };
+  }
+  const scored = new Map<string, number>();
+  for (const n of screen) {
+    const label = clean(n.label);
+    if (!label || !LETTER.test(label) || scrollIndicator(n) || !onScreen(n, vp)) continue;
+    const s = resemblance(text, label);
+    if (s >= NEAR_MIN && s > (scored.get(label) ?? 0)) scored.set(label, s);
+  }
+  const closest = [...scored.entries()].sort((a, b) => b[1] - a[1] || byCodePoint(a[0], b[0])).slice(0, NEAR_MAX);
+  return { state: 'absent', label: '', closest, labels };
+}
+
+const quoted = (labels: string[]): string =>
+  labels.map((l) => `« ${chars(l).length <= MAX_LABEL_CHARS ? l : `${pyRstrip(chars(l).slice(0, MAX_LABEL_CHARS - 1).join(''))}…`} »`).join(' · ');
+
+// The same, as the few words a failed step ends on: where the text is, else what reads like it,
+// else what the screen shows — '' for that last one when the caller prints the screen line anyway
+// (`labels` false). `closest` may carry labels gathered over several screens (a scroll-to).
+export function nearWords(near: Near | null, closest = near?.closest ?? [], labels = true): string {
+  if (!near) return labels ? 'nothing readable on screen' : '';
+  if (near.state === 'covered') return `« ${near.label} » is on screen but under a bar or a sheet (scroll-to it, or close what covers it)`;
+  if (near.state === 'offscreen') return `« ${near.label} » is laid out off the screen (scroll-to it)`;
+  if (near.state === 'in') return `« ${near.label} » is on screen`;
+  if (closest.length) return `closest on screen: ${quoted(closest.map(([l]) => l))}`;
+  return labels ? `on screen: ${near.labels.join(' · ') || '(no label)'}` : '';
+}
+
 // The labels on screen as one string (null: unreadable). Two equal in a row: a screen at rest.
 export function screenSig(snap: Snapshot, geometry = false): string | null {
   const { nodes } = snap;
@@ -410,6 +521,11 @@ export async function main(argv: string[], io: Io): Promise<number> {
     return r.code;
   }
   if (cmd === 'editable') return screenEditable(readSnapshot(path));
+  if (cmd === 'near' && rest.length) {
+    const near = screenNear(readSnapshot(path), rest[0]!);
+    io.out(`${nearWords(near)}\n`);
+    return near ? 0 : 2;
+  }
   io.err(DOC);
   return 2;
 }

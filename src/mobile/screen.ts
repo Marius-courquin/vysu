@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { devices, type Platform } from '../core/hold.ts';
 import { slug } from '../core/text.ts';
+import { nearWords, readSnapshot, screenNear, type Near } from '../img/screen.ts';
 import { tool } from '../img/tools.ts';
 import { adCall, answerJson, calls } from './agent.ts';
 import { androidSerial, mobileScale } from './device.ts';
@@ -77,6 +78,23 @@ export async function mscreen(p: Platform, fresh = false): Promise<string> {
   }
   return (await screenPy(['line', f, '--prev', `${f}.keys`, '--save', `${f}.keys`, '--keyboard', kb, '--scale', scale])).out.replace(/\n$/, '');
 }
+
+// Where a text a step did not find is, in the words the step's ✗ line ends on (img/screen.ts): the
+// snapshot the step just took when it has one, else a fresh one.
+export async function mnearOf(p: Platform, text: string, fresh = false): Promise<Near | null> {
+  const f = snapFile(p);
+  if (!(fresh && nonEmpty(f)) && !(await msnap(p))) return null;
+  const scale = p === 'android' ? Number(await mobileScale('android')) || 1 : 1;
+  return screenNear(readSnapshot(f), text, scale);
+}
+export async function mnear(p: Platform, text: string, fresh = false): Promise<string> {
+  return nearWords(await mnearOf(p, text, fresh), undefined, !screenFollows.on);
+}
+// Set while `mdo` or `mwait` runs a step: they print the screen line after a failure themselves, and
+// a miss then only adds what that line cannot say (covered, off the screen, what reads like it).
+export const screenFollows = { on: false };
+// « <what> · <where> », or <what> alone when there is nothing to add.
+export const withNear = (what: string, near: string): string => (near ? `${what} · ${near}` : what);
 
 // The baseline the next line's delta is counted from.
 export async function mscreenReset(p: Platform): Promise<void> {
