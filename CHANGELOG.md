@@ -13,7 +13,11 @@ lock, claim, device-choice and state files are unchanged, so both versions can r
   5.1, `bin\vysu.cmd`); `install.sh` checks Node and installs the dependencies; `vysu update` re-runs
   `npm ci` when the lock file changed. Android works on the three systems, iOS on macOS (one line
   says so elsewhere). CI runs the engine on the three systems with Node 22 and 24.
-  `VYSU_RUNTIME=bun` runs it on Bun instead.
+  `VYSU_RUNTIME=bun` runs it on Bun instead. The first thing Node runs is `bin/vysu.mjs`: on a Node
+  older than 22.18 it says so in one line, and on a checkout without its dependencies — a machine
+  whose 0.5.1 updater just pulled this version — the first command installs them, once, while the
+  others wait. `vysu update` installs beside the live `node_modules` and swaps it in, so the agents
+  running vysu meanwhile keep theirs.
 - **Faster.** agent-browser is called by its native binary (8 ms a call instead of ~80), agent-device
   through its library (2–6 ms instead of ~150; `VYSU_AGENT_DEVICE=cli` forces the CLI), every image
   helper in process. Medians against 0.5.1 on a loaded machine: `report` 251 → 90 ms, `check`
@@ -58,6 +62,21 @@ lock, claim, device-choice and state files are unchanged, so both versions can r
   and its opening at launch: it sat in every capture over the app's top-right corner and took the
   taps meant for what lay under it (`tap Notifications` opened the dev menu). A shake still opens
   the menu.
+- **Safer with several agents on one machine.** Two commands started a few milliseconds apart could
+  both take the same lock (12 to 20 times in 20 at 2–8 ms apart, in 0.5.1 too): the lock is now
+  published with its owner already written, and a lock with no pid yet counts as alive. Two named
+  claims of one device, two `up --isolated` picking one port, a `release --force --reset` that
+  waited on the claim it was releasing, a `meta.json` rewritten by two captures at once: each now
+  goes through its own lock. `mburst` stops capturing the moment a step dies, and `mdo` puts a
+  device's text size back whichever way it ends. No agent-device call waits for ever any more (a
+  minute past the wait it announces, two at least), and vysu exits as soon as its command is done.
+- **Secrets stay out of the process list.** A bash auth connector's primitives used to receive every
+  `VYSU_` value, persona passwords included, in their command line; they read them from a mode-600
+  file now. A webhook url's credentials go in an Authorization header and print as `***`. A
+  permission name reaches `adb shell` only when it is a permission name.
+- `persona add` reads its two answers from a pipe as well as from a terminal; a signal sent to vysu
+  reaches the project command it runs; a `STOP` command that leaves a process behind no longer
+  holds `vysu down` open.
 - `VYSU_DEBUG=mobile` traces what a relaunch waited for.
 - **`mreload` knows within seconds whether the reload landed.** The page's acknowledgement proved
   nothing (the device answers before it reloads), so an app that never fetched its bundle cost the
