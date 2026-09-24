@@ -43,10 +43,24 @@ function cliArgv(args: string[]): { file: string; args: string[]; verbatim: bool
   }
   return toolArgv(bin, args);
 }
-function runCli(args: string[], o: { inherit?: boolean } = {}): Promise<RunResult> {
+// No call waits for ever: an Android `mlogin` once sat in one agent-device call for more than ten
+// minutes. The ceiling is a minute past the longest wait the call announces itself (a wait's ms, an
+// open's --timeout), two minutes at least; past it the call is a failure that says so, and the
+// command carries on or dies the way it would on any other failure.
+export function ceilingMs(args: string[]): number {
+  const announced = Math.max(0, ...args.filter((a) => /^\d+$/.test(a)).map(Number));
+  return 60000 + Math.max(60000, announced);
+}
+const silent = (ms: number): string => `agent-device did not answer in ${Math.round(ms / 1000)}s`;
+
+async function runCli(args: string[], o: { inherit?: boolean } = {}): Promise<RunResult> {
   const c = cliArgv(args);
   if (o.inherit) return interactive(c.file, c.args, childEnv(), c.verbatim);
-  return run(c.file, c.args, { env: childEnv(), verbatim: c.verbatim });
+  const limit = ceilingMs(args);
+  const t0 = Date.now();
+  const r = await run(c.file, c.args, { env: childEnv(), verbatim: c.verbatim, timeoutMs: limit });
+  if (r.code === 137 && Date.now() - t0 >= limit) return { ...r, code: 1, stderr: `${r.stderr}${silent(limit)}\n` };
+  return r;
 }
 
 // A tool handed the terminal whole, stdin included: a passthrough may read a steps file from `-` or
@@ -210,15 +224,23 @@ export async function adCall(p: Platform, call: Call): Promise<Answer> {
   await select(p);
   const lib = await agentLib();
   if (lib) {
+    const limit = ceilingMs(call.cli);
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error(silent(limit)), { code: 'TIMEOUT' })), limit);
+    });
     try {
-      const data = (await call.lib(lib.client, base(p))) as Json | undefined;
+      const data = (await Promise.race([call.lib(lib.client, base(p)), late])) as Json | undefined;
       return { ok: true, data: data ?? {}, error: {} };
     } catch (e) {
+      if ((e as { code?: unknown }).code === 'TIMEOUT') return { ok: false, data: {}, error: { code: 'TIMEOUT', message: (e as Error).message } };
       // An error agent-device raised is its answer, as the CLI would print it; anything else is the
       // library itself failing, and the CLI is still there.
       if (e && typeof e === 'object' && typeof (e as { code?: unknown }).code === 'string') {
         return { ok: false, data: {}, error: lib.normalize(e) as Answer['error'] };
       }
+    } finally {
+      clearTimeout(timer);
     }
   }
   const r = await runCli([...call.cli, '--json', ...targetFlags(p)]);

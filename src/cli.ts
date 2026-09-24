@@ -82,12 +82,18 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
   });
 }
 
+// The exit is explicit, once both streams have flushed: a request still pending in a library
+// (a device call past its ceiling), a timer or a socket would otherwise hold the process open after
+// the command has said everything it had to.
+const flushed = (s: NodeJS.WriteStream): Promise<void> => new Promise((r) => (s.writableLength ? s.write('', () => r()) : r()));
 main(process.argv.slice(2)).then(
-  (code) => {
-    process.exitCode = code;
+  async (code) => {
+    await Promise.all([flushed(process.stdout), flushed(process.stderr)]);
+    process.exit(code);
   },
-  (e: unknown) => {
+  async (e: unknown) => {
     process.stderr.write(`vysu: internal error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
-    process.exitCode = 70;
+    await Promise.all([flushed(process.stdout), flushed(process.stderr)]);
+    process.exit(70);
   },
 );
