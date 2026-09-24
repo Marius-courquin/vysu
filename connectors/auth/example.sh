@@ -95,7 +95,10 @@ auth_mobile_login() { # platform persona
 
 # Optional: `mlogin` calls it when another persona is signed in. `{ : ; }` when the app has no way out.
 auth_mobile_logout() { # platform
-  local platform="$1"
+  local platform="$1" out; out="$(myapp_opt LOGOUT_LABEL 'Se déconnecter')"
+  # The menu first, then its logout row once it shows: a row pressed while its menu is still closed
+  # (or opening) taps whatever lies under it.
   mob_press_if "$platform" "$(myapp_opt MENU_LABEL Menu)" >/dev/null 2>&1 \
-    && mob_press_if "$platform" "$(myapp_opt LOGOUT_LABEL 'Se déconnecter')" >/dev/null 2>&1
+    && mob_wait_text "$platform" "$out" 5000 >/dev/null 2>&1 \
+    && mob_press_if "$platform" "$out" >/dev/null 2>&1
 }

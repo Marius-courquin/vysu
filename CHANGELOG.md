@@ -72,6 +72,16 @@ lock, claim, device-choice and state files are unchanged, so both versions can r
   (the bundle 1.5 s sooner, one launch instead of two). A launch the system refuses (the app not
   installed) ends the relaunch at once with the reason, where it used to wait three minutes for
   Metro.
+- **`mlogin` switches persona again** (auth0). It pressed « Close,Fermer » and « Continue,Continuer »
+  blind to clear Expo's dev menu; « Fermer » is also the accessible name of the full-screen backdrop
+  of the app's closed drawer, pressed at its centre: a post's image viewer opened over the tab bar,
+  and the logout died on « not on the door screen and no way to log out from here » (iOS 18 and
+  API 30). The relaunch clears the dev menu under its own guard now. The logout opens the menu,
+  presses its row once it shows (on Android the rows sit in the tree while the drawer is closed),
+  confirms a dialog by its new button (`VYSU_AUTH0_LOGOUT_CONFIRM_LABELS`, the logout label by
+  default), and when the way out is not on the screen the app was left on, tries once more from a
+  cold start. Verified both ways on both platforms, from a pushed screen and from Nidz's pending
+  access request with its confirmation dialog.
 
 ## 0.5.1 — 2026-09-23
 

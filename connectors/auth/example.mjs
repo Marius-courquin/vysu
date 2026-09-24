@@ -100,7 +100,10 @@ export async function mobileLogin(v, platform, persona) {
   console.log(`${platform}: logged in as ${persona} (${email})`);
 }
 
-// Optional: sign whoever is signed in out. True when it did.
+// Optional: sign whoever is signed in out. True when it did. The menu first, then its logout row once
+// it shows: a row pressed while its menu is still closed (or opening) taps whatever lies under it.
 export async function mobileLogout(v, platform) {
-  return (await v.mobPressIf(platform, opt(v, 'MENU_LABEL', 'Menu'))) && (await v.mobPressIf(platform, opt(v, 'LOGOUT_LABEL', 'Se déconnecter')));
+  const out = opt(v, 'LOGOUT_LABEL', 'Se déconnecter');
+  if (!(await v.mobPressIf(platform, opt(v, 'MENU_LABEL', 'Menu')))) return false;
+  return (await v.mobWaitText(platform, out, 5000)) && (await v.mobPressIf(platform, out));
 }

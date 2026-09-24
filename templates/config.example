@@ -65,6 +65,7 @@ VYSU_AUTH='none'
 # VYSU_AUTH0_PASSWORD_TEXT='mot de passe'
 # VYSU_AUTH0_MENU_LABEL='Menu'
 # VYSU_AUTH0_LOGOUT_LABEL='Se déconnecter'
+# VYSU_AUTH0_LOGOUT_CONFIRM_LABELS='Se déconnecter'
 # VYSU_AUTH0_AFTER_LOGIN_LABELS='Entrer directement,Retour à l'"'"'accueil'
 # Options of the form connector, all optional (defaults in src/connectors/auth/form.ts). Labels are
 # matched by <label>, then placeholder, then input type on the web, and by accessibility label on

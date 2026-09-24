@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AuthContext, Box } from '../../src/auth/types.ts';
 import type { Platform } from '../../src/core/hold.ts';
-import { connector as auth0 } from '../../src/connectors/auth/auth0.ts';
+import { buttonsLabelled, connector as auth0 } from '../../src/connectors/auth/auth0.ts';
 import { connector as form } from '../../src/connectors/auth/form.ts';
 import { connector as none } from '../../src/connectors/auth/none.ts';
 
@@ -110,8 +110,6 @@ test('auth0 on android: the door, the Custom Tab, both fields by role', async ()
     'prepare android',
     'relaunch android',
     'pressAny android Autoriser,Allow',
-    'pressAny android Close,Fermer',
-    'pressAny android Continue,Continuer',
     'wait android Se connecter 8000',
     'pressIf android Se connecter',
     'pressAny android Continuer,Continue',
@@ -139,9 +137,18 @@ test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => 
     absent: ['Se connecter'],
     fields: [{ x: 20, y: 300, w: 335, h: 45 }],
   });
-  // Not on the door: the logout is tried, then the door has to show.
+  // Not on the door, and the logout never reaches it: tried here, then once more from a cold start.
   await assert.rejects(auth0.mobileLogin(v, 'ios', 'alice'), /die: ios: not on the door screen and no way to log out from here/);
-  assert.deepEqual(calls.slice(-4), ['wait ios Se connecter 8000', 'pressIf ios Menu', 'pressIf ios Se déconnecter', 'wait ios Se connecter 15000']);
+  const once = [
+    'pressIf ios Menu',
+    'wait ios Se déconnecter 5000',
+    'try ios snapshot -i --json',
+    'pressIf ios Se déconnecter',
+    'wait ios Se connecter 6000',
+    'try ios snapshot -i --json',
+    'wait ios Se connecter 15000',
+  ];
+  assert.deepEqual(calls.slice(calls.indexOf('wait ios Se connecter 8000')), ['wait ios Se connecter 8000', ...once, 'relaunch ios', ...once]);
   const ok = fake({ failing: ['ios wait role="textfield" 20000', 'ios wait id="username" 8000'], fields: [{ x: 20, y: 300, w: 335, h: 45 }] });
   const out = await capture(() => auth0.mobileLogin(ok.v, 'ios', 'alice'));
   const tail = ok.calls.slice(ok.calls.indexOf('try ios wait id="username" 8000') + 1);
@@ -181,6 +188,143 @@ test('auth0: the fallbacks, each tried when the one before fails', async () => {
   door.v.mobPressIf = async (p, label) => (door.calls.push(`pressIf ${p} ${label}`), false);
   await capture(() => auth0.mobileLogin(door.v, 'ios', 'alice'));
   assert.ok(door.calls.includes('mob ios press text="Se connecter" --settle'));
+});
+
+// The logout against a screen that changes: what is on it, and what a press or a relaunch puts there
+// instead. A `dialog:<label>` is a dialog's button of that label, listed with the others by a
+// snapshot, in a box of its own, and pressed by its ref.
+function screens(start: string[], moves: Record<string, string[]>, root: string[], cfg: Record<string, string> = {}): { v: AuthContext; calls: string[] } {
+  const f = fake({ cfg });
+  let on = new Set(start);
+  const shown = (): string[] => [...on];
+  f.v.mobPressIf = async (p, label) => {
+    f.calls.push(`pressIf ${p} ${label}`);
+    if (!on.has(label)) return false;
+    if (moves[label]) on = new Set(moves[label]);
+    return true;
+  };
+  f.v.mobWaitText = async (p, text, ms) => (f.calls.push(`wait ${p} ${text} ${ms}`), on.has(text));
+  f.v.mobTry = async (p, ...args) => {
+    f.calls.push(`try ${p} ${args.join(' ')}`);
+    if (args[0] === 'snapshot') {
+      // iOS lists a dialog's window first: the dialog's button comes before the screen's own.
+      const nodes = shown()
+        .sort((a, b) => Number(b.startsWith('dialog:')) - Number(a.startsWith('dialog:')))
+        .map((l, i) => ({ ref: `e${i + 1}`, type: 'Button', label: l.replace(/^dialog:/, ''), rect: { x: 0, y: l.startsWith('dialog:') ? 370 : 35 } }));
+      return { code: 0, stdout: JSON.stringify({ success: true, data: { nodes } }), stderr: '' };
+    }
+    if (args[0] === 'press') {
+      const i = Number((args[1] ?? '').replace('@e', '')) - 1;
+      const label = shown().sort((a, b) => Number(b.startsWith('dialog:')) - Number(a.startsWith('dialog:')))[i];
+      if (label && moves[label]) on = new Set(moves[label]);
+      return { code: label ? 0 : 1, stdout: '', stderr: '' };
+    }
+    return { code: 1, stdout: '', stderr: '' };
+  };
+  f.v.mobileRelaunch = async (p) => {
+    f.calls.push(`relaunch ${p}`);
+    on = new Set(root);
+  };
+  return f;
+}
+const DOOR = ['Se connecter'];
+
+test('auth0 logout from the tabs: the menu, its row once it shows, then the door', async () => {
+  // Android keeps the drawer's rows in the tree while it is closed: the row is there from the start,
+  // and still only pressed once the menu is open.
+  const { v, calls } = screens(['Menu', 'Se déconnecter'], { Menu: ['Menu', 'Se déconnecter', 'Mon profil'], 'Se déconnecter': DOOR }, []);
+  assert.equal(await auth0.mobileLogout!(v, 'android'), true);
+  assert.deepEqual(calls, [
+    'pressIf android Menu',
+    'wait android Se déconnecter 5000',
+    'try android snapshot -i --json',
+    'pressIf android Se déconnecter',
+    'wait android Se connecter 6000',
+  ]);
+});
+
+test('auth0 logout on a screen with no menu: its own button, then the dialog\'s, the one that was not there', async () => {
+  // The gate's « SE DÉCONNECTER » and, once pressed, the dialog's « Se déconnecter » over it: the same
+  // label, both hittable, the dialog's listed first on iOS.
+  const { v, calls } = screens(['Se déconnecter'], { 'Se déconnecter': ['Se déconnecter', 'dialog:Se déconnecter'], 'dialog:Se déconnecter': DOOR }, []);
+  assert.equal(await auth0.mobileLogout!(v, 'ios'), true);
+  assert.deepEqual(calls, [
+    'pressIf ios Menu',
+    'try ios snapshot -i --json',
+    'pressIf ios Se déconnecter',
+    'wait ios Se connecter 6000',
+    'try ios snapshot -i --json',
+    'try ios press @e1 --settle',
+    'wait ios Se connecter 15000',
+  ]);
+  // A dialog that confirms in its own words.
+  const oui = screens(['Se déconnecter'], { 'Se déconnecter': ['Se déconnecter', 'dialog:Oui'], 'dialog:Oui': DOOR }, [], { AUTH0_LOGOUT_CONFIRM_LABELS: 'Confirmer,Oui' });
+  assert.equal(await auth0.mobileLogout!(oui.v, 'ios'), true);
+  assert.ok(oui.calls.includes('try ios press @e1 --settle'), oui.calls.join('\n'));
+});
+
+test('buttonsLabelled: buttons only, by label whatever the case, with their ref and box', () => {
+  const snap = JSON.stringify({
+    success: true,
+    data: {
+      nodes: [
+        { ref: 'e1', type: 'Other', label: 'SE DÉCONNECTER', rect: { x: 0, y: 0 } },
+        { ref: 'e11', type: 'Button', label: 'Se déconnecter', rect: { x: 52.5, y: 369.5 } },
+        { ref: 'e15', type: 'Button', label: 'SE DÉCONNECTER', rect: { x: 17.5, y: 35 } },
+        { ref: 'e16', type: 'android.widget.Button', label: 'Oui', rect: { x: 1, y: 2 } },
+        { ref: 'e17', type: 'Button', label: 'Annuler' },
+      ],
+    },
+  });
+  assert.deepEqual(buttonsLabelled(snap, ['Se déconnecter']), [
+    { ref: 'e11', box: '{"x":52.5,"y":369.5}' },
+    { ref: 'e15', box: '{"x":17.5,"y":35}' },
+  ]);
+  assert.deepEqual(buttonsLabelled(snap, ['Oui']), [{ ref: 'e16', box: '{"x":1,"y":2}' }]);
+  assert.deepEqual(buttonsLabelled('', ['Oui']), []);
+  assert.deepEqual(buttonsLabelled('{"success":false}', ['Oui']), []);
+});
+
+test('auth0 logout from a pushed screen or a viewer over the menu: once more from a cold start', async () => {
+  // An image viewer: its « Close » and pages, nothing of the tab bar that can be pressed.
+  const { v, calls } = screens(['Close', 'page 1 sur 2'], { Menu: ['Menu', 'Se déconnecter'], 'Se déconnecter': DOOR }, ['Menu']);
+  assert.equal(await auth0.mobileLogout!(v, 'ios'), true);
+  assert.deepEqual(calls, [
+    'pressIf ios Menu',
+    'try ios snapshot -i --json',
+    'pressIf ios Se déconnecter',
+    'relaunch ios',
+    'pressIf ios Menu',
+    'wait ios Se déconnecter 5000',
+    'try ios snapshot -i --json',
+    'pressIf ios Se déconnecter',
+    'wait ios Se connecter 6000',
+  ]);
+  // A menu that opens on nothing (covered, or another app's): the row never shows, same way out.
+  const covered = screens(['Menu'], {}, ['Menu']);
+  assert.equal(await auth0.mobileLogout!(covered.v, 'android'), false);
+  assert.deepEqual(covered.calls, ['pressIf android Menu', 'wait android Se déconnecter 5000', 'relaunch android', 'pressIf android Menu', 'wait android Se déconnecter 5000']);
+});
+
+test('auth0 mlogin over another persona: relaunched, logged out through the menu, then the door', async () => {
+  const f = screens(['Menu', 'Bienvenue'], { Menu: ['Menu', 'Se déconnecter'], 'Se déconnecter': DOOR }, ['Menu', 'Bienvenue']);
+  const snapshotted = f.v.mobTry;
+  f.v.mobTry = async (p, ...args) => (args[0] === 'snapshot' ? snapshotted(p, ...args) : (f.calls.push(`try ${p} ${args.join(' ')}`), { code: 0, stdout: '', stderr: '' }));
+  await capture(() => auth0.mobileLogin(f.v, 'android', 'alice'));
+  assert.deepEqual(f.calls.slice(0, 9), [
+    'prepare android',
+    'relaunch android',
+    'pressAny android Autoriser,Allow',
+    'wait android Se connecter 8000',
+    'pressIf android Menu',
+    'wait android Se déconnecter 5000',
+    'try android snapshot -i --json',
+    'pressIf android Se déconnecter',
+    'wait android Se connecter 6000',
+  ]);
+  assert.ok(f.calls.includes('mstate android persona=alice'));
+  // Nothing pressed blind for Expo's dev menu: « Fermer » is also the app's own drawer backdrop.
+  assert.ok(!f.calls.some((c) => /Close|Fermer|Continue,Continuer/.test(c)), f.calls.join('\n'));
 });
 
 test('form on mobile: labels first, then the role; home by the project text', async () => {

@@ -64,7 +64,11 @@ What each receives, and what it must leave behind:
   `v.mstateSet(platform, 'persona', persona)` (bash: `mstate_set "$platform" persona "$persona"`)
   — one install is one session, and the next agent reads that back through `vysu claim` instead of
   opening the app to find out.
-- **`mobileLogout`** is optional; a connector calls its own when another persona is signed in.
+- **`mobileLogout`** is optional; a connector calls its own when another persona is signed in. Open
+  the menu that holds the logout before pressing it (a drawer's rows can sit in the tree while it is
+  closed, and a press there lands on whatever lies under them), confirm a dialog if the app asks, and
+  when the way out is not on the screen the app was left on, `mobileRelaunch` and try again from its
+  root.
 
 Failing is `v.die('<what was expected, and the option that names it>')` (bash: `die "…"`). It ends
 vysu with the message and gives every lock back — never `process.exit`, never a silent return.
