@@ -1,6 +1,6 @@
-// `vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH] [--keep-going]`: a scripted walk of
-// the web, the steps of a file (or stdin) one per line, then the contact sheet of the shots taken
-// along the way. Flows are data, not behaviour: the same runner walks any app. It is also the batch
+// `vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH] [--keep-going] [--no-sheet]`: a
+// scripted walk of the web, the steps of a file (or stdin) one per line, then the contact sheet of the
+// shots taken along the way. Flows are data, not behaviour: the same runner walks any app. It is also the batch
 // mode: a hundred `go <url>` / `shot <label>` pairs are one call, one browser, one sheet.
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,15 +16,19 @@ import { run as sheet } from './sheet.ts';
 
 export async function run(args: string[]): Promise<void> {
   const [persona, file] = args;
-  if (!persona || !file) die('usage: vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH] [--keep-going]');
+  if (!persona || !file) die('usage: vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH] [--keep-going] [--no-sheet]');
   let shots = '';
   let viewport = '';
   let keep = false;
+  // A batch of hundreds of captures wants its files, not thirty pages of contact sheet (180 captures:
+  // 13 s and 30 sheet paths printed).
+  let noSheet = false;
   for (let i = 2; i < args.length; i++) {
     const a = args[i]!;
     if (a === '--shots') shots = optValue(args, i++, 'flow');
     else if (a === '--viewport') viewport = optValue(args, i++, 'flow');
     else if (a === '--keep-going') keep = true;
+    else if (a === '--no-sheet') noSheet = true;
     else die(`vysu flow: unknown option ${a}`);
   }
   if (file !== '-' && !isFile(file)) die(`no flow file ${file}`);
@@ -55,7 +59,7 @@ export async function run(args: string[]): Promise<void> {
   const dir = join(config().shots, shots);
   if (shots && isDir(dir)) {
     await webMeta(dir, persona, { viewport });
-    if (readdirSync(dir).length) await sheet([shots]);
+    if (!noSheet && readdirSync(dir).length) await sheet([shots]);
   }
   if (failed.length) {
     print(`flow: ${failed.length} of ${steps} step(s) failed (line, step):\n${failed.map((f) => `  ✗ ${f}\n`).join('')}`);

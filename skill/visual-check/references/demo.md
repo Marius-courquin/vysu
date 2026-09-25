@@ -10,7 +10,7 @@ data, not behaviour: the same runner walks any app. A project keeps its own unde
 with any extension.
 
 ```bash
-vysu flow alice .vysu/flows/tour.txt --shots tour-web [--viewport 1440x900] [--keep-going]
+vysu flow alice .vysu/flows/tour.txt --shots tour-web [--viewport 1440x900] [--keep-going] [--no-sheet]
 vysu flow alice - --shots tour-web <<< 'go http://localhost:3000/dashboard'   # or stdin
 ```
 
@@ -31,8 +31,8 @@ wait idle
 shot zone-2
 ```
 
-`vysu flow alice zones.txt --shots zones --keep-going`: a zone that fails is one ✗ line, not the
-end of the other ninety-nine.
+`vysu flow alice zones.txt --shots zones --keep-going --no-sheet`: a zone that fails is one ✗ line,
+not the end of the other ninety-nine, and no thirty-page contact sheet at the end.
 
 | Verb | What it does |
 |---|---|
