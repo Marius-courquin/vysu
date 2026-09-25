@@ -20,6 +20,8 @@
 #                                           _ANDROID in the background; --device / --avd are remembered for this owner
 #                                           iOS devices: the config's VYSU_IOS_DEVICE and VYSU_IOS_OLD_DEVICE
 #                                           AVDs: the specs of VYSU_ANDROID_AVDS, created by `vysu setup`
+#                                           VYSU_MOBILE_HEADLESS=1: no window — Simulator.app is not opened, the emulator
+#                                           runs with -no-window; captures, taps, logs and mrec work the same
 #   vysu up ios|android --isolated [--port <n>] [--dir <mobile dir>]   a Metro for this owner alone, from its own
 #                                           checkout (default: the worktree the command runs in), on the next free
 #                                           port from 8082; the device is relaunched onto it. ~1-1.5 GB of RAM:

@@ -85,6 +85,10 @@ VYSU_AUTH='none'
 # In native mode `up` boots the device, installs the app when it is missing and starts its log;
 # there is no Metro, no adb reverse and no bundle wait.
 # VYSU_MOBILE_KIND='native'
+# 1: simulators and emulators vysu starts show no window (a machine with no screen, or no windows
+# opening under someone's work). `open -a Simulator` shows them; quitting Simulator.app shuts them
+# down. Default: 0
+# VYSU_MOBILE_HEADLESS='1'
 # The app id on both platforms.
 # VYSU_MOBILE_BUNDLE='com.example.app'
 # The app's name on the iOS simulator (what `simctl`/agent-device open by).

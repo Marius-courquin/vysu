@@ -83,6 +83,7 @@ in [`src/connectors/auth/form.ts`](../src/connectors/auth/form.ts).
 | Key | Meaning | Default | Example |
 |---|---|---|---|
 | `VYSU_MOBILE_KIND` | `expo` (a dev-client served by Metro) or `native` (Swift, Kotlin, Flutter, .NET — already built, no bundler) | `expo` when `VYSU_MOBILE_DIR` is set, else `native` | `native` |
+| `VYSU_MOBILE_HEADLESS` | `1`: the devices vysu starts show no window (Simulator.app is not opened, the emulator runs with `-no-window`); captures, taps, logs and recordings work the same. Only the start differs: a device started with a window keeps it. `open -a Simulator` shows the booted simulators; **quitting** Simulator.app shuts every booted simulator down, so close its windows instead. A headless emulator has no window to show: `vysu adb emu kill` stops it | `0` | `1` |
 | `VYSU_MOBILE_BUNDLE` | the app id on both platforms | empty | `com.example.app` |
 | `VYSU_IOS_APP` | the app's name on the iOS simulator (what `simctl` / agent-device open by) | empty | `My App` |
 | `VYSU_MOBILE_DIR` | the Expo app folder, relative to the project | empty | `apps/mobile` |

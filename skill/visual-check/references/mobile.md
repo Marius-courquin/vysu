@@ -12,6 +12,9 @@ simulator: the primitives are not the same.
   `vysu up ios --device "<name>"`; the choice is remembered.
 - Android: the AVDs of `VYSU_ANDROID_AVDS`, the default being `VYSU_ANDROID_AVD`, picked with
   `vysu up android --avd <name>`. A Google APIs image is what makes real FCM possible.
+- `VYSU_MOBILE_HEADLESS=1` (machine or project): devices vysu starts show no window. Nothing else
+  changes. Never quit Simulator.app to hide one: that shuts every booted simulator down, other
+  agents' included.
 - **A screen is validated on the recent device AND on the old one of each platform.**
 - **Several agents on one machine: take a device, do not pick one by hand.** `vysu claim ios|android
   --any` takes a free device of the pool (`VYSU_IOS_DEVICES`, the AVDs of `VYSU_ANDROID_AVDS`):
