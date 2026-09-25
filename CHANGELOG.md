@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.9.0 — 2026-09-25
+
+What the first user outside Nidz ran into on a Vue app behind a Google sign-in, with a map.
+
+- **`VYSU_AUTH=token`: a login with no login page.** The persona holds a token (`vysu persona add
+  <name> --token`, or `vysu persona set <name> TOKEN`, both asked for, never echoed, a pipe answers
+  too) and the connector puts it where the app reads it at boot: `VYSU_TOKEN_STORE=localStorage:<key>`
+  or `cookie:<name>`, or `VYSU_TOKEN_WRITE_JS` / `VYSU_TOKEN_READ_JS` for a token kept in a shape of
+  the app's own. For a Google or Microsoft sign-in, a passkey, a second factor: nothing an agent
+  should click through. A JWT past its `exp` is refused before a browser is touched, a token the app
+  drops on boot is named as refused, and `vysu auth test` says how long it has left. `claim <persona>
+  --any` hands every slot the same token in its own browser: safe here, since nothing rotates. Web
+  only. `persona set <name> <KEY>` with no value now asks for a secret key rather than writing it
+  empty.
+- **`click` toggles a toggle.** After a button and a link, a switch, checkbox, radio, tab, menu item
+  or option is looked for by name, before the visible text: a Vuestic switch was clicked on the words
+  beside it and never toggled. `click "css:<selector>"` and `click @e<N>` click that element itself.
+  Checked on a switch drawn over an invisible input: by its name, by the words beside it, by `css:`.
+- **`wait idle [<s>]` on the web**, the step mobile had: after an action, until no request has
+  completed for half a second and no image is still loading (a map's tiles), at most `<s>` (10), then
+  the step fails. Replaces the fixed `sleep` a click that fetches needed: six tiles of 0.4 to 0.7 s,
+  idle after 0.9 s, all six loaded.
+- **`go <url> --reload`**: a url that differs by its `#hash` alone is a navigation inside the same
+  document, and an app reading its route at boot never saw it (measured: booted once, route stale;
+  with `--reload`, booted again on the new route).
+- **`flow --keep-going`**, as `mdo`: a failed step is a `✗` line, the list comes at the end, exit 1. A
+  flow is the batch mode (many `go` / `shot` lines, one call, one browser, one sheet), now documented
+  as such, and one window that did not open no longer costs the rest of the batch.
+- **A call that never answers is stopped** after `VYSU_WEB_TIMEOUT` seconds (60; a batch 30 more per
+  command, a `wait` what it asks for, a recording none), and so is the session's browser: an `eval`
+  awaiting a promise that never settles held the session's daemon for good (100 s and counting, a
+  `close` queued behind it). The next command reopens it with the saved login: 5.2 s to give up,
+  3.5 s to be back on the logged-in page. Only a pid that still runs agent-browser is stopped.
+- **A command says which session it lands in.** A persona session that neither runs nor has anything
+  to restore is said to be new on its first command, with the project and its config; with no
+  `.vysu/config` above the working directory, that the session falls into project « default ». A
+  script started from another folder captured a login page without a word. A failed flow step and a
+  label not found name the session.
+- `box --page` measures an element of an inner scroller with the panes unfolded, as a `--full`
+  capture draws it: 50,1560 (the element) where 0.8.1 answered 50,160 (grey).
+
 ## 0.8.1 — 2026-09-25
 
 - **Android: a session another AVD left on this emulator's port no longer blocks it.** Emulators take
