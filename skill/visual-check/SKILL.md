@@ -107,7 +107,8 @@ vysu ios|android <agent-device args…>             # the raw driver, when a ver
 
 `-` as the persona is an anonymous session (a public page, a marketing site, a Storybook story).
 `<p>@2` is `<p>` in a second browser session of its own (its own login, its own page): what
-`claim <p> --any` hands out when `<p>` is busy.
+`claim <p> --any` hands out when `<p>` is busy. The anonymous session has them too: `claim - --any`
+hands out `-`, `-@2`… for checkers of public pages side by side.
 
 ## 5. Sharing one machine
 

@@ -52,6 +52,7 @@ On the web, two checkers as the same persona would drive one browser, whose page
 language each would change under the other: each starts with `vysu claim <persona> --any` and uses
 the session it names (`<persona>@2`…) on every command, then `vysu release <persona>@2`. A session
 that never logged in logs in on that claim (a few seconds), with its own login rather than a copy.
+Checkers of public pages (no persona, `-`) do the same with `vysu claim - --any` (`-@2`…).
 
 ## The report contract (what the checker returns)
 

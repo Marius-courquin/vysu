@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1 — 2026-09-25
+
+- **The anonymous session has slots too.** 0.7.0 left `-` out, so two agents checking a public page
+  (a marketing site, a Storybook) still shared one browser. `vysu claim - --any` hands out `-`, `-@2`,
+  `-@3`… the same way, with no login attempted; the sessions keep the names they had (`<project>--`
+  for `-`, `web--` its lock). Measured on nidz.fr: two walks side by side, each browser left on its own
+  URL. `vysu claim` no longer suggests `vysu login -@2` for an anonymous session that is not open yet.
+
 ## 0.7.0 — 2026-09-25
 
 Asked by the first user outside the project: « in the browser, several tabs so you parallelise? ».
