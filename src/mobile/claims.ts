@@ -26,6 +26,7 @@ import {
 import { listening } from '../core/net.ts';
 import { hhmm } from '../core/text.ts';
 import { webClaimState, webReset } from '../web/api.ts';
+import { claimAnyWeb } from '../web/slots.ts';
 import { forgetSerial } from './device.ts';
 import { quiet, say } from './io.ts';
 import { mobileKind, mrelaunch } from './launch.ts';
@@ -35,7 +36,7 @@ import { claimAny, deleteClone, isClone, poolIsUp, poolPower } from './pool.ts';
 import { mscreenLine } from './screen.ts';
 import { mresetArgs, mstateFile, mstateGet, mstateLine } from './state.ts';
 
-export const CLAIM_USAGE = `usage: vysu claim ios|android|<persona> [--minutes ${CLAIM_MINUTES}] [--note "<why>"] · ios --device "<name>" · android --avd <name> · ios|android --any [--no-wait]`;
+export const CLAIM_USAGE = `usage: vysu claim ios|android|<persona> [--minutes ${CLAIM_MINUTES}] [--note "<why>"] · ios --device "<name>" · android --avd <name> · ios|android|<persona> --any [--no-wait]`;
 
 export async function claim(args: string[]): Promise<void> {
   const what = args[0] ?? '';
@@ -70,8 +71,8 @@ export async function claim(args: string[]): Promise<void> {
   }
   if (!/^[0-9]+$/.test(minutes) || minutes === '0') die(`vysu claim: --minutes is a whole number of minutes (got « ${minutes} »)`);
   if (any) {
-    if (what !== 'ios' && what !== 'android') die('vysu claim: --any picks a device', 'vysu claim ios|android --any');
     if (device) die('vysu claim: --any picks the device, --device / --avd names one: not both');
+    if (what !== 'ios' && what !== 'android') return claimAnyWeb(what, Number(minutes), note, nowait);
     return claimAny(what, Number(minutes), note, nowait, claimReport);
   }
   if (device) {

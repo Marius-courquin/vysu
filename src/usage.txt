@@ -161,6 +161,12 @@
 #                                           ios --delete-clone` deletes it); pool = VYSU_IOS_DEVICES + the clones,
 #                                           VYSU_ANDROID_AVDS. None free: waits VYSU_LOCK_WAIT listing who holds
 #                                           what (--no-wait: exit 1 with that list)
+#   vysu claim <persona> --any [--minutes 20] [--no-wait] [--note "<why>"]   a session of the persona nobody
+#                                           uses, for a checker working next to another one as the same persona:
+#                                           <persona>, else <persona>@2, @3… up to VYSU_WEB_SLOTS (4), each its own
+#                                           browser. One that holds no login logs in (its own login, never a copy).
+#                                           The `name it:` line names the session every command then uses
+#                                           (vysu walk <persona>@2 …). None free: waits VYSU_LOCK_WAIT (--no-wait: exit 1)
 #   vysu devices [--prune-clones [--dry-run]]   one line per simulator / emulator: booted, running or shut down,
 #                                           free or claimed (by whom, until when), the command running on it, the
 #                                           state applied; --prune-clones deletes the vysu clones nobody claims
@@ -196,6 +202,7 @@
 #
 # `--no-color` (or NO_COLOR, or a stdout that is not a terminal) drops the markers' colours.
 #   vysu <name> …                           an executable .vysu/commands/<name> of the project, with every VYSU_* exported
+#   <persona>@N, wherever a persona goes       that persona's Nth browser session: its credentials, its own login and page
 #
 # Several agents share this Mac: every command locks the device or the persona session it drives,
 # for its duration (another one waits VYSU_LOCK_WAIT seconds, 90 by default, then gives up). A claim

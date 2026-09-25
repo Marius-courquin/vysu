@@ -1,9 +1,10 @@
 // What the rest of the engine asks of the web code: a persona's browser session, what `vysu claim` /
 // `release --reset` read and do on it, and the auth connector's own line. The mobile code and the
 // platform commands call these signatures.
+import { existsSync } from 'node:fs';
 import { config } from '../core/ctx.ts';
 import type { RunResult } from '../core/proc.ts';
-import { ab, abRaw, bboxes, bcmd, brun, browserName as name, evalValue, lastResult, sessionRunning } from './ab.ts';
+import { ab, abRaw, bboxes, bcmd, brun, browserName as name, evalValue, lastResult, restoreFile, sessionOf, sessionRunning } from './ab.ts';
 import { langReadJs } from './js.ts';
 import { setLang } from './page.ts';
 
@@ -19,7 +20,11 @@ export async function webSessionExists(persona: string): Promise<boolean> {
 // own URL: there is nothing vysu has to remember for it, so the state is read from the browser
 // rather than from a file.
 export async function webClaimState(persona: string): Promise<string> {
-  if (!(await sessionRunning(persona))) return `state: (no session — vysu login ${persona})`;
+  if (!(await sessionRunning(persona))) {
+    return existsSync(restoreFile(sessionOf(persona)))
+      ? 'state: (browser closed, its login kept: the next command reopens it)'
+      : `state: (no session — vysu login ${persona})`;
+  }
   const r = await ab(persona, ['eval', `location.href${langReadJs(' + " · lang " + ')}`], { stderr: 'drop' });
   return `state: url ${evalValue(r.stdout)}`;
 }

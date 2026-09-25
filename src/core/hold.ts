@@ -12,6 +12,7 @@ import { config, commandLine } from './ctx.ts';
 import { die, log, onCleanup } from './errors.ts';
 import { isWindows, pidAlive, processEntry, processName } from './host.ts';
 import { ANDROID_DEFAULT_AVD, IOS_DEFAULT_DEVICE } from './config.ts';
+import { webResource } from './personas.ts';
 import { hhmm, nowSeconds, sleep, slug } from './text.ts';
 
 export type Platform = 'ios' | 'android';
@@ -208,7 +209,7 @@ export function resourceOf(what: string): string {
   if (what === 'ios') return `ios-${slug(devices.ios)}`;
   if (what === 'android') return `android-${slug(devices.android)}`;
   if (/^(ios|android|web)-/.test(what)) return what;
-  return `web-${slug(what)}`;
+  return what === '-' ? 'web--' : webResource(what);
 }
 
 // --- locks ---------------------------------------------------------------------------------------
@@ -247,6 +248,13 @@ export async function lockWho(dir: string): Promise<string> {
   if (!readTrim(join(dir, 'since'))) await sleep(200);
   const since = Number(readTrim(join(dir, 'since')).trim() || nowSeconds());
   return `${readTrim(join(dir, 'owner')) || '?'} running « ${readTrim(join(dir, 'cmd')) || '?'} » for ${nowSeconds() - since}s`;
+}
+
+// Who is driving a resource at this moment without a claim on it: '' when nobody, or this process, is.
+export async function lockBusy(r: string): Promise<string> {
+  const dir = join(config().locks, r);
+  if (!isDir(dir) || !lockAlive(dir) || lockPid(dir) === holder()) return '';
+  return lockWho(dir);
 }
 
 const held = new Set<string>();

@@ -59,6 +59,9 @@ function defaults(v: Map<string, string>, projectDir: string): Array<[string, st
     ['ANDROID_MAX_RUNNING', '2'],
     ['THEME', 'default'],
     ['LOCK_WAIT', '90'],
+    // Sessions per persona `claim <persona> --any` picks from: each one is a headless browser of its
+    // own, a few hundred MB once a page is open.
+    ['WEB_SLOTS', '4'],
     [
       'ANDROID_AVDS',
       'vysu_pixel8_api36:36:pixel_8:;vysu_pixel10pro_api36:36:pixel_8_pro:hw.lcd.width=1280 hw.lcd.height=2856 hw.lcd.density=480;vysu_pixel4a_api30:30:pixel_4a:',

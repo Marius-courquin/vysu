@@ -13,6 +13,7 @@ import { config } from './ctx.ts';
 import { readShellEnv } from './config.ts';
 import { die } from './errors.ts';
 import { shellQuote } from './shellenv.ts';
+import { slug } from './text.ts';
 
 export const PREFIX = 'VYSU_PERSONA_';
 const SECRET = /(PASSWORD|TOKEN|SECRET|KEY)$/;
@@ -31,10 +32,43 @@ export function personaKey(persona: string, key: string): string {
   return `${PREFIX}${persona.toUpperCase()}_${key.toUpperCase()}`;
 }
 
+// A persona's extra browser sessions: `alice@2` is alice's credentials in a session of its own, so
+// two agents checking as alice at the same time each drive their own browser instead of taking turns
+// on one. `alice@1` is alice. A slot logs in by itself and is never handed a copy of alice's login: an
+// identity provider that rotates its refresh tokens (Auth0 does) revokes the whole family the moment
+// two sessions refresh with the same one, and both would find themselves logged out.
+export interface PersonaRef {
+  base: string;
+  slot: number;
+}
+export function personaSlot(ref: string): PersonaRef {
+  const at = ref.indexOf('@');
+  if (at < 0) return { base: ref, slot: 1 };
+  const base = ref.slice(0, at);
+  const n = ref.slice(at + 1);
+  if (!/^[A-Za-z0-9_]+$/.test(base) || !/^[1-9][0-9]?$/.test(n)) die(`persona '${ref}': a session slot is <persona>@<2-99> (alice@2)`);
+  return { base, slot: Number(n) };
+}
+export const personaBase = (ref: string): string => personaSlot(ref).base;
+// The name a slot goes by everywhere: `alice@1` is written `alice`.
+export function personaRefName(base: string, slot: number): string {
+  return slot > 1 ? `${base}@${slot}` : base;
+}
+// What a persona's session is called in agent-browser (letters, digits, - and _), and what its lock
+// and its claim are called. A persona's slug never holds two dashes in a row, so `--2` is a slot's alone.
+export function personaSessionSuffix(ref: string): string {
+  const { base, slot } = personaSlot(ref);
+  return slot > 1 ? `${base}--${slot}` : base;
+}
+export function webResource(ref: string): string {
+  const { base, slot } = personaSlot(ref);
+  return `web-${slug(base)}${slot > 1 ? `--${slot}` : ''}`;
+}
+
 // Any key the project set (`vysu persona set alice TOTP …`), from the file, else the config or the
 // environment, which is where a sourced file finds a variable it does not set.
 export function personaVar(persona: string, key: string): string {
-  const k = `${PREFIX}${persona.toUpperCase()}_${key}`;
+  const k = `${PREFIX}${personaBase(persona).toUpperCase()}_${key}`;
   const file = existsSync(config().personas) ? loadPersonas() : new Map<string, string>();
   return file.get(k) ?? config().fileVars.get(k) ?? process.env[k] ?? '';
 }
@@ -44,7 +78,7 @@ export function personaRequire(persona: string): { email: string; password: stri
   loadPersonas();
   const email = personaVar(persona, 'EMAIL');
   const password = personaVar(persona, 'PASSWORD');
-  if (!email || !password) die(`persona '${persona}' not in ${config().personas} (vysu persona add ${persona})`);
+  if (!email || !password) die(`persona '${personaBase(persona)}' not in ${config().personas} (vysu persona add ${persona})`);
   return { email, password };
 }
 

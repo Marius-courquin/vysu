@@ -1,6 +1,7 @@
 // Everything that goes through agent-browser: which binary, which session, which lock, and the
-// batch a whole capture run is queued into. One session per persona (`<project>-<persona>`), its
-// cookies and storage restored on every call, the persona's `web-<persona>` lock taken on the first.
+// batch a whole capture run is queued into. One session per persona (`<project>-<persona>`, a slot
+// `<project>-<persona>--2`), its cookies and storage restored on every call, the persona's
+// `web-<persona>` lock taken on the first.
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -10,7 +11,7 @@ import { die } from '../core/errors.ts';
 import { isExecutable, isWindows, nativeTarget, toolArgv, which } from '../core/host.ts';
 import { lockTake } from '../core/hold.ts';
 import type { RunResult } from '../core/proc.ts';
-import { slug } from '../core/text.ts';
+import { personaSessionSuffix, webResource } from '../core/personas.ts';
 
 // agent-browser's npm package ships one native binary per platform next to a node wrapper that
 // only picks one and spawns it: ~70 ms of node start-up before every call, a dozen calls per
@@ -56,12 +57,15 @@ export function setAuthTestSession(s: string): void {
 export const authTestSessionName = (): string => authTestSession;
 
 export function sessionOf(persona: string): string {
-  return authTestSession || `${config().get('PROJECT')}-${persona}`;
+  if (authTestSession) return authTestSession;
+  // `-` is the anonymous session, which has no slot.
+  return `${config().get('PROJECT')}-${persona === '-' ? persona : personaSessionSuffix(persona)}`;
 }
 // What that session's lock is called: a test must not hold the real persona's session, which it
 // never touches, for as long as it runs.
 export function webLockOf(persona: string): string {
-  return authTestSession ? 'web-authtest' : `web-${slug(persona)}`;
+  if (authTestSession) return 'web-authtest';
+  return persona === '-' ? 'web--' : webResource(persona);
 }
 // Where agent-browser keeps a session's restore file (`--restore` with no name keys it on the
 // session): what carries a login from one run to the next.
