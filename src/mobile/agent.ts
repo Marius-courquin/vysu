@@ -82,8 +82,29 @@ async function select(p: Platform): Promise<void> {
   if (p === 'ios') {
     needMac('ios');
     await iosLock();
-  } else if (p === 'android') await androidSelect();
-  else die('platform must be ios or android');
+  } else if (p === 'android') {
+    await androidSelect();
+    await dropLeftovers();
+  } else die('platform must be ios or android');
+}
+
+// An emulator takes the first free port: AVDs taking turns on one machine all come up as
+// emulator-5554, and each left its agent-device session bound to that serial. The next AVD's first call
+// was refused (« Device is already in use by session nidz-android-<another AVD> »), and one machine
+// had two of them on the same port. vysu binds a session only to the serial its own AVD runs on, so a
+// session of this project named after another AVD and bound to this serial is a leftover: dropped,
+// once per command, before the first call.
+let leftoversChecked = false;
+async function dropLeftovers(): Promise<void> {
+  if (leftoversChecked || !serial.value) return;
+  leftoversChecked = true;
+  const mine = sessionName('android');
+  const prefix = `${config().get('PROJECT')}-android-`;
+  for (const s of await sessionList()) {
+    if (s.id !== serial.value || s.name === mine || !s.name.startsWith(prefix)) continue;
+    await sessionClose(s.name);
+    process.stderr.write(`vysu: android: dropped the session ${s.name}, left over on ${serial.value} by another AVD\n`);
+  }
 }
 
 // Flags after the positionals: that is the order agent-device documents.
@@ -113,7 +134,7 @@ export function adPlain(args: string[]): Promise<RunResult> {
 
 interface Client {
   command: Record<string, (o: Json) => Promise<unknown>>;
-  sessions: { list: (o?: Json) => Promise<Array<{ name: string }>>; close: (o?: Json) => Promise<unknown> };
+  sessions: { list: (o?: Json) => Promise<Array<{ name: string; id?: string; device?: { id?: string } }>>; close: (o?: Json) => Promise<unknown> };
   apps: Record<string, (o: Json) => Promise<unknown>>;
   capture: Record<string, (o: Json) => Promise<unknown>>;
   interactions: Record<string, (o: Json) => Promise<unknown>>;
@@ -262,20 +283,26 @@ export function answerJson(a: Answer): string {
   return JSON.stringify(a.ok ? { success: true, data: a.data } : { success: false, error: a.error }, null, 2);
 }
 
-// The session list, for a device-less question (is there a session on this device?).
-export async function sessionNames(): Promise<string[]> {
+// The sessions and the device each one is bound to (a simulator's UDID, an emulator's serial).
+export async function sessionList(): Promise<Array<{ name: string; id: string }>> {
   const lib = await agentLib();
   if (lib) {
     try {
-      return (await lib.client.sessions.list()).map((s) => s.name);
+      // The library nests the device (`device.id`) where the CLI's JSON puts it flat (`id`).
+      return (await lib.client.sessions.list()).map((s) => ({ name: s.name, id: s.device?.id ?? s.id ?? '' }));
     } catch {
       // the CLI below says the same, or nothing
     }
   }
   const r = await adPlain(['session', 'list', '--json']);
   const a = parseAnswer(r.stdout, r.code);
-  const list = (a.data.sessions as Array<{ name?: string }> | undefined) ?? [];
-  return list.map((s) => s.name ?? '').filter(Boolean);
+  const list = (a.data.sessions as Array<{ name?: string; id?: string }> | undefined) ?? [];
+  return list.map((s) => ({ name: s.name ?? '', id: s.id ?? '' })).filter((s) => s.name);
+}
+
+// The session list, for a device-less question (is there a session on this device?).
+export async function sessionNames(): Promise<string[]> {
+  return (await sessionList()).map((s) => s.name);
 }
 
 // `agent-device close --session <name>`: ends the session and closes no app (it only closes one it
