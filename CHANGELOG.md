@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.2 — 2026-09-25
+
+The issues Charles opened on the repo (#1 to #10), read against 0.9.1 and reproduced where they still
+held, in Chrome for Testing and in Brave headless.
+
+- **`shot <label> --selector <css|@ref>`** (#10): one element, scrolled into view through every
+  scrolling container, cut out of a viewport capture. agent-browser's `screenshot <selector>` clips
+  the page at the element's box without scrolling the container holding it: below the fold of an
+  inner scroller it came out as a blank rectangle, in both browsers; `--selector` gives the element.
+- **`flow --no-sheet`** (#3): a batch of 180 captures ended on 13 s of contact sheet, thirty pages
+  whose paths were printed back to the agent.
+- **A frozen tab is named as one** (#6): a call stopped at `VYSU_WEB_TIMEOUT` says « its tab's renderer
+  at 99 % CPU: a frozen tab » when the session's renderer burns a core. Checked on a page in a
+  two-minute loop: stopped at 8 s, back on the logged-in page on the next command.
+- **A persona saved under another project is pointed to** (#7): a new session, or any session with
+  no `.vysu/config` above, lists the projects that hold a saved session of that persona and the
+  `VYSU_PROJECT=<name>` that reaches it.
+- Docs (#9): headless is not software rendering. On macOS, Chrome for Testing and Brave headless
+  report canvas, compositing, rasterization and WebGL hardware accelerated (Metal, M3 Pro); the
+  `--enable-unsafe-swiftshader` flag agent-browser adds is a fallback permission. `docs/config.md`
+  gives the one-line check.
+
 ## 0.9.1 — 2026-09-25
 
 - `wait idle` waits for the images on screen only. A lazy image below the fold never loads until it is
