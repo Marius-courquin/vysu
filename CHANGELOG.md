@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.1 — 2026-09-25
+
+- **Android: a session another AVD left on this emulator's port no longer blocks it.** Emulators take
+  the first free port, so AVDs taking turns on one machine all come up as `emulator-5554`, and each one
+  left its agent-device session bound to it: the next AVD's first call was refused (« Device is already
+  in use by session nidz-android-<another AVD> »). 0.8.0 only handled it once a snapshot failed on a
+  session already open, which is not where it happens: the open itself failed, and a relaunch gave up
+  with « no agent-device session » before any repair. Now every command drops, before its first call,
+  the sessions of this project named after another AVD and bound to this serial (vysu binds a session
+  only to its own AVD's serial). Checked on a headless Pixel 10 Pro with a leftover session planted on
+  its port: 0.8.0 refused the device, 0.8.1 dropped the leftover, said so on stderr, and opened;
+  through agent-device's library and through its CLI (`VYSU_AGENT_DEVICE=cli`), which report the serial
+  in two different places.
+
 ## 0.8.0 — 2026-09-25
 
 - **Devices with no window: `VYSU_MOBILE_HEADLESS=1`.** For a machine with no screen, or a person who
