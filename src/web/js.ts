@@ -25,6 +25,15 @@ export const EXPAND_JS =
 // back at the top. A page that fits the viewport has nothing to reveal and is skipped.
 export const WARM_JS =
   '/*vysuwarm*/(async () => { const d = document.scrollingElement, step = innerHeight; if (d.scrollHeight <= step + 8) return 0; const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); let n = 0; for (let y = 0; y < d.scrollHeight; y += step) { d.scrollTo({ top: y, behavior: "instant" }); await frame(); await new Promise(r => setTimeout(r, 60)); n++ } d.scrollTo({ top: 0, behavior: "instant" }); await frame(); return n })()';
+// `wait idle` on the web: the page has gone quiet once no request has completed for half a second, no
+// image is still loading (a map's tiles, a lazy picture: what is in flight is not in the resource
+// timeline yet, an <img> not complete is) and the document itself has loaded. A navigation has
+// networkidle for that; an action — a click that fetches, a map that pans — has nothing else. Answers
+// « idle|busy <seconds> <requests seen> »; never waits past its cap, so the call always comes back.
+export function idleJs(capSeconds: number): string {
+  const cap = Math.round(capSeconds * 1000);
+  return `/*vysuidle*/new Promise(done => { const t0 = performance.now(); let last = t0, n = 0, po; try { po = new PerformanceObserver(l => { n += l.getEntries().length; last = performance.now() }); po.observe({ type: "resource" }) } catch {} const end = s => { if (po) po.disconnect(); done(s + " " + ((performance.now() - t0) / 1000).toFixed(1) + " " + n) }; const tick = () => { const t = performance.now(); if (t - last >= 500 && document.readyState === "complete" && [...document.images].every(i => i.complete)) return end("idle"); if (t - t0 >= ${cap}) return end("busy"); setTimeout(tick, 100) }; tick() })`;
+}
 // Back to a normal layout, so the next viewport measures its own panes rather than the expanded ones.
 export const RESTORE_JS =
   'document.getElementById("vysu-expand")?.remove(); document.querySelectorAll("[data-vysu-expand]").forEach(e => e.removeAttribute("data-vysu-expand"))';

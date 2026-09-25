@@ -10,8 +10,8 @@ import { metaWrite, repoBranch, repoSha } from '../core/meta.ts';
 import { ev, evTouch, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
 import { js as paceJs } from '../img/pace.ts';
-import { ab, bboxes, bcmd, brun, evalValue, lastLine } from './ab.ts';
-import { boxOfJs, chromeJs, EXPAND_JS, langReadJs, RESTORE_JS, WARM_JS } from './js.ts';
+import { ab, bboxes, bcmd, brun, evalValue, lastLine, sessionOf } from './ab.ts';
+import { boxOfJs, chromeJs, EXPAND_JS, idleJs, langReadJs, RESTORE_JS, WARM_JS } from './js.ts';
 import { shellWords, StepSyntax } from './words.ts';
 
 // Which API the page actually talked to. The state file only knows about a dev server vysu started
@@ -99,9 +99,12 @@ async function brunStep(persona: string): Promise<boolean> {
   }
 }
 
-// A navigation settled the way a capture needs it, devtools badges hidden.
-export async function webGo(persona: string, url: string): Promise<boolean> {
+// A navigation settled the way a capture needs it, devtools badges hidden. --reload: the page loaded
+// again once there, for a single-page app that reads its route at boot only — a url that differs by
+// its #hash alone is a navigation inside the same document, which such an app never notices.
+export async function webGo(persona: string, url: string, reload = false): Promise<boolean> {
   bcmd('open', url);
+  if (reload) bcmd('reload');
   bcmd('wait', '--load', 'networkidle', '--timeout', '2500');
   bsettle();
   bchrome(false);
@@ -115,19 +118,38 @@ export async function webBoxOf(persona: string, label: string, field: boolean): 
   return evalValue(r.stdout);
 }
 
-// By button name, then by link name, then by visible text: the same label is a button on one screen
-// and a link on the next, and a flow names what it sees rather than how it is marked up. A step that
-// finds nothing says why and hands its failure back, rather than ending the command itself: the
-// runner is then the one that names the step number, and a recording is stopped instead of left
-// running.
+// By button name, then by link name, then by the name of any other control — a switch, a checkbox,
+// a radio, a tab, a menu item, an option — then by visible text: the same label is a button on one
+// screen and a link on the next, and a flow names what it sees rather than how it is marked up. The
+// controls come before the text because a toggle's text is often a sibling of it (Vuestic, Vuetify,
+// most design systems): clicking the words toggles nothing, while the control found by the name
+// the words give it does, even when the input itself is drawn invisible under a styled track.
+// A miss costs ~30 ms. A step that finds nothing says why and hands its failure back, rather than
+// ending the command itself: the runner is then the one that names the step number, and a recording
+// is stopped instead of left running.
+export const CLICK_ROLES = ['button', 'link', 'switch', 'checkbox', 'radio', 'tab', 'menuitem', 'option'];
+
+// `click "css:<selector>"` and `click @e12`: the element itself, for a control whose name is not the
+// text beside it. Anything else is a label.
+export function clickTarget(label: string): string {
+  if (label.startsWith('css:')) return label.slice(4).trim();
+  return /^@e[0-9]+$/.test(label) ? label : '';
+}
+
 export async function webClick(persona: string, label: string): Promise<boolean> {
+  const direct = clickTarget(label);
+  if (direct) {
+    evTouch();
+    const r = await ab(persona, ['click', direct], { stderr: 'capture' });
+    if (r.code !== 0) {
+      process.stderr.write(`vysu: no element « ${direct} » to click in ${sessionOf(persona)}${r.stderr ? `: ${lastLine(r.stderr)}` : ''}\n`);
+      return false;
+    }
+    return (await ab(persona, ['wait', '300'])).code === 0;
+  }
   if (ev.rows) ev.target = await webBoxOf(persona, label, false);
   evTouch();
-  const tries = [
-    ['find', 'role', 'button', 'click', '--name', label],
-    ['find', 'role', 'link', 'click', '--name', label],
-    ['find', 'text', label, 'click'],
-  ];
+  const tries = [...CLICK_ROLES.map((role) => ['find', 'role', role, 'click', '--name', label]), ['find', 'text', label, 'click']];
   let done = false;
   for (const t of tries) {
     if ((await ab(persona, t, { stderr: 'drop' })).code === 0) {
@@ -136,10 +158,30 @@ export async function webClick(persona: string, label: string): Promise<boolean>
     }
   }
   if (!done) {
-    process.stderr.write(`vysu: nothing labelled « ${label} » (vysu ${persona} snapshot -i -c)\n`);
+    process.stderr.write(
+      `vysu: nothing labelled « ${label} » in ${sessionOf(persona)} (vysu ${persona} snapshot -i -c; a control named otherwise: click "css:<selector>" or click @e<N>)\n`,
+    );
     return false;
   }
   return (await ab(persona, ['wait', '300'])).code === 0;
+}
+
+// `wait idle [<s>]`: see idleJs. The same step as on mobile, and the same verdict: past its cap it
+// fails, saying what it saw.
+export async function webWaitIdle(persona: string, s: string, print: (s: string) => void): Promise<boolean> {
+  const cap = Number(s);
+  if (!(cap > 0)) {
+    process.stderr.write(`vysu: wait idle takes seconds, not « ${s} »\n`);
+    return false;
+  }
+  const r = await ab(persona, ['eval', idleJs(cap)], { stderr: 'capture' });
+  const [state = '', secs = '?', n = '?'] = evalValue(r.stdout).split(' ');
+  if (state === 'idle') {
+    print(`idle after ${secs}s (${n} request(s))\n`);
+    return true;
+  }
+  process.stderr.write(`vysu: ${state === 'busy' ? `still loading after ${secs}s (${n} request(s))` : `wait idle: ${lastLine(r.stderr) || 'no answer'}`}\n`);
+  return false;
 }
 
 // By <label>, then by placeholder (a search box carries no label).
@@ -204,8 +246,9 @@ function words(step: string): string[] | null {
 }
 
 // One line of a web flow / a recording: vysu's own verbs, then anything agent-browser accepts.
-//   go <url> · click "<label>" · click t:<i18n.key> · fill "<label>" "<value>" · press <key>
-//   · sleep <s> · shot <label> [--full] · check · viewport WxH   (`tap` reads as `click`, as on mobile)
+//   go <url> [--reload] · click "<label>" · click t:<i18n.key> · click "css:<selector>" · click @e<N>
+//   · fill "<label>" "<value>" · press <key> · wait idle [<s>] · sleep <s> · shot <label> [--full]
+//   · check · viewport WxH   (`tap` reads as `click`, as on mobile)
 // True when the step held; what failed has been said on stderr.
 export async function webStep(persona: string, shots: string, step: string, print: (s: string) => void): Promise<boolean> {
   const after = (prefix: string): string => step.slice(prefix.length);
@@ -219,7 +262,17 @@ export async function webStep(persona: string, shots: string, step: string, prin
     await sleep(s * 1000);
     return true;
   }
-  if (step.startsWith('go ')) return webGo(persona, after('go '));
+  if (step.startsWith('go ')) {
+    const w = after('go ').trim().split(/\s+/);
+    const reload = w.at(-1) === '--reload';
+    if (reload) w.pop();
+    if (w.length !== 1) {
+      process.stderr.write(`vysu: go takes one url, and --reload (got « ${after('go ')} »)\n`);
+      return false;
+    }
+    return webGo(persona, w[0]!, reload);
+  }
+  if (step === 'wait idle' || step.startsWith('wait idle ')) return webWaitIdle(persona, step.slice('wait idle'.length).trim() || '10', print);
   if (step.startsWith('viewport ')) {
     const wh = after('viewport ');
     const x = wh.lastIndexOf('x');

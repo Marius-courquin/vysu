@@ -10,18 +10,37 @@ data, not behaviour: the same runner walks any app. A project keeps its own unde
 with any extension.
 
 ```bash
-vysu flow alice .vysu/flows/tour.txt --shots tour-web [--viewport 1440x900]
+vysu flow alice .vysu/flows/tour.txt --shots tour-web [--viewport 1440x900] [--keep-going]
 vysu flow alice - --shots tour-web <<< 'go http://localhost:3000/dashboard'   # or stdin
 ```
 
-The flow stops at the **first failing step**, naming its number. Shots taken along the way are
-`web-<label>.png` in the shots folder, and the contact sheet is built at the end.
+The flow stops at the **first failing step**, naming its number and the session. `--keep-going`
+says each failed step (`✗ <line> <step>`) and goes on, then ends on the list of them and exit 1.
+Shots taken along the way are `web-<label>.png` in the shots folder, and the contact sheet is built
+at the end.
+
+**A flow is the batch mode.** Many captures in one call, one browser, one sheet: do not write a
+shell loop of `vysu` commands.
+
+```text
+go https://app.example.com/#/map?zone=1 --reload
+wait idle
+shot zone-1
+go https://app.example.com/#/map?zone=2 --reload
+wait idle
+shot zone-2
+```
+
+`vysu flow alice zones.txt --shots zones --keep-going`: a zone that fails is one ✗ line, not the
+end of the other ninety-nine.
 
 | Verb | What it does |
 |---|---|
-| `go <url>` | opens, waits for the network to settle, hides devtools badges |
-| `click "<label>"` / `tap "<label>"` | button by name, else link by name, else visible text, then a short settle |
+| `go <url> [--reload]` | opens, waits for the network to settle, hides devtools badges. `--reload`: loads the page again once there — a url that differs by its `#hash` alone is a navigation inside the same document, which an app reading its route at boot never sees |
+| `click "<label>"` / `tap "<label>"` | button by name, else link, else a switch, checkbox, radio, tab, menu item or option by name, else visible text, then a short settle. A toggle whose words sit beside it is found by the name those words give it |
+| `click "css:<selector>"` · `click @e<N>` | that element itself (a ref from `vysu <p> snapshot -i -c`): a control named otherwise than the text beside it |
 | `click t:<i18n.key>` | the label of that key in the app's language, resolved through `VYSU_LOCALES` |
+| `wait idle [<s>]` | after an action: until no request has completed for 0.5 s and no image is still loading (a map's tiles), at most `<s>` (10); past it the step fails. **Instead of a `sleep`** |
 | `fill "<label>" "<value>"` | field by `<label>`, else by placeholder |
 | `press <key>` | `Enter`, `Escape`, `Control+a`… |
 | `sleep <s>` · `viewport WxH` | wait · change viewport |

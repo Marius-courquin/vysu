@@ -112,8 +112,10 @@
 #   vysu report <name> [--md]               a shots folder read back in ≤ 25 lines: what changed, what to open
 #                                           (mobile: the device's text size, language, appearance and sha, then each
 #                                           capture's last verdict, vs previous or vs a baseline)
-#   vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH]   scripted web steps (go · click · fill · press ·
-#                                           shot [--full] · check)
+#   vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH] [--keep-going]   scripted web steps (go <url>
+#                                           [--reload] · click "<label>"|"css:<sel>"|@eN · fill · press · wait idle [<s>]
+#                                           · shot [--full] · check), and the batch mode: many go/shot lines, one call,
+#                                           one sheet; --keep-going: a failed step is a ✗ line, the list of them at the end
 #   vysu rec <persona> <name> [--fps 30] [--viewport 1440x900] [--mp4] [--cursor] [--flow <file>] -- "<step>" …
 #                                           records the steps running: normalized H.264 clip + contact sheet
 #                                           + motion report + frames/ + events.json (each step in clip seconds,

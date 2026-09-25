@@ -88,7 +88,8 @@ names that session on every command (`vysu walk <persona>@2 …`, printed on the
 # web
 vysu walk <p> <name> --url <url> [--baseline-url @|<url> | --baseline <name>] [--sizes WxH,…] [--dark] [--full]
 vysu shots <p> <name> … · report <name> [--md] · sheet <name> [--only <glob>] [--strip] · check <p>
-vysu flow <p> <file|-> --shots <name> · rec <p> <name> -- "<step>"… · login <p> · <p> <agent-browser args…>
+vysu flow <p> <file|-> --shots <name> [--keep-going]   # also the batch mode: many go/shot lines, one call
+vysu rec <p> <name> -- "<step>"… · login <p> · <p> <agent-browser args…>
 vysu claim <p> --any                              # a free session of <p>: <p>, <p>@2… (VYSU_WEB_SLOTS)
 # devices
 vysu devices · claim ios|android [--any | --device <name> | --avd <name>] [--minutes 20] · release … [--reset]
@@ -129,7 +130,8 @@ lint results): that belongs in the merge request.
 ## Do not
 
 - Build a Playwright / MSW harness or a fake auth context just to "see" a screen.
-- `sleep` to wait for the app, or write a helper script for a sequence `mdo` can run.
+- `sleep` to wait for the app (`wait idle`, `wait "<text>"`), or write a helper script or a shell loop
+  for a sequence `mdo` or `flow` can run.
 - Run `adb` / `xcrun simctl` directly: another agent's device may answer. `vysu adb` / `vysu simctl`.
 - Open a capture listed after `identical, do not read:`, or a full-size one when a `-changed.png`
   exists.
