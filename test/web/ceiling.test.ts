@@ -67,3 +67,13 @@ test("a stuck session: its daemon and what runs under it stopped, anything else'
   assert.equal(pidAlive(other.pid!), true);
   other.kill();
 });
+
+test('the other projects holding a saved session of a persona, slots apart', async () => {
+  const { savedElsewhere } = await import('../../src/web/ab.ts');
+  const dir = mkdtempSync(join(tmpdir(), 'vysu-elsewhere-'));
+  for (const s of ['other-proxy', 'default-proxy', 'here-proxy', 'x-proxy--2', 'y-proxyx', 'z-b-proxy']) writeFileSync(join(dir, `${s}-${s}.json`), '{}');
+  writeFileSync(join(dir, 'junk.json'), '{}');
+  assert.deepEqual(savedElsewhere('proxy', 'here', dir), ['default', 'other', 'z-b']);
+  assert.deepEqual(savedElsewhere('proxy@2', 'here', dir), ['x']);
+  assert.deepEqual(savedElsewhere('proxy', 'here', join(dir, 'none')), []);
+});

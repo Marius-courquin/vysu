@@ -3,7 +3,8 @@
 // `<project>-<persona>--2`), its cookies and storage restored on every call, the persona's
 // `web-<persona>` lock taken on the first.
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, join, posix, win32 } from 'node:path';
 import { config } from '../core/ctx.ts';
@@ -211,14 +212,36 @@ export const daemonPidFile = (session: string): string => join(homedir(), '.agen
 // The session's daemon and the browser under it, stopped: the only way out once a call hangs, since
 // the daemon answers nothing else while it waits. Its saved state stays: the next command starts a
 // fresh daemon that restores it. Only a pid that still runs agent-browser is touched.
-export function stopSessionBrowser(session: string): boolean {
+function daemonPid(session: string): number {
   let pid = 0;
   try {
     pid = Number(readFileSync(daemonPidFile(session), 'utf8').trim());
   } catch {
-    return false;
+    return 0;
   }
-  if (!(pid > 0) || !processName(pid).includes('agent-browser')) return false;
+  return pid > 0 && processName(pid).includes('agent-browser') ? pid : 0;
+}
+
+// The busiest renderer of the session's browser, in % of one core: a call that timed out on a page
+// burning a core (a script in a loop, thousands of markers torn down in native code) is a frozen tab,
+// not a slow network, and the line says which. -1 where it cannot be read (Windows, no browser).
+export function rendererCpu(session: string): number {
+  const pid = daemonPid(session);
+  if (!pid || isWindows) return -1;
+  const kids = descendants(pid);
+  if (!kids.length) return -1;
+  const r = spawnSync('ps', ['-o', 'pcpu=,command=', '-p', kids.join(',')], { encoding: 'utf8' });
+  let top = -1;
+  for (const line of (r.stdout ?? '').split('\n')) {
+    const m = /^\s*([0-9.]+)\s+(.*)$/.exec(line);
+    if (m && m[2]!.includes('--type=renderer')) top = Math.max(top, Number(m[1]));
+  }
+  return top;
+}
+
+export function stopSessionBrowser(session: string): boolean {
+  const pid = daemonPid(session);
+  if (!pid) return false;
   for (const p of [...descendants(pid), pid]) {
     try {
       process.kill(p, 'SIGKILL');
@@ -244,11 +267,39 @@ async function noteSession(persona: string, session: string): Promise<void> {
   noted.add(session);
   if (freshExpected || personaBase(persona) === '-') return;
   const c = config();
+  const fresh = !existsSync(restoreFile(session)) && !(await sessionRunning(persona));
+  const elsewhere = fresh || !c.configFile ? savedElsewhere(persona, c.get('PROJECT')) : [];
+  const hint = elsewhere.length ? `; ${persona} has a saved session in project ${elsewhere.join(', ')} (VYSU_PROJECT=${elsewhere[0]} to use it)` : '';
   if (!c.configFile) {
-    log(`no .vysu/config above ${process.cwd()}: « ${persona} » is session ${session} of project « ${c.get('PROJECT')} » (cd into the project, or VYSU_PROJECT_DIR=<its root>)`);
-  } else if (!existsSync(restoreFile(session)) && !(await sessionRunning(persona))) {
-    log(`${session} is a new session (project ${c.get('PROJECT')}, ${c.configFile}): nothing to restore — vysu login ${persona}, if the app needs one`);
+    log(`no .vysu/config above ${process.cwd()}: « ${persona} » is session ${session} of project « ${c.get('PROJECT')} » (cd into the project, VYSU_PROJECT_DIR=<its root> or VYSU_PROJECT=<name>)${hint}`);
+  } else if (fresh) {
+    log(`${session} is a new session (project ${c.get('PROJECT')}, ${c.configFile}): nothing to restore — vysu login ${persona}, if the app needs one${hint}`);
   }
+}
+
+// The other projects holding a saved session of this persona: a script started from the wrong folder
+// finds its session empty while the one it meant sits under another project's name.
+export function savedElsewhere(persona: string, project: string, dir = join(homedir(), '.agent-browser', 'sessions')): string[] {
+  const suffix = personaSessionSuffix(persona);
+  const out: string[] = [];
+  let files: string[] = [];
+  try {
+    files = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const f of files) {
+    // <project>-<suffix>-<project>-<suffix>.json: the session name twice.
+    const m = /^(.+)\.json$/.exec(f);
+    if (!m) continue;
+    const half = m[1]!.length / 2;
+    const name = m[1]!.slice(0, Math.floor(half));
+    if (!Number.isInteger(half - 0.5) || m[1] !== `${name}-${name}`) continue;
+    if (!name.endsWith(`-${suffix}`)) continue;
+    const other = name.slice(0, -suffix.length - 1);
+    if (other && other !== project && !out.includes(other)) out.push(other);
+  }
+  return out.sort();
 }
 
 export async function ab(persona: string, args: string[], o: AbOptions = {}): Promise<AbResult> {
@@ -259,9 +310,11 @@ export async function ab(persona: string, args: string[], o: AbOptions = {}): Pr
   const r = await abRaw(['--session', session, '--restore', ...browserOpts(), ...args], { ...o, ceiling: o.ceiling ?? ceilingFor(args, o.input, base) });
   if (r.timedOut) {
     const what = args[0] === 'batch' ? 'a batch of captures' : `« ${args.join(' ').slice(0, 80)} »`;
+    const cpu = rendererCpu(session);
+    const why = cpu >= 80 ? `its tab's renderer at ${Math.round(cpu)} % CPU: a frozen tab` : 'a page script that never settles, or a frozen tab';
     const stopped = stopSessionBrowser(session);
     log(
-      `agent-browser gave no answer in ${ceilingFor(args, o.input, base)}s to ${what} (a page script that never settles, or a frozen tab)` +
+      `agent-browser gave no answer in ${ceilingFor(args, o.input, base)}s to ${what} (${why})` +
         (stopped ? `: the browser of ${session} was stopped, the next command reopens it with the login it saved` : '') +
         ' (VYSU_WEB_TIMEOUT)',
     );
