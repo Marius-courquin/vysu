@@ -5,7 +5,7 @@ import { die } from '../core/errors.ts';
 import { personaCheckName, personaImport, personaKey, personaList, personaWrite } from '../core/personas.ts';
 import { ask, askSecret } from '../setup/prompt.ts';
 
-const USAGE = 'usage: vysu persona add <name> | set <name> <KEY> <value> | list [--json] | import <file> [--prefix <P>] [--to <file>]';
+const USAGE = 'usage: vysu persona add <name> [--token] | set <name> <KEY> [<value>] | list [--json] | import <file> [--prefix <P>] [--to <file>]';
 
 export async function run(args: string[]): Promise<void> {
   const [verb, ...rest] = args;
@@ -28,10 +28,20 @@ export async function run(args: string[]): Promise<void> {
 async function add(args: string[]): Promise<void> {
   config().needProject();
   const name = args[0];
-  if (!name) die('usage: vysu persona add <name>');
+  const token = args[1] === '--token';
+  if (!name || (args[1] && !token) || args.length > 2) die('usage: vysu persona add <name> [--token]');
   personaCheckName(name);
-  const email = await ask(`e-mail for ${name}: `);
+  const email = await ask(`e-mail for ${name}${token ? ' (the account the token belongs to)' : ''}: `);
   if (!email) die('persona add: no e-mail');
+  // A persona the token connector logs in: no password exists on this side of an SSO door.
+  if (token) {
+    const value = await askSecret(`token for ${name} (not echoed): `);
+    if (!value) die('persona add: no token');
+    personaWrite(personaKey(name, 'EMAIL'), email);
+    personaWrite(personaKey(name, 'TOKEN'), value);
+    console.log(`persona ${name}: ${email}, token → ${config().personas} (mode 600)`);
+    return;
+  }
   const password = await askSecret(`password for ${name} (not echoed): `);
   if (!password) die('persona add: no password');
   personaWrite(personaKey(name, 'EMAIL'), email);
@@ -43,12 +53,20 @@ async function add(args: string[]): Promise<void> {
 // purpose, since only the project knows what its own commands need.
 async function set(args: string[]): Promise<void> {
   config().needProject();
-  const [name, key, value = ''] = args;
-  if (!name || !key) die('usage: vysu persona set <name> <KEY> <value>');
+  const [name, key] = args;
+  if (!name || !key) die('usage: vysu persona set <name> <KEY> [<value>]');
   personaCheckName(name);
-  personaWrite(personaKey(name, key), value);
   const k = key.toUpperCase();
-  console.log(k === 'PASSWORD' || k.endsWith('TOKEN') || k.endsWith('SECRET') ? `persona ${name}: ${key} set` : `persona ${name}: ${key} = ${value}`);
+  const secret = k === 'PASSWORD' || k.endsWith('TOKEN') || k.endsWith('SECRET');
+  // A secret left off the command line is asked for: typed without echo, or read from a pipe
+  // (`pbpaste | vysu persona set alice TOKEN`), so it is in no history and no transcript.
+  let value = args[2] ?? '';
+  if (args.length < 3 && secret) {
+    value = await askSecret(`${key} for ${name} (not echoed): `);
+    if (!value) die(`persona set: no ${key}`);
+  }
+  personaWrite(personaKey(name, key), value);
+  console.log(secret ? `persona ${name}: ${key} set` : `persona ${name}: ${key} = ${value}`);
 }
 
 // Names and the non-secret keys, never a value that reads as a credential: `--json` is what a project

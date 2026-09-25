@@ -244,8 +244,9 @@ vysu down applog && vysu prune --match 'settings' --match 'general'
 
 ## Writing an auth connector
 
-The built-ins cover a hosted identity provider (`auth0`), a same-origin form (`form`) and no login
-at all (`none`). For anything else, `vysu init` → custom writes a commented template to
+The built-ins cover a hosted identity provider (`auth0`), a same-origin form (`form`), a token the
+persona holds with no login page at all (`token`: a Google or Microsoft sign-in, a passkey, a second
+factor — nothing vysu should click through) and no login at all (`none`). For anything else, `vysu init` → custom writes a commented template to
 `.vysu/auth.mjs` (`connectors/auth/example.mjs`, which runs wherever vysu runs), picked up on its
 own; `connectors/auth/example.sh` is the same connector in bash, for a `.vysu/auth.sh` on macOS and
 Linux. The contract — the

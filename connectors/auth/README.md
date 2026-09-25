@@ -9,7 +9,7 @@ It comes in two forms, with the same functions and the same primitives:
 
 - **a module** — `.vysu/auth.mjs` (or `.js`, `.ts`) exporting the functions, each given the
   primitives as its first argument. It runs wherever vysu runs, Windows included. The built-ins
-  (`none`, `auth0`, `form`) are written this way, in `src/connectors/auth/`; the template is
+  (`none`, `auth0`, `form`, `token`) are written this way, in `src/connectors/auth/`; the template is
   `connectors/auth/example.mjs`.
 - **a bash file** — `.vysu/auth.sh`, the form projects wrote first, which keeps working on macOS
   and Linux: vysu runs each function in a bash that sources the file under `set -euo pipefail`,
@@ -21,7 +21,7 @@ Which one is used comes from `VYSU_AUTH` in the project's `.vysu/config`:
 | `VYSU_AUTH` | what is loaded |
 |---|---|
 | unset | `none` — the engine default |
-| `auth0` · `form` · `none` | the built-in of that name |
+| `auth0` · `form` · `token` · `none` | the built-in of that name |
 | `custom`, or nothing with a `.vysu/auth.mjs`, `.js`, `.ts` or `.sh` present | the project's own, the first of those four that exists |
 | a path (`connectors/mine.mjs`, `connectors/mine.sh`) | that file, relative to the project: a module by its extension, bash otherwise |
 

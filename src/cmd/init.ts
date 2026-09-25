@@ -96,7 +96,7 @@ export async function run(args: string[]): Promise<void> {
     '/login',
   );
   const baseline = await question('baseline origin — the deployed main, that a branch is diffed against (empty for none)', '');
-  const auth = await question('auth connector — auth0 | form (an e-mail + password form on the login page) | none (no login) | custom', 'none');
+  const auth = await question('auth connector — auth0 | form (an e-mail + password form on the login page) | token (a token the persona holds, no login page) | none (no login) | custom', 'none');
   const mobile = await question('mobile app — none | expo (Metro dev-client) | native (Swift, Kotlin, Flutter…)', 'none');
   let kind = '';
   let bundle = '';

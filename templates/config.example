@@ -50,7 +50,7 @@ VYSU_LOGIN_PATH='/login'
 
 # --- auth ---------------------------------------------------------------------------------------
 
-# A built-in connector (auth0 · form · none), `custom` for .vysu/auth.mjs (or .js, .ts, .sh), or a
+# A built-in connector (auth0 · form · token · none), `custom` for .vysu/auth.mjs (or .js, .ts, .sh), or a
 # path. Default: none — the url is opened as it is and `vysu auth token` prints nothing, which is
 # what a static site, a Storybook or a public page needs. `vysu auth test <persona>` runs the one in
 # force and says which step held. The contract is connectors/auth/README.md, the template
@@ -77,6 +77,12 @@ VYSU_AUTH='none'
 # VYSU_FORM_TOKEN_JS='localStorage.getItem("access_token")'
 # Mobile: the text(s) that prove the login, comma-separated (default: VYSU_MOBILE_READY_TEXT).
 # VYSU_FORM_HOME_TEXT='Welcome'
+# The token connector opens no login page: the persona holds a token (`vysu persona add <name>
+# --token`) and it is put where the app reads it at boot. localStorage:<key> or cookie:<name>.
+# VYSU_TOKEN_STORE='localStorage:accessToken'
+# A token kept in a shape of the app's own: statements with `token` in scope, and the way back.
+# VYSU_TOKEN_WRITE_JS='localStorage.setItem("auth", JSON.stringify({ token }))'
+# VYSU_TOKEN_READ_JS='JSON.parse(localStorage.getItem("auth") || "{}").token'
 
 # --- the mobile app -------------------------------------------------------------------------------
 

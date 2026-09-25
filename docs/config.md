@@ -49,7 +49,7 @@ empty; the command that needs one says which key is missing.
 
 | Key | Meaning | Default | Example |
 |---|---|---|---|
-| `VYSU_AUTH` | a built-in connector (`auth0` · `form` · `none`), `custom` for `.vysu/auth.mjs` / `.js` / `.ts` / `.sh`, or a path | empty (and `custom` when one of those exists) | `auth0` |
+| `VYSU_AUTH` | a built-in connector (`auth0` · `form` · `token` · `none`), `custom` for `.vysu/auth.mjs` / `.js` / `.ts` / `.sh`, or a path | empty (and `custom` when one of those exists) | `auth0` |
 
 Options of the `auth0` connector, all optional; the defaults live in
 [`src/connectors/auth/auth0.ts`](../src/connectors/auth/auth0.ts) and the contract in
@@ -77,6 +77,18 @@ in [`src/connectors/auth/form.ts`](../src/connectors/auth/form.ts).
 | `VYSU_FORM_SUBMIT_LABELS` | names of the submit button | `Se connecter,Sign in` |
 | `VYSU_FORM_TOKEN_JS` | an expression evaluated in the page whose value is the API token | `localStorage.getItem("access_token")` |
 | `VYSU_FORM_HOME_TEXT` | mobile: the text that proves the login went through | `Welcome` |
+
+Options of the `token` connector — no login page: the persona holds a token (`vysu persona add
+<name> --token`, or `vysu persona set <name> TOKEN`, both asked for and never echoed) and the
+connector puts it where the app reads it at boot. For a door vysu must not walk through: a Google
+or Microsoft sign-in, a passkey, a second factor. A JWT past its `exp` is refused before it is used.
+Web only. The defaults live in [`src/connectors/auth/token.ts`](../src/connectors/auth/token.ts).
+
+| Key | Meaning | Example |
+|---|---|---|
+| `VYSU_TOKEN_STORE` | where the app keeps it: `localStorage:<key>` or `cookie:<name>` (default `localStorage:token`) | `localStorage:accessToken` |
+| `VYSU_TOKEN_WRITE_JS` | instead of the store, statements run in the page with `token` in scope, for a token kept in a shape of the app's own | `localStorage.setItem('auth', JSON.stringify({ token }))` |
+| `VYSU_TOKEN_READ_JS` | with it, an expression whose value is the token as the app holds it | `JSON.parse(localStorage.getItem('auth') \|\| '{}').token` |
 
 ## The mobile app
 

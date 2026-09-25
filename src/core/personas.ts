@@ -6,7 +6,7 @@
 // `FCM_TOKEN_IOS`), so no regex can split it. A persona is declared by its `_EMAIL` key; every other
 // key belongs to the longest declared name it starts with; a key that belongs to none (an id a project
 // kept next to its credentials) is nobody's. An `_EMAIL` key under a declared name, with no
-// `_PASSWORD` of its own, is that persona's field (`RESIDENT_BACKUP_EMAIL`), not a persona of its own.
+// `_PASSWORD` (or `_TOKEN`, a persona the token connector logs in) of its own, is that persona's field (`RESIDENT_BACKUP_EMAIL`), not a persona of its own.
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { config } from './ctx.ts';
@@ -109,7 +109,7 @@ export function names(pairs: Map<string, string>): string[] {
   const declared = new Set<string>();
   for (const k of pairs.keys()) if (k.endsWith('_EMAIL') && k.length > 6) declared.add(k.slice(0, -6));
   const isAField = (name: string): boolean => {
-    if (pairs.has(`${name}_PASSWORD`)) return false;
+    if (pairs.has(`${name}_PASSWORD`) || pairs.has(`${name}_TOKEN`)) return false;
     return [...declared].some((other) => other !== name && name.startsWith(`${other}_`));
   };
   return [...declared].filter((n) => !isAField(n)).sort();

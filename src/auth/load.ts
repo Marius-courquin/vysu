@@ -1,4 +1,4 @@
-// Which auth connector the project named, loaded once: a built-in (`none`, `auth0`, `form`), the
+// Which auth connector the project named, loaded once: a built-in (`none`, `auth0`, `form`, `token`), the
 // project's own `.vysu/auth.mjs|.js|.ts` (a module exporting the connector's functions, which runs
 // wherever vysu runs), or a bash one (`.vysu/auth.sh`, or `VYSU_AUTH` naming a `.sh` path), run
 // through the bridge on a machine that has bash.
@@ -22,6 +22,7 @@ const BUILT_IN: Record<string, () => Promise<{ connector: AuthConnector }>> = {
   none: () => import('../connectors/auth/none.ts'),
   auth0: () => import('../connectors/auth/auth0.ts'),
   form: () => import('../connectors/auth/form.ts'),
+  token: () => import('../connectors/auth/token.ts'),
 };
 const PROJECT_FORMS = ['auth.mjs', 'auth.js', 'auth.ts', 'auth.sh'];
 const JS = new Set(['.mjs', '.js', '.cjs', '.ts', '.mts']);
