@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.7.0 — 2026-09-25
+
+Asked by the first user outside the project: « in the browser, several tabs so you parallelise? ».
+Checkers as different personas already ran side by side, each in its own browser; two checkers as the
+same persona took turns on one, and the sub-agents of one session (one owner, whose own claims let
+them through) interleaved their commands in it, each moving the other's page.
+
+- **A persona has as many browser sessions as the agents that need it.** `alice@2` is alice's
+  credentials in a session of its own — its own browser, login, page, size and language — accepted
+  wherever a persona goes (`walk`, `shots`, `flow`, `rec`, `check`, `login`, `claim`, `release`,
+  `vysu alice@2 <agent-browser args>`). `vysu claim alice --any` hands out the first one nobody uses —
+  `alice`, then `alice@2`, `@3`… up to `VYSU_WEB_SLOTS` (4) — claimed by nobody, this owner included,
+  so each sibling checker gets its own, and prints the name to use on a `name it:` line; none free, it
+  waits `VYSU_LOCK_WAIT` listing who holds each (`--no-wait`: exit 1). Measured on the Nidz web app, two
+  walks as the same persona: 12 s one after the other on one session, 8 s side by side on two.
+  Tabs were the question and are not the answer: every command of an agent-browser session goes to its
+  one active tab, and two agents switching it under each other capture each other's page.
+- **A session logs in by itself, never with a copy.** A slot that holds no login (no saved state, or a
+  saved state with no token in it) logs in on the claim that picks it, with the persona's credentials,
+  and keeps that login from then on; a login that fails leaves nothing saved behind. Copying the
+  persona's state would have been instant and wrong: Auth0 rotates refresh tokens, a token used twice
+  is refused and revokes its whole family (checked on a real tenant: 403 « Unknown or invalid refresh
+  token » on reuse), so the first refresh of either session would have logged both out.
+- **auth0: the first login of a new browser no longer times out.** On a profile that never saw the
+  Universal Login page, its first « Continue » click is dropped while the page sets itself up: no request
+  leaves and the password field never comes (every `vysu auth test`, and every first login of a new
+  persona, failed after 25 s on 0.6.1). The click is repeated, up to three times, until the password
+  field shows.
+- `vysu claim <persona>` says « browser closed, its login kept » for a session that is not running but
+  has its state saved, instead of asking for a login it does not need.
+
 ## 0.6.1 — 2026-09-24
 
 From a second audit of the agent sessions (23-24/09, vysu 0.5.x): the device work had moved to
