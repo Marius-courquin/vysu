@@ -5,12 +5,14 @@ import { die, onCleanup } from '../core/errors.ts';
 import { lockTake, platformLock, type Platform } from '../core/hold.ts';
 import { personaRequire } from '../core/personas.ts';
 import { mobileSessionOpen, mstateGet } from '../mobile/api.ts';
-import { abRaw, lastLine, restoreFile, sessionRunning, setAuthTestSession, webLockOf } from '../web/ab.ts';
+import { abRaw, expectFreshSession, lastLine, restoreFile, sessionRunning, setAuthTestSession, webLockOf } from '../web/ab.ts';
 import { sleep } from '../core/text.ts';
 import { context, stepsOn } from './context.ts';
 import { authLoad } from './load.ts';
 
 export async function login(persona: string, url: string): Promise<void> {
+  // A login is what a new session is waiting for: nothing to say about it being new.
+  expectFreshSession();
   if (!url) url = config().need('ORIGIN', "the app's web origin").replace(/\/$/, '') + config().get('LOGIN_PATH');
   const a = await authLoad();
   await a.connector.webLogin(context(), persona, url);

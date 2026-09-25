@@ -71,6 +71,23 @@ export function processTable(): Map<number, Proc> {
   return table;
 }
 
+// Every process below this one, deepest first — read afresh, since the table above is kept for the
+// life of the command and the processes asked about here may have started after it was read.
+export function descendants(pid: number): number[] {
+  table = undefined;
+  const all = processTable();
+  const out: number[] = [];
+  const walk = (parent: number): void => {
+    for (const [child, p] of all) {
+      if (p.ppid !== parent || out.includes(child)) continue;
+      walk(child);
+      out.push(child);
+    }
+  };
+  walk(pid);
+  return out;
+}
+
 // One process of the table: its parent and its name. Where the system answers for one process, it is
 // asked for that one alone — on a Mac running 1 400 processes, `ps -A` takes 160 ms and `ps -p` 9, and
 // the owner walk needs two or three of them; on Windows the whole table is one call anyway.

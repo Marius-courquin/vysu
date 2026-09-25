@@ -183,6 +183,12 @@ export class Config {
     const n = Number(v);
     return v.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : 90;
   }
+  // Seconds one agent-browser call may take (web/ab.ts); 0 is no ceiling at all.
+  get webTimeout(): number {
+    const v = this.values.get('VYSU_WEB_TIMEOUT') ?? '';
+    const n = Number(v);
+    return v.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : 60;
+  }
   get remotion(): string {
     return join(ENGINE, 'remotion');
   }

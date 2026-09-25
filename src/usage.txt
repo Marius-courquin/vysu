@@ -211,6 +211,8 @@
 #   <persona>@N, wherever a persona goes       that persona's Nth browser session: its credentials, its own login and page
 #                                           (`-@N` too: another anonymous browser, `vysu claim - --any`)
 #
+# One agent-browser call gets VYSU_WEB_TIMEOUT seconds (60; a batch 30 more per command): past it, the
+# session's browser is stopped too and the next command reopens it with the login it had saved.
 # Several agents share this Mac: every command locks the device or the persona session it drives,
 # for its duration (another one waits VYSU_LOCK_WAIT seconds, 90 by default, then gives up). A claim
 # holds one across several commands. The holder is $VYSU_OWNER, else the agent or terminal above.

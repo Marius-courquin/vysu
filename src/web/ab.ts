@@ -3,15 +3,15 @@
 // `<project>-<persona>--2`), its cookies and storage restored on every call, the persona's
 // `web-<persona>` lock taken on the first.
 import { spawn } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, posix, win32 } from 'node:path';
 import { config } from '../core/ctx.ts';
-import { die } from '../core/errors.ts';
-import { isExecutable, isWindows, nativeTarget, toolArgv, which } from '../core/host.ts';
+import { die, log } from '../core/errors.ts';
+import { descendants, isExecutable, isWindows, nativeTarget, processName, toolArgv, which } from '../core/host.ts';
 import { lockTake } from '../core/hold.ts';
 import type { RunResult } from '../core/proc.ts';
-import { personaSessionSuffix, webResource } from '../core/personas.ts';
+import { personaBase, personaSessionSuffix, webResource } from '../core/personas.ts';
 
 // agent-browser's npm package ships one native binary per platform next to a node wrapper that
 // only picks one and spawns it: ~70 ms of node start-up before every call, a dozen calls per
@@ -114,9 +114,15 @@ export interface AbOptions {
   input?: string;
   // No session lock: a call that addresses no session (`session list`, a throwaway's `close`).
   bare?: boolean;
+  // Seconds before the call is stopped (0 or absent: none). `ab` sets it from VYSU_WEB_TIMEOUT.
+  ceiling?: number;
 }
 
-export async function abRaw(args: string[], o: AbOptions = {}): Promise<RunResult> {
+export interface AbResult extends RunResult {
+  timedOut?: boolean;
+}
+
+export async function abRaw(args: string[], o: AbOptions = {}): Promise<AbResult> {
   // With no native binary found on Windows, the command is npm's `.cmd` shim: through cmd.exe, which
   // Node requires of a batch file since the April 2024 fix (CVE-2024-27980).
   const t = toolArgv(abBinary(), args);
@@ -145,22 +151,122 @@ export async function abRaw(args: string[], o: AbOptions = {}): Promise<RunResul
   // with EPIPE: its exit code says what happened.
   child.stdin?.on('error', () => undefined);
   if (o.input !== undefined) child.stdin?.end(o.input);
+  let timedOut = false;
+  const timer = o.ceiling
+    ? setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, o.ceiling * 1000)
+    : undefined;
   const code = await new Promise<number>((resolve) => {
     child.on('error', (e) => {
       err.push(Buffer.from(`vysu: agent-browser: ${e.message}\n`));
       resolve(127);
     });
-    child.on('close', (c, signal) => resolve(c ?? (signal ? 137 : 1)));
+    child.on('close', (c, signal) => resolve(timedOut ? 124 : (c ?? (signal ? 137 : 1))));
+    // Stopped: done now, not once whatever it left holding its pipes lets go of them.
+    child.on('exit', () => {
+      if (!timedOut) return;
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolve(124);
+    });
   });
+  clearTimeout(timer);
   if (stream && partial) err.unshift(Buffer.from(partial));
   const stderr = quiet(Buffer.concat(err).toString('utf8'));
   if (mode === 'pass' && stderr) process.stderr.write(stderr);
-  return { code, stdout: Buffer.concat(out).toString('utf8'), stderr: mode === 'capture' ? stderr : '' };
+  return { code, stdout: Buffer.concat(out).toString('utf8'), stderr: mode === 'capture' ? stderr : '', timedOut };
 }
 
-export async function ab(persona: string, args: string[], o: AbOptions = {}): Promise<RunResult> {
+// How long one call may take. agent-browser bounds its actions (25 s) but not an `eval`: a script
+// awaiting a promise that never settles holds the call for good, and the session's daemon with it —
+// every later call of that session, a `close` included, queues behind it (seen: 100 s and counting).
+// A batch is a capture run of many commands, a `wait` may ask for longer on purpose, and a recording
+// stops when its own lifecycle says.
+export function ceilingFor(args: string[], input: string | undefined, base: number): number {
+  if (!base) return 0;
+  const verb = args.find((a) => !a.startsWith('-')) ?? '';
+  if (verb === 'record') return 0;
+  if (verb === 'batch') {
+    let n = 0;
+    try {
+      const steps: unknown = JSON.parse(input ?? '[]');
+      n = Array.isArray(steps) ? steps.length : 0;
+    } catch {
+      n = 0;
+    }
+    return base + 30 * n;
+  }
+  if (verb === 'wait') {
+    const ms = Math.max(0, ...args.map((a) => Number(a)).filter((n) => Number.isFinite(n)));
+    return Math.max(base, Math.ceil(ms / 1000) + 30);
+  }
+  return base;
+}
+
+// Where agent-browser keeps a session's daemon pid (next to its socket and restore state).
+export const daemonPidFile = (session: string): string => join(homedir(), '.agent-browser', `${session}.pid`);
+
+// The session's daemon and the browser under it, stopped: the only way out once a call hangs, since
+// the daemon answers nothing else while it waits. Its saved state stays: the next command starts a
+// fresh daemon that restores it. Only a pid that still runs agent-browser is touched.
+export function stopSessionBrowser(session: string): boolean {
+  let pid = 0;
+  try {
+    pid = Number(readFileSync(daemonPidFile(session), 'utf8').trim());
+  } catch {
+    return false;
+  }
+  if (!(pid > 0) || !processName(pid).includes('agent-browser')) return false;
+  for (const p of [...descendants(pid), pid]) {
+    try {
+      process.kill(p, 'SIGKILL');
+    } catch {
+      // gone already
+    }
+  }
+  return true;
+}
+
+// Said once per session and per command: a persona session nothing has been restored into yet. The
+// first run of a script from the wrong folder lands in another project's session (or `default`'s)
+// and would otherwise capture a login page without a word.
+const noted = new Set<string>();
+let freshExpected = false;
+export function expectFreshSession(): void {
+  freshExpected = true;
+}
+// A session is new when it neither runs nor has a restore file: agent-browser writes that file on
+// some commands only (a navigation), so a session logged in a moment ago may have none yet.
+async function noteSession(persona: string, session: string): Promise<void> {
+  if (noted.has(session) || authTestSession) return;
+  noted.add(session);
+  if (freshExpected || personaBase(persona) === '-') return;
+  const c = config();
+  if (!c.configFile) {
+    log(`no .vysu/config above ${process.cwd()}: « ${persona} » is session ${session} of project « ${c.get('PROJECT')} » (cd into the project, or VYSU_PROJECT_DIR=<its root>)`);
+  } else if (!existsSync(restoreFile(session)) && !(await sessionRunning(persona))) {
+    log(`${session} is a new session (project ${c.get('PROJECT')}, ${c.configFile}): nothing to restore — vysu login ${persona}, if the app needs one`);
+  }
+}
+
+export async function ab(persona: string, args: string[], o: AbOptions = {}): Promise<AbResult> {
   await lockTake(webLockOf(persona));
-  return abRaw(['--session', sessionOf(persona), '--restore', ...browserOpts(), ...args], o);
+  const session = sessionOf(persona);
+  await noteSession(persona, session);
+  const base = config().webTimeout;
+  const r = await abRaw(['--session', session, '--restore', ...browserOpts(), ...args], { ...o, ceiling: o.ceiling ?? ceilingFor(args, o.input, base) });
+  if (r.timedOut) {
+    const what = args[0] === 'batch' ? 'a batch of captures' : `« ${args.join(' ').slice(0, 80)} »`;
+    const stopped = stopSessionBrowser(session);
+    log(
+      `agent-browser gave no answer in ${ceilingFor(args, o.input, base)}s to ${what} (a page script that never settles, or a frozen tab)` +
+        (stopped ? `: the browser of ${session} was stopped, the next command reopens it with the login it saved` : '') +
+        ' (VYSU_WEB_TIMEOUT)',
+    );
+  }
+  return r;
 }
 
 // `… | tail -1`: the last line of an answer, which is where agent-browser puts the value.
