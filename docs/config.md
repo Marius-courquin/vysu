@@ -43,7 +43,7 @@ empty; the command that needs one says which key is missing.
 | `VYSU_API_PATTERN` | the request path prefix that identifies the API in the network log | `/api/` | `/api/v1/` |
 | `VYSU_API_HOSTS` | `host=label` pairs: what a report calls that API instead of its host | empty | `localhost:8080=local api.example.com=prod` |
 | `VYSU_BROWSER_PATH` | the Chromium-based browser every web session runs in. Empty is the Chrome for Testing agent-browser downloads, headless — the same rendering on every machine, no personal profile, no extension. Also read from `~/.vysu/machine.env`, where `vysu setup --browser` writes it | empty | `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser` |
-| `VYSU_BROWSER_ARGS` | launch flags handed to that browser, comma-separated | empty | `--disable-blink-features=AutomationControlled` |
+| `VYSU_BROWSER_ARGS` | launch flags handed to that browser, comma-separated. Headless is not software rendering: on macOS, Chrome for Testing and Brave headless draw canvas, compositing, rasterization and WebGL on the GPU (Metal); the `--enable-unsafe-swiftshader` agent-browser adds only allows SwiftShader as a fallback. What a machine does: `vysu - open chrome://gpu && vysu - snapshot \| grep -i accelerated` | empty | `--disable-blink-features=AutomationControlled` |
 
 ## Auth
 
