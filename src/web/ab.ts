@@ -58,14 +58,13 @@ export const authTestSessionName = (): string => authTestSession;
 
 export function sessionOf(persona: string): string {
   if (authTestSession) return authTestSession;
-  // `-` is the anonymous session, which has no slot.
-  return `${config().get('PROJECT')}-${persona === '-' ? persona : personaSessionSuffix(persona)}`;
+  return `${config().get('PROJECT')}-${personaSessionSuffix(persona)}`;
 }
 // What that session's lock is called: a test must not hold the real persona's session, which it
 // never touches, for as long as it runs.
 export function webLockOf(persona: string): string {
   if (authTestSession) return 'web-authtest';
-  return persona === '-' ? 'web--' : webResource(persona);
+  return webResource(persona);
 }
 // Where agent-browser keeps a session's restore file (`--restore` with no name keys it on the
 // session): what carries a login from one run to the next.

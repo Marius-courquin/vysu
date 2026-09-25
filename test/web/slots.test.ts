@@ -16,6 +16,8 @@ test('a persona slot is <persona>@<n>, and @1 is the persona itself', () => {
   for (const bad of ['alice@0', 'alice@x', 'alice@', 'a-b@2', '@2', 'alice@100']) assert.throws(() => personaSlot(bad), /session slot/, bad);
   assert.equal(personaRefName('alice', 1), 'alice');
   assert.equal(personaRefName('alice', 3), 'alice@3');
+  assert.deepEqual(personaSlot('-@2'), { base: '-', slot: 2 });
+  assert.deepEqual(personaSlot('-'), { base: '-', slot: 1 });
 });
 
 // A persona's slug never holds two dashes in a row: `tb_x_2` and `tb_x@2` must not share a lock.
@@ -26,6 +28,11 @@ test("a slot's session and lock are its own", () => {
   assert.notEqual(webResource('tb_x_2'), webResource('tb_x@2'));
   assert.equal(personaSessionSuffix('alice@2'), 'alice--2');
   assert.equal(personaSessionSuffix('alice'), 'alice');
+  // The anonymous session keeps the names it always had.
+  assert.equal(webResource('-'), 'web--');
+  assert.equal(personaSessionSuffix('-'), '-');
+  assert.equal(webResource('-@2'), 'web----2');
+  assert.notEqual(webResource('-@2'), webResource('alice@2'));
 });
 
 // Three sub-agents of one session (one owner) each get a session of their own, and a fourth is told
@@ -69,4 +76,16 @@ test('claim <persona> --any hands each caller a different session', { skip: proc
   const rel = spawnSync(process.execPath, [...TS_FLAGS, cli, 'release', 'alice@2'], { cwd: dir, env, encoding: 'utf8' });
   assert.match(rel.stdout, /released: web-alice--2/);
   assert.match(claim('--no-wait').stdout, /names alice@2/);
+
+  // No persona at all: the anonymous session hands out slots the same way, and never logs in.
+  const anon = (...extra: string[]) => spawnSync(process.execPath, [...TS_FLAGS, cli, 'claim', '-', '--any', ...extra], { cwd: dir, env, encoding: 'utf8' });
+  const names: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const r = anon();
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stderr, /holds no login/);
+    names.push(/^name it: every command of this task names (\S+)/m.exec(r.stdout)?.[1] ?? r.stdout);
+  }
+  assert.deepEqual(names, ['-', '-@2', '-@3']);
+  assert.equal(anon('--no-wait').status, 1);
 });

@@ -36,7 +36,8 @@ export function personaKey(persona: string, key: string): string {
 // two agents checking as alice at the same time each drive their own browser instead of taking turns
 // on one. `alice@1` is alice. A slot logs in by itself and is never handed a copy of alice's login: an
 // identity provider that rotates its refresh tokens (Auth0 does) revokes the whole family the moment
-// two sessions refresh with the same one, and both would find themselves logged out.
+// two sessions refresh with the same one, and both would find themselves logged out. The anonymous
+// session has slots too (`-@2`): two agents on a public page each get a browser of their own.
 export interface PersonaRef {
   base: string;
   slot: number;
@@ -46,7 +47,7 @@ export function personaSlot(ref: string): PersonaRef {
   if (at < 0) return { base: ref, slot: 1 };
   const base = ref.slice(0, at);
   const n = ref.slice(at + 1);
-  if (!/^[A-Za-z0-9_]+$/.test(base) || !/^[1-9][0-9]?$/.test(n)) die(`persona '${ref}': a session slot is <persona>@<2-99> (alice@2)`);
+  if (!/^([A-Za-z0-9_]+|-)$/.test(base) || !/^[1-9][0-9]?$/.test(n)) die(`persona '${ref}': a session slot is <persona>@<2-99> (alice@2, -@2)`);
   return { base, slot: Number(n) };
 }
 export const personaBase = (ref: string): string => personaSlot(ref).base;
@@ -55,7 +56,8 @@ export function personaRefName(base: string, slot: number): string {
   return slot > 1 ? `${base}@${slot}` : base;
 }
 // What a persona's session is called in agent-browser (letters, digits, - and _), and what its lock
-// and its claim are called. A persona's slug never holds two dashes in a row, so `--2` is a slot's alone.
+// and its claim are called. A persona's slug never holds two dashes in a row, so `--2` is a slot's alone
+// (the anonymous session is `web--`, its slots `web----2`).
 export function personaSessionSuffix(ref: string): string {
   const { base, slot } = personaSlot(ref);
   return slot > 1 ? `${base}--${slot}` : base;

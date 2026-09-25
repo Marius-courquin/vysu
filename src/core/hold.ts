@@ -209,7 +209,7 @@ export function resourceOf(what: string): string {
   if (what === 'ios') return `ios-${slug(devices.ios)}`;
   if (what === 'android') return `android-${slug(devices.android)}`;
   if (/^(ios|android|web)-/.test(what)) return what;
-  return what === '-' ? 'web--' : webResource(what);
+  return webResource(what);
 }
 
 // --- locks ---------------------------------------------------------------------------------------

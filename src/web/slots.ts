@@ -59,7 +59,6 @@ async function needsLogin(ref: string): Promise<boolean> {
 
 export async function claimAnyWeb(persona: string, minutes: number, note: string, nowait: boolean): Promise<void> {
   const { base, slot } = personaSlot(persona);
-  if (persona === '-') die('vysu claim: the anonymous session has no slots');
   if (slot > 1) die(`vysu claim: --any picks the slot, ${persona} names one: not both`, `vysu claim ${base} --any`);
   const start = Date.now();
   const wait = config().lockWait;
@@ -95,7 +94,8 @@ export async function claimAnyWeb(persona: string, minutes: number, note: string
   // A slot with no login of its own gets one now, with the persona's credentials, in its own session;
   // never a copy of the persona's (see personaSlot).
   let done = '';
-  if (await needsLogin(ref)) {
+  // The anonymous session (`-`, `-@2`…) is a public page: nothing to log in to.
+  if (base !== '-' && (await needsLogin(ref))) {
     process.stderr.write(`vysu: ${ref} holds no login: logging in as ${base}, in a session of its own…\n`);
     try {
       await login(ref, '');

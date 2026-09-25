@@ -203,6 +203,7 @@
 # `--no-color` (or NO_COLOR, or a stdout that is not a terminal) drops the markers' colours.
 #   vysu <name> …                           an executable .vysu/commands/<name> of the project, with every VYSU_* exported
 #   <persona>@N, wherever a persona goes       that persona's Nth browser session: its credentials, its own login and page
+#                                           (`-@N` too: another anonymous browser, `vysu claim - --any`)
 #
 # Several agents share this Mac: every command locks the device or the persona session it drives,
 # for its duration (another one waits VYSU_LOCK_WAIT seconds, 90 by default, then gives up). A claim

@@ -3,6 +3,7 @@
 // platform commands call these signatures.
 import { existsSync } from 'node:fs';
 import { config } from '../core/ctx.ts';
+import { personaBase } from '../core/personas.ts';
 import type { RunResult } from '../core/proc.ts';
 import { ab, abRaw, bboxes, bcmd, brun, browserName as name, evalValue, lastResult, restoreFile, sessionOf, sessionRunning } from './ab.ts';
 import { langReadJs } from './js.ts';
@@ -21,6 +22,7 @@ export async function webSessionExists(persona: string): Promise<boolean> {
 // rather than from a file.
 export async function webClaimState(persona: string): Promise<string> {
   if (!(await sessionRunning(persona))) {
+    if (personaBase(persona) === '-') return 'state: (no browser open: the next command opens one, nothing to log in to)';
     return existsSync(restoreFile(sessionOf(persona)))
       ? 'state: (browser closed, its login kept: the next command reopens it)'
       : `state: (no session — vysu login ${persona})`;
