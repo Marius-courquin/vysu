@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 — 2026-09-25
+
+- `wait idle` waits for the images on screen only. A lazy image below the fold never loads until it is
+  scrolled to, and 0.9.0 waited for it: on the Nidz incident list every `wait idle` ran to its cap
+  (« still loading after 10.0s »). Now idle after 0.6 s there, and the map tiles of a page are still
+  waited for (six of six loaded).
+
 ## 0.9.0 — 2026-09-25
 
 What the first user outside Nidz ran into on a Vue app behind a Google sign-in, with a map.
