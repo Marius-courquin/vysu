@@ -81,6 +81,21 @@ async function logout(v: AuthContext, platform: Platform): Promise<boolean> {
   return logoutHere(v, platform);
 }
 
+// A profile that never saw Auth0 — the first login of every new session — gets a page that drops the
+// first click it is given while it is still setting itself up: no request leaves, and the password
+// field never comes. Clicked again, up to three times, until it does.
+async function continueTo(v: AuthContext, persona: string, cont: string[], field: string): Promise<void> {
+  const shown = `!!document.querySelector(${JSON.stringify(field)})`;
+  for (let i = 0; i < 3; i++) {
+    if (!(await v.webClickAny(persona, ...cont))) v.die('login: no continue button after the e-mail (VYSU_AUTH0_CONTINUE_LABELS)');
+    for (let t = 0; t < 12; t++) {
+      if (v.value((await v.webTry(persona, 'eval', shown)).stdout) === 'true') return;
+      await v.sleep(0.5);
+    }
+  }
+  await v.web(persona, 'wait', field);
+}
+
 export const connector: AuthConnector = {
   describe: (v) => `Auth0 Universal Login on *${domain(v)}*, identifier-first (sign-in: ${opt(v, 'SIGNIN_LABELS', 'Se connecter,Sign in')})`,
 
@@ -102,9 +117,8 @@ export const connector: AuthConnector = {
     // Identifier-first Universal Login: e-mail, then password on a second page.
     await v.web(persona, 'wait', 'input#username');
     await v.web(persona, 'fill', 'input#username', email);
-    if (!(await v.webClickAny(persona, ...cont))) v.die('login: no continue button after the e-mail (VYSU_AUTH0_CONTINUE_LABELS)');
+    await continueTo(v, persona, cont, 'input#password');
     v.step('fill the e-mail field');
-    await v.web(persona, 'wait', 'input#password');
     await v.web(persona, 'fill', 'input#password', password);
     if (!(await v.webClickAny(persona, ...cont))) v.die('login: no continue button after the password (VYSU_AUTH0_CONTINUE_LABELS)');
     v.step('fill the password field');
