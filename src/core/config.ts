@@ -59,6 +59,8 @@ function defaults(v: Map<string, string>, projectDir: string): Array<[string, st
     ['ANDROID_MAX_RUNNING', '2'],
     ['THEME', 'default'],
     ['LOCK_WAIT', '90'],
+    // 1: the devices vysu starts show no window (no Simulator.app, an emulator with -no-window).
+    ['MOBILE_HEADLESS', '0'],
     // Sessions per persona `claim <persona> --any` picks from: each one is a headless browser of its
     // own, a few hundred MB once a page is open.
     ['WEB_SLOTS', '4'],

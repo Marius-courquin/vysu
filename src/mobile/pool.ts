@@ -350,6 +350,20 @@ export async function claimAny(p: Platform, minutes: number, note: string, nowai
   await report(p, r, done);
 }
 
+// A machine with no screen, or a person who does not want windows opening under their work: the
+// devices run just the same without one — captures, taps, logs and recordings all go through
+// simctl, adb and agent-device, never through the window. Only the start differs, so a device
+// started with a window keeps it until it is shut down.
+export function mobileHeadless(): boolean {
+  const v = config().get('MOBILE_HEADLESS');
+  if (!['0', '1', ''].includes(v)) die(`VYSU_MOBILE_HEADLESS is 0 or 1 (got « ${v} »)`);
+  return v === '1';
+}
+// Simulator.app is a viewer: it shows every booted simulator, and a device boots without it.
+export async function simulatorWindow(): Promise<void> {
+  if (!mobileHeadless()) await run('open', ['-a', 'Simulator']);
+}
+
 // A shut-down simulator, booted the way `vysu up ios` does it (the Simulator window, the status bar),
 // and waited for up to the springboard (`bootstatus`, not just the « Booted » flag). Bounded: a
 // simulator that never comes up must not hold the claim forever.
@@ -358,7 +372,7 @@ async function iosBoot(): Promise<boolean> {
   const udid = await iosUdid(true);
   if (udid === 'booted') return false;
   await xcrun(['simctl', 'boot', udid]);
-  await run('open', ['-a', 'Simulator']);
+  await simulatorWindow();
   await xcrun(['simctl', 'bootstatus', udid], { timeoutMs: 180000 });
   const list = (await xcrun(['simctl', 'list', 'devices'])).stdout;
   if (!list.split('\n').some((l) => l.includes(udid) && l.includes('(Booted)'))) return false;
@@ -372,7 +386,8 @@ export function startEmulator(avd: string): void {
   mkdirSync(config().logs, { recursive: true });
   // An AVD ships with the GPU off and 1.5 GB: software rendering, ANRs at boot. Host GPU + RAM, and
   // explicit DNS servers, so the guest does not inherit a VPN resolver it cannot reach.
-  spawnDetached(emulatorPath(), ['-avd', avd, '-gpu', 'host', '-memory', '4096', '-cores', '4', '-dns-server', '1.1.1.1,8.8.8.8', '-no-snapshot-load', '-no-boot-anim'], {
+  const window = mobileHeadless() ? ['-no-window'] : [];
+  spawnDetached(emulatorPath(), ['-avd', avd, '-gpu', 'host', '-memory', '4096', '-cores', '4', '-dns-server', '1.1.1.1,8.8.8.8', '-no-snapshot-load', '-no-boot-anim', ...window], {
     log: join(config().logs, 'android-emulator.log'),
   });
 }

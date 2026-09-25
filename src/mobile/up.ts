@@ -9,14 +9,14 @@ import { die } from '../core/errors.ts';
 import { androidLock, deviceRemember, devices, iosLock, type Platform } from '../core/hold.ts';
 import { isWindows } from '../core/host.ts';
 import { listening } from '../core/net.ts';
-import { run, spawnDetached } from '../core/proc.ts';
+import { spawnDetached } from '../core/proc.ts';
 import { sleep } from '../core/text.ts';
 import { applogStart, applogStop } from './applog.ts';
 import { adb, adbShell, androidSerial, forgetSerial, iosFreezeStatusBar, iosUdid, serial, waitAndroidBoot, waitAndroidSerial, waitAndroidShell } from './device.ts';
 import { say } from './io.ts';
 import { appUp, mobileApp, mobileKind, mrelaunch, quietDevMenu, relaunch } from './launch.ts';
 import { metroDown, metroIsIsolated, metroIsolatedUp, metroNeed, metroPort, metroSharedUp, worktreeMobileDir } from './metro.ts';
-import { startEmulator } from './pool.ts';
+import { simulatorWindow, startEmulator } from './pool.ts';
 import { mstateGet } from './state.ts';
 import { crlf, xcrun } from './tools.ts';
 
@@ -208,7 +208,7 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
     const udid = await iosUdid(true);
     if (udid === 'booted') die(`ios: no simulator named « ${dev} » (xcrun simctl list devices)`);
     await xcrun(['simctl', 'boot', udid]);
-    await run('open', ['-a', 'Simulator']);
+    await simulatorWindow();
     await iosFreezeStatusBar();
     if (reinstall || !(await installed('ios', bundle))) {
       if (artifact && isDir(artifact) && (await xcrun(['simctl', 'install', udid, artifact])).code === 0) say(`ios: ${bundle} installed on ${dev} (from ${artifact})`);
