@@ -28,7 +28,7 @@ Codex's `spawn_agent`, the equivalent elsewhere.
 Goal: <one sentence: what to verify and why>
 Changed: <files / components touched> - expected on screen: <what should now look different, where>
 Screens: <web urls | mobile routes for `vysu mopen` | how to reach them from the home screen>
-Persona(s): <names from `vysu persona list`, and what each one is for here>
+Persona(s): <names from `vysu persona list`, and what each one is for here>; web: "claim --any" when another checker uses the same persona
 Devices: <web sizes | "claim --any" per platform | exact devices>; text sizes: <normal,xl>; theme: <light|dark>
 States: <empty / long names / error / offline / permission denied / skeleton: how to get each one>
 Interactions: <gestures to record with mrec/rec: drag the header, pull to refresh, open the sheet…>
@@ -48,6 +48,10 @@ sub-agents apart - same agent process, same environment - so they are one owner,
 not keep one out of the other's device. Give each its own device in `Devices:`, and expect each to
 name it on every command once the session holds two of a platform (the claim prints the prefix on
 a `name it:` line; a command that names none is refused rather than sent to a sibling's device).
+On the web, two checkers as the same persona would drive one browser, whose page, size and
+language each would change under the other: each starts with `vysu claim <persona> --any` and uses
+the session it names (`<persona>@2`…) on every command, then `vysu release <persona>@2`. A session
+that never logged in logs in on that claim (a few seconds), with its own login rather than a copy.
 
 ## The report contract (what the checker returns)
 

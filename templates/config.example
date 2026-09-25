@@ -119,6 +119,9 @@ VYSU_AUTH='none'
 # The simulators, recent and old. Defaults: iPhone 17 Pro · vysu iPhone SE (iOS 18)
 # VYSU_IOS_DEVICE='iPhone 17 Pro'
 # VYSU_IOS_OLD_DEVICE='vysu iPhone SE (iOS 18)'
+# Browser sessions per persona `vysu claim <persona> --any` picks from (alice, alice@2…), each a
+# headless browser of its own with its own login. Default: 4
+# VYSU_WEB_SLOTS='4'
 # The pool `vysu claim ios --any` picks from, comma-separated. Default: the two above
 # VYSU_IOS_DEVICES='iPhone 17 Pro,vysu iPhone SE (iOS 18)'
 # How many clones `claim ios --any` may make when every pool device is taken (1-2 GB of RAM each

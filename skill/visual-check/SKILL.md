@@ -60,6 +60,9 @@ one call instead of five, image last.
 **Web**: `vysu up <service>` if needed, then `vysu walk` per screen -> a report of 25 lines or fewer:
 what moved, what the browser complained about, **the single image to read**. Read only the
 `read: ...-changed.png`. Interaction: `vysu <persona> snapshot -i -c`, act by refs, `vysu check`.
+Several checkers as the **same persona** at once: each starts with `vysu claim <persona> --any`, which
+hands it a session nobody uses (`<persona>`, else `<persona>@2`, `@3`…, logged in on first use), and
+names that session on every command (`vysu walk <persona>@2 …`, printed on the `name it:` line).
 
 **Mobile**:
 
@@ -86,6 +89,7 @@ what moved, what the browser complained about, **the single image to read**. Rea
 vysu walk <p> <name> --url <url> [--baseline-url @|<url> | --baseline <name>] [--sizes WxH,…] [--dark] [--full]
 vysu shots <p> <name> … · report <name> [--md] · sheet <name> [--only <glob>] [--strip] · check <p>
 vysu flow <p> <file|-> --shots <name> · rec <p> <name> -- "<step>"… · login <p> · <p> <agent-browser args…>
+vysu claim <p> --any                              # a free session of <p>: <p>, <p>@2… (VYSU_WEB_SLOTS)
 # devices
 vysu devices · claim ios|android [--any | --device <name> | --avd <name>] [--minutes 20] · release … [--reset]
 vysu up ios|android [--device <name>] [--avd <name>] [--isolated [--port N] [--dir <mobile dir>]]
@@ -102,12 +106,15 @@ vysu ios|android <agent-device args…>             # the raw driver, when a ver
 ```
 
 `-` as the persona is an anonymous session (a public page, a marketing site, a Storybook story).
+`<p>@2` is `<p>` in a second browser session of its own (its own login, its own page): what
+`claim <p> --any` hands out when `<p>` is busy.
 
 ## 5. Sharing one machine
 
 Several agents (and the developer) share the simulators, the emulators and, by default, **one
-Metro serving one checkout**: every command locks what it touches, a claim holds a device for a
-task. In the shared mode an edit anywhere in the checkout reloads every device: judge after
+Metro serving one checkout**: every command locks what it touches, a claim holds a device or a
+persona session for a task. A persona is not one browser: `claim <persona> --any` gives each agent
+its own session of it, so web checks as the same persona run side by side. In the shared mode an edit anywhere in the checkout reloads every device: judge after
 `vysu mreload`, and read `mlog` before blaming the screen. For a phase that must not be disturbed,
 `vysu up <platform> --isolated` from your own worktree gives you your own Metro on your own port
 (about 1-1.5 GB of RAM: a mode for isolated phases, not the default).

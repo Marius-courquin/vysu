@@ -28,13 +28,20 @@
   `VYSU_MIN_VERSION`: `vysu update` pulls the engine and shows the changelog since.
 - **`<resource> busy — <agent> running "…" for Ns`** -> another agent holds that device or that
   persona session. `vysu` waits `VYSU_LOCK_WAIT` seconds (90) and then gives up: wait, take another
-  device or persona, or re-run with `VYSU_LOCK_WAIT=300`. Do not delete the lock by hand: a dead
+  device, take another session of the persona (`vysu claim <persona> --any`), or re-run with
+  `VYSU_LOCK_WAIT=300`. Do not delete the lock by hand: a dead
   process's lock is cleaned up on its own.
 - **`<resource> claimed by <agent> until HH:MM`** -> a reservation made by `vysu claim`, which
   outlives a single command. Wait for that time, or `vysu release <resource> --force` if the agent
   is gone. A mobile task spanning several commands starts with
   `vysu claim ios|android|<persona> [--minutes 30]` and ends with `vysu release`. `vysu doctor`
   lists the locks and the claims in force.
+- **`every <persona> session is in use`** -> `claim <persona> --any` found all `VYSU_WEB_SLOTS`
+  sessions (4) claimed or busy, and lists who holds each. Wait, release one of yours, or raise
+  `VYSU_WEB_SLOTS` (each session is one more headless browser).
+- **A `<persona>@N` session lands on the login page** -> its own login expired: `vysu login
+  <persona>@N`. Never copy a persona's browser state into another session by hand: with rotating
+  refresh tokens (Auth0) the first refresh of one logs both out.
 - **The app stays on the Expo launcher ("Connect", "Home", "Updates") after
   `vysu mrelaunch --lang`** -> the zygote restart brought the dev-client back too late to receive
   the Metro URL: run `vysu mrelaunch <platform>` again with no option.

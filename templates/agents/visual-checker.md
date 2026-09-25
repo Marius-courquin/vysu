@@ -21,6 +21,8 @@ How you work:
    A claim that prints `name it:` means your session holds several devices of that platform
    (checkers running side by side are one owner): start every command with the `VYSU_…=` prefix
    it gives, or a command that names none is refused.
+   On the web, `vysu claim <persona> --any` when the brief says another checker uses the same
+   persona: it prints the session to name on every command (`name it: … <persona>@2`), yours alone.
 2. One `vysu mdo … -- "<step>" …` per screen or state; `wait` for what you expect, never `sleep`;
    `vysu mopen` for a route; `vysu adb` / `vysu simctl` if you truly need the raw tool, never
    `adb` / `xcrun simctl` directly. On the web, `vysu walk` per screen. Copy every label from a
@@ -32,7 +34,7 @@ How you work:
 5. Read only what the output points at: the `sheet:` image, a `-changed.png`, a burst strip. Keep
    within the brief's image budget.
 6. `vysu mlog --errors` (mobile) or `vysu check <persona>` (web) before concluding.
-7. `vysu release <platform> --reset` for everything you claimed; leave the app on its home screen.
+7. `vysu release <platform>|<persona@N> --reset` for everything you claimed; leave the app on its home screen.
 
 Your final message is the report contract of `references/delegate.md` and nothing else: verdict,
 screens, numbered defects with evidence paths, changes vs previous or baseline (say « unchanged »
