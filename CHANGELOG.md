@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — 2026-09-25
+
+- **Devices with no window: `VYSU_MOBILE_HEADLESS=1`.** For a machine with no screen, or a person who
+  does not want simulators and emulators opening over their work. iOS: the simulator boots without
+  Simulator.app being opened; Android: the emulator starts with `-no-window` (the host GPU still
+  renders). Only the start differs, so a device started with a window keeps it. Checked on both
+  platforms with no window anywhere (Simulator.app not running, `-no-window` on the emulator's command
+  line): `claim --any` booting the device, the `screen:` line, taps, typing with the software keyboard
+  in the capture, `mshot`, and an `mrec` whose motion report caught the gesture. `vysu doctor` shows
+  the value. Beware: quitting Simulator.app shuts down every booted simulator (it did on this machine,
+  Xcode 26): to look at a headless simulator, `open -a Simulator`, then close its windows rather than
+  quit it.
+- Android: a session left over by each AVD that ran on a port is dropped, not only the first. Three
+  AVDs taking turns on `emulator-5554` left two agent-device sessions bound to it, and the second
+  still refused the device (`DEVICE_IN_USE`) after the first was dropped.
+
 ## 0.7.1 — 2026-09-25
 
 - **The anonymous session has slots too.** 0.7.0 left `-` out, so two agents checking a public page
