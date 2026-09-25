@@ -63,18 +63,24 @@ const errorText = (a: Answer): string => `${a.error.code ?? ''}: ${a.error.messa
 // app (it only closes an app it is named), so dropping it and reopening is safe. When the serial is
 // held by a session named after ANOTHER AVD of this project, that one is the same leftover seen from
 // the other side (vysu binds a session to the serial of the AVD it is named after, and to nothing
-// else), and it is dropped too.
+// else), and it is dropped too — every such leftover, one after the other.
 export async function sessionRepair(p: Platform, said: string): Promise<boolean> {
   const name = sessionName(p);
   if (said.includes('is already bound to')) await sessionClose(name);
   const a = await adCall(p, calls.open(mobileApp(p), { timeoutMs: openTimeout(p) }));
   if (a.ok) return true;
   if (p !== 'android') return false;
-  const other = /in use by session \\?"([^"\\]*)\\?"/.exec(errorText(a))?.[1] ?? '';
-  if (!other.startsWith(`${config().get('PROJECT')}-android-`) || other === name) return false;
-  await sessionClose(other);
-  why(`android: dropped the session ${other}, left over on ${serial.value} from an emulator restart`);
-  return (await adCall(p, calls.open(mobileApp(p), { timeoutMs: openTimeout(p) }))).ok;
+  // One leftover per AVD that ever ran on this port: three AVDs taking turns on emulator-5554 left two.
+  let last = a;
+  for (let i = 0; i < 4; i++) {
+    const other = /in use by session \\?"([^"\\]*)\\?"/.exec(errorText(last))?.[1] ?? '';
+    if (!other.startsWith(`${config().get('PROJECT')}-android-`) || other === name) return false;
+    await sessionClose(other);
+    why(`android: dropped the session ${other}, left over on ${serial.value} from an emulator restart`);
+    last = await adCall(p, calls.open(mobileApp(p), { timeoutMs: openTimeout(p) }));
+    if (last.ok) return true;
+  }
+  return false;
 }
 
 // --- the dev-client ------------------------------------------------------------------------------
