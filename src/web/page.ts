@@ -10,6 +10,7 @@ import { metaWrite, repoBranch, repoSha } from '../core/meta.ts';
 import { ev, evTouch, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
 import { js as paceJs } from '../img/pace.ts';
+import { tool } from '../img/tools.ts';
 import { ab, bboxes, bcmd, brun, evalValue, lastLine, sessionOf } from './ab.ts';
 import { boxOfJs, chromeJs, EXPAND_JS, idleJs, langReadJs, RESTORE_JS, WARM_JS } from './js.ts';
 import { shellWords, StepSyntax } from './words.ts';
@@ -204,23 +205,30 @@ export async function webFill(persona: string, label: string, value: string): Pr
   return false;
 }
 
-// The page as it stands, into the shots folder: « <label> [--full] [--no-expand] ».
+// The page as it stands, into the shots folder: « <label> [--full] [--no-expand] | --selector <css|@ref> ».
+// '' when the step failed (said on stderr): an element that is not there fails a step, not the flow.
 export async function webShot(persona: string, shots: string, rest: string): Promise<string> {
   if (!shots) die(`vysu: « shot ${rest} » needs --shots <name> (or a recording name)`);
-  const words = rest.trim().split(/[ \t\n]+/).filter(Boolean);
-  const label = words[0] ?? '';
+  const parts = words(rest.trim());
+  if (parts === null) return '';
+  const label = parts[0] ?? '';
   if (!label) die('vysu: « shot » needs a label');
   let full = false;
   let expand = true;
-  for (const word of words.slice(1)) {
+  let selector = '';
+  for (let i = 1; i < parts.length; i++) {
+    const word = parts[i]!;
     if (word === '--full') full = true;
     else if (word === '--no-expand') expand = false;
-    else die(`vysu: « shot ${label} » takes --full / --no-expand, not ${word}`);
+    else if (word === '--selector' && parts[i + 1]) selector = parts[++i]!;
+    else die(`vysu: « shot ${label} » takes --full / --no-expand / --selector <css|@ref>, not ${word}`);
   }
+  if (selector && full) die(`vysu: « shot ${label} »: --selector is one element, --full the whole page — not both`);
   if (!full) expand = false;
   const dir = join(config().shots, shots);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `web-${label}.png`);
+  if (selector) return (await webShotElement(persona, selector, file)) ? file : '';
   // Same three beats as a --full capture in `vysu shots`, one call each: a flow runs outside the batch.
   if (expand) {
     await ab(persona, ['eval', EXPAND_JS]);
@@ -229,6 +237,40 @@ export async function webShot(persona: string, shots: string, rest: string): Pro
   await ab(persona, ['screenshot', ...(full ? ['--full'] : []), file]);
   if (expand) await ab(persona, ['eval', RESTORE_JS]);
   return file;
+}
+
+// One element, whatever scrolls it. agent-browser's own `screenshot <selector>` clips the page at the
+// element's box without scrolling the container that holds it: an element below the fold of an inner
+// scroller (an app shell whose document never scrolls) came out as a blank rectangle of the right
+// size. Here it is scrolled into view through every scrolling ancestor, measured in the viewport,
+// and cut out of a viewport capture: the clip and the picture are read in the same place.
+async function webShotElement(persona: string, selector: string, file: string): Promise<boolean> {
+  const scrolled = await ab(persona, ['scrollintoview', selector], { stderr: 'capture' });
+  if (scrolled.code !== 0) {
+    process.stderr.write(`vysu: no element « ${selector} » in ${sessionOf(persona)}${scrolled.stderr ? `: ${lastLine(scrolled.stderr)}` : ''}\n`);
+    return false;
+  }
+  await ab(persona, ['wait', '300']);
+  let b: Record<string, number> = {};
+  try {
+    b = (JSON.parse(lastLine((await ab(persona, ['get', 'box', selector, '--json'], { stderr: 'drop' })).stdout)) as { data?: Record<string, number> }).data ?? {};
+  } catch {
+    b = {};
+  }
+  if (!(b.width! > 0 && b.height! > 0)) {
+    process.stderr.write(`vysu: « ${selector} » has no box on screen (hidden, or empty)\n`);
+    return false;
+  }
+  // A capture is in device pixels, a box in CSS pixels.
+  const dpr = Number(evalValue((await ab(persona, ['eval', 'devicePixelRatio'], { stderr: 'drop' })).stdout)) || 1;
+  if ((await ab(persona, ['screenshot', file])).code !== 0) return false;
+  const px = (n: number): number => Math.round(n * dpr);
+  const cut = await tool('mark', [file, '--out', file, '--crop', `${px(b.x!)},${px(b.y!)},${px(b.width!)},${px(b.height!)}`, '--pad', '0']);
+  if (cut.code !== 0) {
+    process.stderr.write(cut.stderr || `vysu: could not crop ${file}\n`);
+    return false;
+  }
+  return true;
 }
 
 // A variable a step names (`fill "E-mail" "$VYSU_X"`), from what a flow has always seen: the
@@ -298,8 +340,9 @@ export async function webStep(persona: string, shots: string, step: string, prin
   }
   if (step.startsWith('press ')) return (await ab(persona, ['press', after('press ')])).code === 0;
   if (step.startsWith('shot ')) {
-    print(`${await webShot(persona, shots, after('shot '))}\n`);
-    return true;
+    const file = await webShot(persona, shots, after('shot '));
+    if (file) print(`${file}\n`);
+    return file !== '';
   }
   if (step === 'check') {
     if (!shots) die('vysu: « check » needs --shots <name> (or a recording name)');

@@ -45,6 +45,7 @@ end of the other ninety-nine.
 | `press <key>` | `Enter`, `Escape`, `Control+a`… |
 | `sleep <s>` · `viewport WxH` | wait · change viewport |
 | `shot <label> [--full] [--no-expand]` | capture -> `web-<label>.png`; `--full` unfolds inner scrollers |
+| `shot <label> --selector <css\|@ref>` | one element, scrolled into view through every scrolling container, then cut out of a viewport capture. Use it rather than `screenshot <selector>`, which clips the wrong region when the element sits below the fold of an inner scroller |
 | `check` | `vysu check` inline, appended to `check.txt` (so `vysu report` reads it); needs `--shots` |
 | *anything else* | passed straight to agent-browser (`eval …`, `network route …`, `scroll …`) |
 
