@@ -116,6 +116,9 @@ export async function mtap(p: Platform, args: string[]): Promise<boolean> {
   for (const c of tapCalls(p, t, label, partial)) {
     pressed = await adPress(p, c);
     if (pressed !== null) break;
+    // A press at a point that failed for another reason than the glass one (#11) may still have
+    // landed, its settle running out: the same label pressed again would send twice.
+    if (p === 'ios' && /^\d/.test(c.cli[1] ?? '') && !/INFINITY/.test(pressError)) break;
   }
   if (pressed !== null && t.kind === 'hit') pressed = `${pressed} · « ${t.label} »${t.note ? ` ${t.note}` : ''}`;
   if (pressed === null) {

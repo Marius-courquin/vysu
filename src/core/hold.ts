@@ -6,8 +6,9 @@
 // The files keep the format of every earlier version, byte for byte (a lock directory holding owner,
 // pid, since and cmd; a claim file of key=value lines; one device-choice file per owner), so two
 // versions installed side by side (an agent on an older checkout) wait on each other's locks.
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { config, commandLine } from './ctx.ts';
 import { die, log, onCleanup } from './errors.ts';
 import { isWindows, pidAlive, processEntry, processName } from './host.ts';
@@ -293,9 +294,28 @@ export function releaseOnExit(): { VYSU_LOCK_HOLDER: string; VYSU_LOCK_CMD: stri
   return { VYSU_LOCK_HOLDER: String(process.pid), VYSU_LOCK_CMD: commandLine() };
 }
 
+// Every state folder that ever held a lock or a claim, one per line in ~/.vysu/states: a project may
+// keep its state anywhere (VYSU_STATE), and the idle reaper of another project has to read its claims
+// before it stops a simulator they share.
+export const STATES_FILE = join(homedir(), '.vysu', 'states');
+let stateKnown = false;
+export function stateRegister(dir = config().state): void {
+  if (stateKnown) return;
+  stateKnown = true;
+  try {
+    const known = existsSync(STATES_FILE) ? readFileSync(STATES_FILE, 'utf8').split('\n') : [];
+    if (known.includes(dir)) return;
+    mkdirSync(dirname(STATES_FILE), { recursive: true });
+    appendFileSync(STATES_FILE, `${dir}\n`);
+  } catch {
+    // a read-only home: the reaper then reads ~/.vysu/* alone
+  }
+}
+
 // Waits for a foreign lock or claim, then holds the resource until this process exits.
 export async function lockTake(r: string): Promise<void> {
   if (held.has(r)) return;
+  stateRegister();
   const c = config();
   const dir = join(c.locks, r);
   mkdirSync(c.locks, { recursive: true });
@@ -541,6 +561,7 @@ function claimsKeep(): void {
 }
 
 export function claimWrite(r: string, minutes: number, note: string, device = ''): void {
+  stateRegister();
   const dir = config().claims;
   mkdirSync(dir, { recursive: true });
   const lines = [`owner=${owner()}`, `until=${nowSeconds() + minutes * 60}`, `minutes=${minutes}`, `note=${note}`];

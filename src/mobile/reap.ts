@@ -6,12 +6,12 @@
 // `devices`, any boot), and by `vysu down idle`. A boot then waits for room: a budget of devices per
 // platform and a floor of free memory. Only what vysu booted itself is ever stopped, and anything
 // another project, an older vysu, agent-device or a person may be using right now is kept.
-import { readdirSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
-import { claimField, lockAlive, lockDrop, lockTry, owner, ownerGone, usedRead, type Platform } from '../core/hold.ts';
+import { claimField, lockAlive, lockDrop, lockTry, owner, ownerGone, STATES_FILE, usedRead, type Platform } from '../core/hold.ts';
 import { isLinux, isMac, isWindows } from '../core/host.ts';
 import { killPort } from '../core/net.ts';
 import { run } from '../core/proc.ts';
@@ -108,7 +108,7 @@ const minutes = (s: number): string => `${Math.max(0, Math.round(s / 60))} min`;
 // leaves is read, and what cannot be told apart is kept.
 export function stateDirs(): string[] {
   const root = join(homedir(), '.vysu');
-  const out = [config().state];
+  const out = [config().state, ...registeredStates()];
   for (const d of list(root)) {
     const p = join(root, d);
     try {
@@ -118,6 +118,18 @@ export function stateDirs(): string[] {
     }
   }
   return [...new Set(out)];
+}
+
+// The state folders projects keep outside ~/.vysu (VYSU_STATE), as their locks and claims recorded them.
+function registeredStates(): string[] {
+  try {
+    return readFileSync(STATES_FILE, 'utf8')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && existsSync(l));
+  } catch {
+    return [];
+  }
 }
 
 // The agent-device sessions bound to a device, whatever project prefixes their name: vysu names one
@@ -582,7 +594,7 @@ export async function admit(p: Platform, name: string): Promise<void> {
     if (waited >= wait) {
       tell(`vysu: no room to boot ${p} « ${name} » after ${waited}s: ${why}. What runs:`);
       await upReport();
-      die(`${p}: « ${name} » not booted: ${why}`, 'vysu devices (who holds what), then vysu release <platform> / vysu down idle');
+      die(`${p}: « ${name} » not booted: ${why}`, 'vysu devices (who holds what), then vysu release <platform> / vysu down idle (a device vysu did not boot is left to whoever started it)');
     }
     if (!said) {
       tell(`vysu: ${why}: « ${name} » waits up to ${wait}s (VYSU_LOCK_WAIT) for a device to stop. What runs:`);
