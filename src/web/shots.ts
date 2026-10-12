@@ -58,8 +58,10 @@ export function baselineAstray(asked: string, landed: string, headLanded = ''): 
   if (!a || !l) return landed ? `lands on ${landed}` : 'answers no address';
   if (l.origin !== a.origin) return `lands on ${landed}`;
   if (l.path === a.path) return '';
+  // Only a redirect deeper into the page asked: a page under test that is itself signed out lands on
+  // the same `/` as the baseline, and that is two doors compared, not two pages (12/10 recette).
   const h = where(headLanded);
-  if (h && h.path === l.path) return '';
+  if (h && h.path === l.path && l.path.startsWith(a.path.replace(/\/$/, '') + '/')) return '';
   return `lands on ${l.path} instead of ${a.path}`;
 }
 
@@ -88,6 +90,24 @@ export function baselineMissing(why: string, origin: string): string {
 // which is answered as a line to print.
 async function baselineReady(persona: string, url: string, baseurl: string): Promise<string> {
   const origin = where(baseurl)?.origin ?? baseurl;
+  // The page under test first: a persona signed out there lands on the app's door, and a baseline
+  // compared with a door reads either as a door too or as a page prep « does not have » (12/10
+  // recette, a fresh slot). Logged in on that origin before the baseline is looked at.
+  const signedOut = persona.replace(/@\d+$/, '') !== '-' && config().get('AUTH') !== 'none';
+  if (signedOut) {
+    const local = await landing(persona, url);
+    const home = where(url)?.origin ?? '';
+    if (home && baselineAstray(url, local, local)) {
+      process.stderr.write(`vysu: ${url} ${baselineAstray(url, local, local)}: logging ${persona} in on ${home} first\n`);
+      const { login } = await import('../auth/commands.ts');
+      try {
+        await login(persona, `${home}${config().get('LOGIN_PATH')}`);
+      } catch (e) {
+        if (!(e instanceof VysuError)) throw e;
+        die(`vysu shots: ${persona} is not signed in on ${home} and the login failed (${e.message})`, `vysu login ${persona}, then the same command`);
+      }
+    }
+  }
   const astray = async (): Promise<string> => {
     const landed = await landing(persona, baseurl);
     const why = baselineAstray(baseurl, landed);

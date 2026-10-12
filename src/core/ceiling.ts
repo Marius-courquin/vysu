@@ -107,7 +107,9 @@ export function doingLine(phase: string, waiting: ProcRow[]): string {
 function children(): ProcRow[] {
   if (isWindows) return descendants(process.pid).map((pid) => ({ pid, ppid: 0, pgid: 0, args: '' }));
   const r = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,pgid=,args='], { encoding: 'utf8' });
-  return strayChildren(parsePs(r.stdout ?? ''), process.pid);
+  // The `ps` reading the table is in it, our child too: between two polls it was all a step had
+  // running, and the stop line named it.
+  return strayChildren(parsePs(r.stdout ?? ''), process.pid).filter((c) => c.pid !== r.pid);
 }
 
 let armed: ReturnType<typeof setTimeout> | undefined;

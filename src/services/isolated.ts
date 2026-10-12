@@ -245,6 +245,13 @@ export async function sessionFollows(c: Config, persona: string, rule: string): 
   const pid = Number(read(daemonPidFile(session)).trim());
   if (pid > 0 && processName(pid).includes('agent-browser')) {
     const url = (await ab(persona, ['get', 'url'], { stderr: 'drop' })).stdout.trim().split('\n').pop() ?? '';
+    // What a close saves is the storage of the page it is on: left on the baseline's origin (prep),
+    // the app's own login was gone on reopen (12/10 recette). The app's origin is shown first.
+    const origin = c.get('ORIGIN');
+    if (origin && url && !url.startsWith(origin)) {
+      await ab(persona, ['open', origin], { stderr: 'drop' });
+      await ab(persona, ['wait', '1500'], { stderr: 'drop' });
+    }
     await ab(persona, ['close'], { stderr: 'drop' });
     // The daemon answers `close` before it is gone, and a call made in between still finds the old
     // browser: its end is waited for, and forced past five seconds.

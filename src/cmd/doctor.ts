@@ -114,7 +114,8 @@ export function humanSize(bytes: number): string {
 export function isProblem(line: string): boolean {
   const l = line.replace(/\x1b\[[0-9;]*m/g, '');
   if (/^remotion: node_modules MISSING \(installed on the first/.test(l)) return false;
-  return /^[!✗] /.test(l) || /\bMISSING\b|\(unavailable — |^config: none found/.test(l);
+  // An isolated server is not a problem, but who serves what is the first thing a brief check needs.
+  return /^[!✗] /.test(l) || /\bMISSING\b|\(unavailable — |^config: none found|^isolated: /.test(l);
 }
 
 export async function run(args: string[]): Promise<void> {

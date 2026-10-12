@@ -241,7 +241,8 @@ function webReport(dir: string, meta: Meta): string[] {
   const compares = files.filter((f) => f.startsWith('compare') && f.endsWith('.png')).sort();
   const diffed = shots.some((f) => f.endsWith('-base.png') || f.endsWith('-changed.png'));
   // Naming the pictures that did not move is what keeps an agent from opening them.
-  const quiet = shots.filter((f) => !f.endsWith('-changed.png') && (status.get(f.slice(0, -4)) ?? 'identical').startsWith('identical'));
+  // A baseline picture goes with its size: `1280x800-base.png` of a size that changed is not identical.
+  const quiet = shots.filter((f) => !f.endsWith('-changed.png') && (status.get(f.replace(/(-base)?\.png$/, '')) ?? 'identical').startsWith('identical'));
   if (status.size && quiet.length) lines.push(`identical, do not read: ${quiet.join(', ')}`);
   let read = [...status.keys()].filter((l) => marked.has(l)).map((l) => marked.get(l)!);
   if (compares.length) {

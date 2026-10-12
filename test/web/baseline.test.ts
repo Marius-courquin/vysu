@@ -12,6 +12,8 @@ test('a baseline that lands elsewhere than the page asked for is told apart from
   assert.equal(baselineAstray(base, 'https://app.prep.nidz.fr/', 'http://localhost:8100/community/news'), 'lands on / instead of /community');
   // Both sides redirect the same way: the app's own redirect, not a login.
   assert.equal(baselineAstray(base, 'https://app.prep.nidz.fr/community/news', 'http://localhost:8100/community/news'), '');
+  // Both sides signed out land on the same door: no page to compare.
+  assert.equal(baselineAstray(base, 'https://app.prep.nidz.fr/', 'http://localhost:8100/'), 'lands on / instead of /community');
   assert.equal(baselineAstray(base, 'about:blank'), 'lands on about:blank');
 });
 
