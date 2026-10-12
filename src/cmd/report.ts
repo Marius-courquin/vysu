@@ -1,7 +1,7 @@
-// `vysu report <name> [--md]`: a shots folder read back in 25 lines at most — what changed, what to
+// `vysu report <name> [--md [--out <file>]]`: a shots folder read back in 25 lines at most — what changed, what to
 // open, and the pictures that did not move named so nobody opens them.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
 import { metaRead, type Meta } from '../core/meta.ts';
@@ -22,14 +22,32 @@ const cut = (s: string, n: number): string => Array.from(s).slice(0, n).join('')
 const mtime = (p: string): number => statSync(p).mtimeMs;
 const readLines = (p: string): string[] => (existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/) : []);
 
+const USAGE = 'usage: vysu report <name> [--md [--out <file>]]';
+
 export async function run(args: string[]): Promise<void> {
   const name = args[0];
-  if (!name) die('usage: vysu report <name> [--md]');
+  if (!name || name.startsWith('-')) die(USAGE);
+  let md = false;
+  let file = '';
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--md') md = true;
+    else if (args[i] === '--out' && i + 1 < args.length) file = args[++i]!;
+    else die(`vysu report: unknown option ${args[i]}`);
+  }
+  if (file && !md) md = true;
   const dir = join(config().shots, name);
   if (!existsSync(dir) || !statSync(dir).isDirectory()) die(`no shots folder ${dir}`);
   const lines = report(dir);
-  const out = args[1] === '--md' ? ['```', ...lines, '```'] : lines;
+  const out = md ? ['```', ...lines, '```'] : lines;
   process.stdout.write(`${out.join('\n')}\n`);
+  // Checkers wrote « --md printed its Markdown and wrote no file » and pointed at a file that was not
+  // there: the Markdown is kept beside the captures too, and its path said on stderr, out of the
+  // block an agent pastes.
+  if (md) {
+    const path = file ? resolve(file) : join(dir, 'report.md');
+    writeFileSync(path, `${out.join('\n')}\n`);
+    process.stderr.write(`report: ${path}\n`);
+  }
 }
 
 export function report(dir: string): string[] {

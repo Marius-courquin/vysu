@@ -9,6 +9,12 @@
 #   vysu walk <persona> <name> --url <url> [shots options…]   open + check + shots + report, in one call
 #   vysu login <persona> [url]              log the persona in through the project's auth connector
 #   vysu up <service> [--env k=v]…          start a service declared in the config, wait for its health
+#   vysu up <service> --isolated [--dir <folder>]   the same service for this owner alone, from its own checkout
+#                                           (default: the worktree the command runs in), on a free port of
+#                                           VYSU_SERVICE_<name>_ISOLATED_PORTS ({port} in its CMD, else its PORT
+#                                           rewritten); this owner's browser sessions get localhost:<PORT> from it
+#                                           (same origin: logins, CORS, callbacks unchanged), every other owner keeps
+#                                           the shared one; `vysu down <service>` stops it first, the shared one after
 #   vysu up all | down <service> | down all | down metro | down applog [ios|android]
 #                                           down metro: this owner's isolated Metro (else the shared one, only
 #                                           when this owner started it); down applog: the log tails, JS ones included
@@ -31,7 +37,8 @@
 #   vysu mlogin ios|android <persona> [--force]   log the persona in inside the app (one install = one
 #                                           session); a device vysu recorded with that persona, whose app
 #                                           shows someone signed in, is left as it is (--force: log in anyway).
-#                                           A login takes one to three minutes: give the call a 5-minute timeout
+#                                           A login takes one to three minutes: give the shell tool call a 5-minute
+#                                           timeout (its own parameter, never a `timeout` prefix)
 #   vysu mshot ios|android <name> [label] [--baseline <name>] [--no-prev]
 #              [--full [--step 150] [--max 12] [--top <pt>] [--bottom <pt>]]
 #                                           screenshot (1x, steady status bar) into the shots folder; --full scrolls
@@ -95,7 +102,7 @@
 #   vysu mburst ios|android <name> [--seconds 3] [--every 0.3] [-- "<step>" …]   screenshots as fast as the device
 #                                           gives them while the step runs: the distinct ones at 1x, a one-row strip,
 #                                           and one line of when each changed (a skeleton, a sheet, a toast)
-#   vysu shots <persona> <name> [--url <url>] [--sizes WxH,…] [--dark] [--full] [--no-expand] [--no-warm]
+#   vysu shots <persona> <name> [--url <url>] [--sizes|--viewport WxH,…] [--dark] [--full] [--no-expand] [--no-warm]
 #              [--lang <l>] [--freeze]
 #                                           one capture per viewport, and the diff of each against:
 #                                             --full                  the whole screen: unfolds the inner scrollers, for
@@ -107,11 +114,14 @@
 #                                             --baseline-url <url>    the same path elsewhere, captured now — a deployed
 #                                               main is the baseline a branch is read against:
 #                                               `--baseline-url https://main.example.com/<path>`, or `--baseline-url @`
-#                                               for the same path on VYSU_BASELINE_ORIGIN (log the persona in there once)
+#                                               for the same path on VYSU_BASELINE_ORIGIN; a baseline that lands elsewhere
+#                                               (signed out there) logs the persona in on that origin first, and is
+#                                               refused if it still does
 #                                             --ignore <css selector> repeatable, those boxes are left out of the diff
-#   vysu report <name> [--md]               a shots folder read back in ≤ 25 lines: what changed, what to open
+#   vysu report <name> [--md [--out <file>]]   a shots folder read back in ≤ 25 lines: what changed, what to open
 #                                           (mobile: the device's text size, language, appearance and sha, then each
-#                                           capture's last verdict, vs previous or vs a baseline)
+#                                           capture's last verdict, vs previous or vs a baseline); --md: in a code block,
+#                                           also written to <name>/report.md (or --out), its path on stderr
 #   vysu flow <persona> <file|-> [--shots <name>] [--viewport WxH] [--keep-going] [--no-sheet]   scripted web steps
 #                                           (go <url> [--reload] · click "<label>"|"css:<sel>"|@eN · fill · press · wait idle
 #                                           [<s>] · shot <label> [--full | --selector <css|@ref>] · check), and the batch
@@ -122,8 +132,9 @@
 #                                           + motion report + frames/ + events.json (each step in clip seconds,
 #                                           with the box it clicked); --mp4 is a no-op, the clip is always mp4
 #   vysu lang <persona> <lang>              language of the web app (localStorage VYSU_LANG_STORAGE_KEY), then reload
-#   vysu sheet <name> [--cols N] [--max N] [--only "<glob>,…"] [--strip] [--open]   contact sheet(s) ≤ 1568 px
-#                                           so they stay legible + index.html (six phone captures: one page);
+#   vysu sheet <name>… [--cols N] [--max N] [--only "<glob>,…"] [--strip] [--open]   contact sheet(s) ≤ 1568 px
+#                                           so they stay legible + index.html (six phone captures: one page), one per
+#                                           folder named; a folder of folders: the captures two levels below (fr/web/x);
 #                                           --only: the captures a glob names, in that order (a .prev.png or a
 #                                           -changed.png only when the glob spells it); --strip: one row at one
 #                                           scale, a before / after pair → sheet-strip.png
@@ -179,11 +190,15 @@
 #                                           state applied; --prune-clones deletes the vysu clones nobody claims
 #   vysu adb <args…>                        adb on this owner's emulator (-s <its serial>), under its lock
 #   vysu simctl <verb> [args…]              xcrun simctl on this owner's simulator (its UDID after the verb), under
-#                                           its lock; list / create / clone / runtime / help / pair run as they are
+#                                           its lock; list / create / clone / runtime / help / pair run as they are.
+#                                           Leave the device out (`vysu simctl status_bar override …`): the owner's
+#                                           UDID / serial named anyway is dropped, another one is refused
 #   vysu release ios|android|<persona> [--force] [--reset] [--delete-clone]   hand it back (--force: someone else's claim;
 #                                           --reset: defaults first — normal text, light, the default language)
-#   vysu prune [--days 30] [--match "<glob>"…] [--dry-run]   drop the shots folders older than N days,
-#                                           or the ones a glob names, whatever their age (--dry-run: just say which)
+#   vysu prune [--days|--older 30] [--match "<glob>"…] [--dry-run] [--force]   drop the shots folders older than
+#                                           N days, or the ones a glob names, whatever their age (--dry-run: just say
+#                                           which); a folder touched in the last 6 h, or last written by another owner
+#                                           still running, is kept (named on a « kept: » line) unless --force
 #   vysu cache clear                        forget what is remembered per device: simulator UDIDs, emulator
 #                                           serials, scales, and the text size / appearance / language applied
 #   vysu setup [--yes] [--dry-run] [--ios-device <n>] [--ios-old-device <n>] [--android-avds "<spec>;…"]
@@ -200,7 +215,9 @@
 #                                           agent skills, and the visual-checker agent definition (Claude Code: .claude/agents)
 #   vysu init --refresh-skills [--skills-dir <dir>] [--agents-dir <dir>]   re-copy this engine's skills (and the
 #                                           visual-checker agent where one is installed), and nothing else
-#   vysu doctor                             tooling, resolved config, connectors, personas, sessions, devices, locks
+#   vysu doctor [--brief]                   tooling, resolved config, connectors, personas, sessions, devices, locks,
+#                                           isolated services; --brief: only the problems, then one summary line
+#   vysu <command> --help | vysu help <command>   that command's entries of this page
 #   vysu checker [--for <agent family>]     how to delegate a visual check: the brief lives in the skill, the model the
 #                                           checker sub-agent runs on is VYSU_CHECKER_MODELS for the calling agent tool
 #   vysu update | vysu version              pull the engine, then the CHANGELOG since, the node tools it needs

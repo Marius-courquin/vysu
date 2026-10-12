@@ -3,13 +3,14 @@
 import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
-import { die } from '../core/errors.ts';
+import { die, VysuError } from '../core/errors.ts';
 import { langCheck } from '../core/i18n.ts';
 import { metaWrite, repoBranch, repoSha } from '../core/meta.ts';
 import { tool } from '../img/tools.ts';
-import { bboxes, bcmd, brun, lastResult } from './ab.ts';
+import { ab, bboxes, bcmd, brun, lastLine, lastResult } from './ab.ts';
 import { ignoreJs, langReadJs, pyJsonList } from './js.ts';
 import { bchrome, bexpand, bopen, bsettle, bunexpand, bwarm, webApi } from './page.ts';
+import { servedDir } from '../services/isolated.ts';
 
 export const SHOTS_USAGE =
   'usage: vysu shots <persona> <name> [--url <url>] [--sizes WxH,…] [--dark] [--full] [--no-expand] [--no-warm] [--freeze] [--lang <l>] [--ignore <css>]… [--baseline <name> | --baseline-url <url>]';
@@ -33,6 +34,77 @@ export function wh(size: string): [string, string] {
   const last = size.lastIndexOf('x');
   const first = size.indexOf('x');
   return [last < 0 ? size : size.slice(0, last), first < 0 ? size : size.slice(first + 1)];
+}
+
+// --- a baseline the persona can see ---------------------------------------------------------
+
+const where = (u: string): { origin: string; path: string } | null => {
+  try {
+    const x = new URL(u);
+    return { origin: x.origin, path: x.pathname.replace(/\/+$/, '') || '/' };
+  } catch {
+    return null;
+  }
+};
+
+// Why a baseline capture would not be the page asked for, or '' when it is: it landed on another
+// origin (an identity provider's login), or on another path than the one asked — unless the page
+// under test lands on that same path (the app's own redirect, `/community` → `/community/news`,
+// which both sides make). Signed out, the Nidz web app sends any page to `/`: prep's public page was
+// captured as the baseline and every viewport read « changed » (7 checker reports, 25/09 → 12/10).
+export function baselineAstray(asked: string, landed: string, headLanded = ''): string {
+  const a = where(asked);
+  const l = where(landed);
+  if (!a || !l) return landed ? `lands on ${landed}` : 'answers no address';
+  if (l.origin !== a.origin) return `lands on ${landed}`;
+  if (l.path === a.path) return '';
+  const h = where(headLanded);
+  if (h && h.path === l.path) return '';
+  return `lands on ${l.path} instead of ${a.path}`;
+}
+
+async function landing(persona: string, url: string): Promise<string> {
+  await ab(persona, ['open', url], { stderr: 'drop' });
+  await ab(persona, ['wait', '--load', 'networkidle', '--timeout', '2500'], { stderr: 'drop' });
+  // A single-page app decides it is signed out after its auth client has looked: a beat later.
+  await ab(persona, ['wait', '1500'], { stderr: 'drop' });
+  return lastLine((await ab(persona, ['get', 'url'], { stderr: 'drop' })).stdout).trim();
+}
+
+// Before a baseline is captured: is it the page the persona would see? When not, the persona is
+// logged in on the baseline's origin through the project's auth connector (its session there is the
+// same browser profile, one login per origin), and looked at again; a baseline that still lands
+// elsewhere is refused rather than diffed.
+async function baselineReady(persona: string, url: string, baseurl: string): Promise<void> {
+  const origin = where(baseurl)?.origin ?? baseurl;
+  const astray = async (): Promise<string> => {
+    const landed = await landing(persona, baseurl);
+    const why = baselineAstray(baseurl, landed);
+    if (!why || why.startsWith('lands on http')) return why;
+    return baselineAstray(baseurl, landed, await landing(persona, url));
+  };
+  let why = await astray();
+  if (!why) return;
+  const anonymous = persona.replace(/@\d+$/, '') === '-';
+  const c = config();
+  const refuse = (more: string): never =>
+    die(
+      `vysu shots: the baseline ${baseurl} ${why}${more}: a diff against it would read « changed » everywhere`,
+      anonymous || c.get('AUTH') === 'none'
+        ? 'drop --baseline-url, or point it at a page that exists there'
+        : `vysu login ${persona} ${origin}${c.get('LOGIN_PATH')}, then the same command (or drop --baseline-url: the page may not exist there yet)`,
+    );
+  if (anonymous || c.get('AUTH') === 'none') refuse('');
+  process.stderr.write(`vysu: the baseline ${why}: logging ${persona} in on ${origin} first\n`);
+  try {
+    const { login } = await import('../auth/commands.ts');
+    await login(persona, `${origin}${c.get('LOGIN_PATH')}`);
+  } catch (e) {
+    if (!(e instanceof VysuError)) throw e;
+    refuse(` and the login there failed (${e.message})`);
+  }
+  why = await astray();
+  if (why) refuse(` even signed in (the page may not exist on ${origin} yet)`);
 }
 
 // diff's --ignore for the boxes a selector resolved to, one `--ignore=<box>` each: a box starting left
@@ -59,6 +131,9 @@ export async function shots(persona: string, name: string, args: string[], print
         url = optValue(args, i++, 'shots');
         break;
       case '--sizes':
+      // The spellings the passthrough and a flow use for one size (`set viewport`, `viewport WxH`).
+      case '--size':
+      case '--viewport':
         sizes = optValue(args, i++, 'shots');
         break;
       case '--dark':
@@ -109,6 +184,7 @@ export async function shots(persona: string, name: string, args: string[], print
   // Nothing below the fold to reveal without --full: the capture stops at the window either way.
   if (!full) warm = false;
   const diffing = !!(baseline || baseurl);
+  if (baseurl) await baselineReady(persona, url, baseurl);
   // A diff taken on a page that still moves reads as a change: the baseline modes freeze by themselves.
   if (diffing) freeze = true;
 
@@ -191,7 +267,9 @@ export async function shots(persona: string, name: string, args: string[], print
     bboxes(await brun(persona));
   }
 
-  const repo = c.webRepo;
+  // The checkout that served the page, not the one the config names: a walk of a worktree's server
+  // said the main checkout's sha, and the report read as if the branch had not been looked at.
+  const repo = (url && servedDir(c, url)) || c.webRepo;
   await metaWrite(dir, {
     kind: 'web',
     persona,

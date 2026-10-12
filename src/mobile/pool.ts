@@ -27,6 +27,7 @@ import {
 import { isMac, pidAlive } from '../core/host.ts';
 import { run, spawnDetached } from '../core/proc.ts';
 import { hhmm, slug, sleep } from '../core/text.ts';
+import { adbSerial, simctlRest } from './passargs.ts';
 import { interactive, sessionClose, sessionName, sessionNames } from './agent.ts';
 import { adb, adbShell, androidAvdOf, androidSelect, androidSerial, emulatorSerials, forgetSerial, iosFreezeStatusBar, iosUdid, serial } from './device.ts';
 import { say, tell } from './io.ts';
@@ -489,9 +490,10 @@ async function pruneClones(args: string[]): Promise<void> {
 // --- adb and simctl on this owner's device -----------------------------------------------------
 
 // `vysu adb …`: the owner's AVD, locked and addressed by its serial, never « the » device adb would
-// pick, nor the serial of an emulator another session holds. A serial given here would defeat that,
-// and `kill-server` takes every emulator's adb connection down for every session: both refused.
-export async function adbCommand(args: string[]): Promise<void> {
+// pick, nor the serial of an emulator another session holds. A serial given here would defeat that
+// (a leading `-s` naming the owner's own is dropped, src/mobile/passargs.ts), and `kill-server` takes every emulator's adb connection down for every session: both refused.
+export async function adbCommand(all: string[]): Promise<void> {
+  const { serial: named, rest: args } = adbSerial(all);
   if (!args.length) die(`usage: vysu adb <adb args…>  (on ${devices.android}, the owner's AVD)`);
   for (const a of args) {
     if (['-s', '-e', '-d', '-t', '-H', '-P', '-L'].includes(a) || /^-[st]./.test(a)) {
@@ -502,6 +504,7 @@ export async function adbCommand(args: string[]): Promise<void> {
     break; // the adb command: what follows is its own arguments
   }
   await androidSelect();
+  if (named && named !== serial.value) die(`vysu adb runs on ${devices.android} (${serial.value}), this owner's AVD: ${named} is not it`, 'vysu claim android --avd <name>, then vysu adb …');
   exit((await interactive(adbPath(), ['-s', serial.value, ...args], config().childEnv({ ANDROID_SERIAL: serial.value }))).code);
 }
 
@@ -521,6 +524,8 @@ export async function simctlCommand(args: string[]): Promise<void> {
   let udid = await iosUdid();
   if (!existsSync(join(homedir(), 'Library', 'Developer', 'CoreSimulator', 'Devices', udid))) udid = await iosUdid(true);
   if (udid === 'booted') die(`ios: no simulator named « ${devices.ios} »`, 'vysu devices');
-  exit((await interactive('xcrun', ['simctl', verb, udid, ...args.slice(1)])).code);
+  const rest = simctlRest(args.slice(1), udid);
+  if (!Array.isArray(rest)) die(`vysu simctl runs on « ${devices.ios} » (${udid}), this owner's simulator: ${rest.refused} is not it — leave the device out, vysu puts it after the verb`, 'vysu claim ios --device "<name>", then vysu simctl …');
+  exit((await interactive('xcrun', ['simctl', verb, udid, ...rest])).code);
 }
 

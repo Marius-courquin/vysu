@@ -15,7 +15,9 @@
 - **A simulator was recreated** (new UDID, different density) -> `vysu cache clear` (UDIDs and
   scales are remembered), then `vysu up ios|android`.
 - **General doubt** (tools, config, connectors, personas, sessions, helpers, caches, locks) ->
-  `vysu doctor`. Shots folders pile up: `vysu prune [--days 30] [--match "<glob>"] [--dry-run]`.
+  `vysu doctor --brief` (problems only), `vysu doctor` for everything. Shots folders pile up:
+  `vysu prune [--older 30] [--match "<glob>"] [--dry-run]` (folders touched in the last 6 h or
+  another live session's are kept unless `--force`).
 - **`vysu rec`: "no video written"** -> the recorder gave up on a heavy page and the whole take is
   lost. Run it again; lower `--fps` or shorten the journey if it repeats.
 - **Anything else on the browser side** -> `agent-browser doctor`, then

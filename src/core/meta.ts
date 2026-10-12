@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } 
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { config } from './ctx.ts';
+import { owner } from './hold.ts';
 import { pidAlive } from './host.ts';
 import { isoLocal, sleep } from './text.ts';
 
@@ -38,6 +39,8 @@ function metaWriteNow(dir: string, values: Record<string, unknown>): void {
     meta[k] = v;
   }
   meta.date = isoLocal();
+  // Who wrote it last: `prune --match` leaves alone a folder another live session is writing into.
+  meta.owner = owner();
   // Through a temporary file: a reader never sees half of it.
   const tmp = join(dir, `.meta.json.${process.pid}.${nextTmp()}.tmp`);
   writeFileSync(tmp, JSON.stringify(meta, null, 1));

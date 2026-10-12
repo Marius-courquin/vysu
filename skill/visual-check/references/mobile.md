@@ -58,9 +58,11 @@ so asking for the persona a claim already names costs nothing (`--force` logs in
 out by hand to help it: that is `mlogin`'s job, and it does it from any screen.
 
 **Long commands**: a login takes one to three minutes, `up` longer, a `mrelaunch` or a `claim --any`
-that boots a device a minute or two. Give those calls a 5-minute timeout: an agent's shell tool
-often stops at 2 minutes and moves the command to the background, where its answer is lost and the
-next command races it.
+that boots a device a minute or two. Give the shell tool call itself a 5-minute timeout (Claude
+Code: the Bash call's `timeout` parameter; Codex: its exec timeout): left at 2 minutes, the tool
+moves the command to the background, where its answer is lost and the next command races it. Never
+prefix the command with `timeout 300`: macOS has no `timeout`, and vysu bounds its own calls
+(`VYSU_MOBILE_TIMEOUT`, 300 s by default; `VYSU_WEB_TIMEOUT` on the web).
 
 ```bash
 vysu claim ios --any                          # a free simulator, yours for the task (renewed on use)

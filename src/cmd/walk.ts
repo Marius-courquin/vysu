@@ -18,8 +18,9 @@ export async function run(args: string[]): Promise<void> {
     if (a === '--url') {
       url = optValue(args, i++, 'walk');
       rest.push('--url', url);
-    } else if (a !== '--check') {
-      // --check is accepted for symmetry: a walk always checks.
+    } else if (a !== '--check' && a !== '--no-sheet') {
+      // --check is accepted for symmetry: a walk always checks. --no-sheet is a flow's, and a walk
+      // makes no sheet unless asked (`vysu sheet <name>`): nothing to turn off.
       rest.push(a);
     }
   }
