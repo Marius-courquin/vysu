@@ -19,6 +19,7 @@ import { authDescribeLine, webDoctorLines } from '../web/api.ts';
 import { checkerFamily, checkerModel } from '../setup/checker.ts';
 import { engineDepsCheck, engineSha, engineVersion, ffmpegReport, ffmpegVersion, nodeCheck, toolsCheck, versionWarn } from '../setup/engine.ts';
 import { skillsLine } from '../setup/skills.ts';
+import { allRecords } from '../services/isolated.ts';
 
 // The values in force, and where each comes from: a surprise in a report is nearly always a key set
 // in an environment nobody remembers exporting.
@@ -105,11 +106,50 @@ export function humanSize(bytes: number): string {
   return v < 10 ? `${v.toFixed(1)}${units[i]}` : `${Math.round(v)}${units[i]}`;
 }
 
+// What `doctor --brief` keeps: a line that says something is missing or broken. doctor was called 323
+// times in the audit (25/09 → 12/10), 3.5 KB each, mostly to learn that nothing was wrong. The marks
+// of ui.ts (! and ✗, colours dropped), MISSING, a section that could not answer, a config not found.
+// The Remotion toolkit is MISSING until the first video by design: not a problem.
+export function isProblem(line: string): boolean {
+  const l = line.replace(/\x1b\[[0-9;]*m/g, '');
+  if (/^remotion: node_modules MISSING \(installed on the first/.test(l)) return false;
+  return /^[!✗] /.test(l) || /\bMISSING\b|\(unavailable — |^config: none found/.test(l);
+}
+
 export async function run(args: string[]): Promise<void> {
+  let brief = false;
   for (const a of args) {
     if (a === '--no-color') noColor();
-    else die(`vysu doctor: unknown option ${a}`, 'vysu doctor');
+    else if (a === '--brief') brief = true;
+    else die(`vysu doctor: unknown option ${a}`, 'vysu doctor [--brief] [--no-color]');
   }
+  if (!brief) return report();
+  // The whole report is written as always, into a buffer, and only its problems come out.
+  const said: string[] = [];
+  const write = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((s: string | Uint8Array, ...rest: unknown[]) => {
+    said.push(String(s));
+    const cb = rest.find((r) => typeof r === 'function') as (() => void) | undefined;
+    cb?.();
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    await report();
+  } finally {
+    process.stdout.write = write;
+  }
+  const lines = said.join('').split('\n');
+  const problems = lines.filter(isProblem);
+  const c = config();
+  for (const l of problems) process.stdout.write(`${l}\n`);
+  const shots = lines.find((l) => l.startsWith('shots: '))?.replace(/^shots: \S+ /, '').replace(', )', ')') ?? '';
+  const personas = c.configFile && existsSync(c.personas) ? personaNames().length : 0;
+  process.stdout.write(
+    `doctor: ${problems.length ? `${problems.length} problem(s)` : 'ok'} · vysu ${engineVersion()} · project ${c.get('PROJECT')} · ${personas} persona(s) · shots ${shots || '(none)'} — vysu doctor for the whole report\n`,
+  );
+}
+
+async function report(): Promise<void> {
   const c = config();
   const sha = engineSha();
   const ffmpeg = ffmpegVersion();
@@ -169,6 +209,7 @@ export async function run(args: string[]): Promise<void> {
   const later = deviceLines.filter((l) => l.startsWith('avds:'));
   for (const l of deviceLines) if (!l.startsWith('avds:')) out(l);
   for (const l of await locksReport()) out(l);
+  for (const r of allRecords(c)) out(`isolated: ${r.service} :${r.port} for ${r.owner}${r.pid === '0' ? ' (starting)' : ''} — ${r.dir}`);
   for (const l of later) out(l);
   for (const l of linesOf('sessions', await web)) out(l);
 }

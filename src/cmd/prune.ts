@@ -1,11 +1,17 @@
-// `vysu prune [--days 30] [--match "<glob>"…] [--dry-run]`. Captures pile up: a month of them is
-// gigabytes of PNGs nothing will ever read again. Age is the default sieve; --match names the folders
-// of one task, whose captures are dead the moment it ends, whatever their age. Given both, a folder
-// has to be old *and* named: « --match "*" --days 30 » is the plain prune.
+// `vysu prune [--days|--older 30] [--match "<glob>"…] [--dry-run] [--force]`. Captures pile up: a month
+// of them is gigabytes of PNGs nothing will ever read again. Age is the default sieve; --match names
+// the folders of one task, whose captures are dead the moment it ends, whatever their age. Given both,
+// a folder has to be old *and* named: « --match "*" --days 30 » is the plain prune.
+//
+// A glob is wider than the task it was written for: `--match "feeds-*"` took the folders of another
+// session working at the same time (audit, 25/09 → 12/10). A folder touched in the last
+// RECENT_HOURS, or last written by another owner whose process still runs, is kept unless --force.
 import { lstatSync, readdirSync, rmSync, type Stats } from 'node:fs';
 import { basename, join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
+import { owner, ownerGone } from '../core/hold.ts';
+import { metaRead } from '../core/meta.ts';
 import { fnmatch } from '../core/py.ts';
 import { isDir } from '../web/lines.ts';
 import { optValue } from '../web/shots.ts';
@@ -62,19 +68,52 @@ export function pruneable(shots: string, days: string, match: string[], nowMs = 
   return out;
 }
 
+export const RECENT_HOURS = 6;
+
+// The newest time anything in a folder was written, one level down: a capture rewritten in place
+// moves its own mtime, not the folder's.
+export function lastTouched(dir: string): number {
+  let t = 0;
+  try {
+    t = lstatSync(dir).mtimeMs;
+    for (const n of readdirSync(dir)) {
+      try {
+        t = Math.max(t, lstatSync(join(dir, n)).mtimeMs);
+      } catch {
+        // gone meanwhile
+      }
+    }
+  } catch {
+    // unreadable: its age alone
+  }
+  return t;
+}
+
+// Why a folder is kept although it matched, or '' to drop it.
+export function keptBecause(dir: string, me: string, nowMs = Date.now(), gone = ownerGone): string {
+  const age = nowMs - lastTouched(dir);
+  if (age < RECENT_HOURS * 3_600_000) return `touched ${Math.max(1, Math.round(age / 60_000))} min ago`;
+  const who = metaRead(dir).owner;
+  if (typeof who === 'string' && who && who !== me && !gone(who)) return `written by ${who}, still running`;
+  return '';
+}
+
 export async function run(args: string[]): Promise<void> {
   let days = '';
   let dry = false;
+  let force = false;
   const match: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
-    if (a === '--days') days = optValue(args, i++, 'prune') || '30';
+    if (a === '--days' || a === '--older') days = optValue(args, i++, 'prune') || '30';
     else if (a === '--dry-run') dry = true;
+    else if (a === '--force') force = true;
     // « --match "rv-* tv-*" » is two globs.
     else if (a === '--match') match.push(...optValue(args, i++, 'prune').split(/[ \t\n]+/).filter(Boolean));
     else die(`vysu prune: unknown option ${a}`);
   }
   if (!days && !match.length) days = '30';
+  if (days && !/^\d+$/.test(days)) die(`vysu prune: --days takes a whole number of days (got « ${days} »)`);
   const shots = config().shots;
   if (!isDir(shots)) die(`no shots folder ${shots}`);
   for (const g of match) {
@@ -84,14 +123,24 @@ export async function run(args: string[]): Promise<void> {
   }
   let what = match.length ? ` matching ${match.join(' ')}` : '';
   if (days) what += ` older than ${days} days`;
-  const dirs = pruneable(shots, days, match);
+  const me = owner();
+  const dirs: string[] = [];
+  let kept = 0;
+  for (const d of pruneable(shots, days, match)) {
+    const why = force ? '' : keptBecause(d, me);
+    if (!why) dirs.push(d);
+    else {
+      kept++;
+      if (dry || match.length) console.log(`kept: ${basename(d)} (${why}; --force to take it)`);
+    }
+  }
   let kb = 0;
   for (const d of dirs) {
     if (dry) console.log(d);
     kb += duKb(d);
   }
   if (dry) {
-    console.log(`would prune: ${dirs.length} folder(s)${what}, ${Math.floor(kb / 1024)} MB freed (${shots})`);
+    console.log(`would prune: ${dirs.length} folder(s)${what}, ${Math.floor(kb / 1024)} MB freed (${shots})${kept ? `, ${kept} kept` : ''}`);
     return;
   }
   for (const d of dirs) {
@@ -100,5 +149,5 @@ export async function run(args: string[]): Promise<void> {
     rmSync(d, { recursive: true, force: true });
     rmSync(join(config().remotion, 'public', 'takes', basename(d)), { recursive: true, force: true });
   }
-  console.log(`pruned: ${dirs.length} folder(s)${what}, ${Math.floor(kb / 1024)} MB freed (${shots})`);
+  console.log(`pruned: ${dirs.length} folder(s)${what}, ${Math.floor(kb / 1024)} MB freed (${shots})${kept ? `, ${kept} kept` : ''}`);
 }

@@ -42,7 +42,7 @@ function sideFile(name: string): 'prev' | 'changed' | null {
 }
 
 // A leading dot is a capture in flight (mshot writes `.<label>.new.png` before it renames it).
-function candidates(dir: string): string[] {
+function topCandidates(dir: string): string[] {
   return readdirSync(dir).filter((f) => {
     if (!f.endsWith('.png') || f.startsWith('.') || f.startsWith('sheet') || f.startsWith('compare')) return false;
     try {
@@ -51,6 +51,39 @@ function candidates(dir: string): string[] {
       return false;
     }
   });
+}
+
+// A folder of folders (`site/fr/web/…`, `site/en/web/…`: one per language, per surface) holds its
+// captures below: with none of its own, the ones of its sub-folders two levels down, named by their
+// path (`fr/web/home.png`), so a caption says where each came from and a glob of --only can pick a
+// branch (`fr/*`). It used to answer « no capture » (6 calls of the audit, 25/09 → 12/10).
+function candidates(dir: string): string[] {
+  const top = topCandidates(dir);
+  if (top.length) return top;
+  const below: string[] = [];
+  const walk = (rel: string, depth: number): void => {
+    let names: string[] = [];
+    try {
+      names = readdirSync(join(dir, rel)).sort();
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      if (n.startsWith('.')) continue;
+      const sub = rel ? `${rel}/${n}` : n;
+      let isDir = false;
+      try {
+        isDir = statSync(join(dir, sub)).isDirectory();
+      } catch {
+        continue;
+      }
+      if (!isDir) continue;
+      below.push(...topCandidates(join(dir, sub)).map((f) => `${sub}/${f}`));
+      if (depth < 2) walk(sub, depth + 1);
+    }
+  };
+  walk('', 1);
+  return below;
 }
 
 export function pick(dir: string, only: string[]): string[] {

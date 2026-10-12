@@ -46,3 +46,20 @@ test('an empty or cut capture is left out of the sheet with one line each', asyn
   const [e] = await stderrOf(() => sheet(none, { name: 'x' }));
   assert.match(String(e), /no readable capture in /);
 });
+
+test('a folder of folders is sheeted from the captures below it, named by their path', async () => {
+  const { mkdirSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'vysu-sheet-tree-'));
+  mkdirSync(join(dir, 'fr', 'web'), { recursive: true });
+  mkdirSync(join(dir, 'en'), { recursive: true });
+  await capture(join(dir, 'fr', 'web', 'home.png'), 3);
+  await capture(join(dir, 'en', 'home.png'), 5);
+  const out = await sheet(dir, { name: 'tree' });
+  assert.ok(out.every((f) => existsSync(f)));
+  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  assert.match(html, /fr\/web\/home\.png/);
+  assert.match(html, /en\/home\.png/);
+  const only = await sheet(dir, { name: 'tree', only: 'fr/*' });
+  assert.ok(only.length >= 1);
+  assert.doesNotMatch(readFileSync(join(dir, 'index.html'), 'utf8'), /en\/home\.png/);
+});

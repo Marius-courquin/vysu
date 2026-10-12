@@ -11,7 +11,7 @@ import { compare as compareShots, CompareError } from '../img/compare.ts';
 import { pyInt, pyStrRepr } from '../img/fmt.ts';
 import { sheet } from '../img/sheet.ts';
 
-const USAGE = 'usage: vysu sheet <name> [--cols N] [--max N] [--only "<glob>,…"] [--strip] [--open] [--compare [--against <name>]]';
+const USAGE = 'usage: vysu sheet <name>… [--cols N] [--max N] [--only "<glob>,…"] [--strip] [--open] [--compare [--against <name>]]';
 
 // A whole number, or a die naming the option in argparse's words, as sheet.py answered: through
 // Number() a missing --max became 0 (one capture per page) and « abc » died on something unrelated.
@@ -23,7 +23,11 @@ export function intOption(flag: string, raw: string | undefined): number {
 }
 
 export async function run(args: string[]): Promise<void> {
-  const name = args[0];
+  // Several folders, one sheet each: `vysu sheet a b c` read « b » as an unknown option.
+  const names: string[] = [];
+  let first = 0;
+  while (first < args.length && !args[first]!.startsWith('--')) names.push(args[first++]!);
+  const name = names[0];
   if (!name) die(USAGE);
   let cols = 0;
   let max = 6;
@@ -32,7 +36,7 @@ export async function run(args: string[]): Promise<void> {
   let wantOpen = false;
   let compare = false;
   let against = '';
-  for (let i = 1; i < args.length; i++) {
+  for (let i = first; i < args.length; i++) {
     const a = args[i];
     const value = (): string => args[++i] ?? '';
     switch (a) {
@@ -61,11 +65,15 @@ export async function run(args: string[]): Promise<void> {
         die(`vysu sheet: unknown option ${a}`);
     }
   }
-  const dir = join(config().shots, name);
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) die(`no shots folder ${dir}`);
+  for (const n of names) {
+    const dir = join(config().shots, n);
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) die(`no shots folder ${dir}`);
+  }
   // A grid answers « what do these screens look like »; a comparison answers « what moved ». compare
   // owns both of its outputs: the triptych an agent reads, the slider page a human drags.
   if (compare) {
+    if (names.length > 1) die('vysu sheet --compare: one folder at a time (--against names the other)');
+    const dir = join(config().shots, name);
     let againstDir: string | null = null;
     if (against) {
       againstDir = join(config().shots, against);
@@ -85,7 +93,9 @@ export async function run(args: string[]): Promise<void> {
     if (wantOpen && html) openForHuman(html);
     return;
   }
-  const out = await sheet(dir, { name, cols, max, only, strip, edge: SHEET_EDGE });
-  process.stdout.write(`${out.join('\n')}\n`);
-  if (wantOpen) openForHuman(out[0]!);
+  for (const n of names) {
+    const out = await sheet(join(config().shots, n), { name: n, cols, max, only, strip, edge: SHEET_EDGE });
+    process.stdout.write(`${out.join('\n')}\n`);
+    if (wantOpen) openForHuman(out[0]!);
+  }
 }

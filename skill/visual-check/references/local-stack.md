@@ -11,8 +11,16 @@ printed by `vysu doctor` (`VYSU_SERVICES`, then one `VYSU_SERVICE_<name>_*` bloc
 vysu up all                 # every declared service, in the order of VYSU_SERVICES
 vysu up db | api | web      # the same, separately
 vysu up web --env API_URL=http://localhost:8080   # point the dev server at the local API
+vysu up web --isolated      # this worktree's web, for your browser sessions only (same address)
 vysu down all | down <service>
 ```
+
+**One dev server, several worktrees.** The shared web server serves one checkout. Never stop it to
+serve your branch: `vysu up <service> --isolated` (from your worktree) runs the same command there on
+a port of `VYSU_SERVICE_<name>_ISOLATED_PORTS`, and your browser sessions get the usual address
+(`http://localhost:<PORT>`) from it - same origin, so logins, cookies, the API's CORS and the identity
+provider's callbacks are unchanged - while everyone else keeps the shared one. `vysu down <service>`
+stops yours. A walk's header then shows your worktree's sha.
 
 `vysu up` starts the service in the background, logs it to `logs/<name>.log` under the state
 folder, and waits for its health check (a url to poll, the literal `port` for a TCP listen check,

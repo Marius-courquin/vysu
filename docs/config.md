@@ -43,7 +43,7 @@ empty; the command that needs one says which key is missing.
 | `VYSU_API_PATTERN` | the request path prefix that identifies the API in the network log | `/api/` | `/api/v1/` |
 | `VYSU_API_HOSTS` | `host=label` pairs: what a report calls that API instead of its host | empty | `localhost:8080=local api.example.com=prod` |
 | `VYSU_BROWSER_PATH` | the Chromium-based browser every web session runs in. Empty is the Chrome for Testing agent-browser downloads, headless — the same rendering on every machine, no personal profile, no extension. Also read from `~/.vysu/machine.env`, where `vysu setup --browser` writes it | empty | `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser` |
-| `VYSU_BROWSER_ARGS` | launch flags handed to that browser, comma-separated. Headless is not software rendering: on macOS, Chrome for Testing and Brave headless draw canvas, compositing, rasterization and WebGL on the GPU (Metal); the `--enable-unsafe-swiftshader` agent-browser adds only allows SwiftShader as a fallback. What a machine does: `vysu - open chrome://gpu && vysu - snapshot \| grep -i accelerated` | empty | `--disable-blink-features=AutomationControlled` |
+| `VYSU_BROWSER_ARGS` | launch flags handed to that browser, comma-separated (an owner with an isolated web service gets one more, see Services). Headless is not software rendering: on macOS, Chrome for Testing and Brave headless draw canvas, compositing, rasterization and WebGL on the GPU (Metal); the `--enable-unsafe-swiftshader` agent-browser adds only allows SwiftShader as a fallback. What a machine does: `vysu - open chrome://gpu && vysu - snapshot \| grep -i accelerated` | empty | `--disable-blink-features=AutomationControlled` |
 | `VYSU_WEB_HIDE` | CSS selectors hidden (`display: none !important`) on every page of every web session: the overlays a dev build floats over the UI (a devtools button in a corner) that take clicks and show up in captures. A stylesheet registered as an agent-browser init script, so it holds across navigations, reloads and new tabs, and a selector that matches nothing changes nothing; each selector is a rule of its own, so one typo does not void the others. A session already running reopens its browser once on the first command that brings a new list (login and storage restored, the page back on `about:blank`); one started with a list keeps it until `vysu <persona> close` | empty | `.tsqd-parent-container, .TanStackRouterDevtools` |
 
 ## Auth
@@ -165,22 +165,37 @@ One service, key by key (`<name>` is a name from `VYSU_SERVICES`):
 
 | Key | Meaning | Default |
 |---|---|---|
-| `VYSU_SERVICE_<name>_CMD` | the command, run through the platform's shell (`sh -c`, `cmd.exe /c` on Windows) in `_DIR`, in the background, logged to `logs/<name>.log` | required |
+| `VYSU_SERVICE_<name>_CMD` | the command, run through the platform's shell (`sh -c`, `cmd.exe /c` on Windows) in `_DIR`, in the background, logged to `logs/<name>.log`. `{port}` in it is replaced by `_PORT` (or the isolated port) | required |
 | `VYSU_SERVICE_<name>_DIR` | where to run it, relative to the project | the project root |
 | `VYSU_SERVICE_<name>_PORT` | the port it listens on: what `down` kills, and what `HEALTH=port` waits for | none |
 | `VYSU_SERVICE_<name>_HEALTH` | a url to poll, the literal `port` for a TCP listen check, or a command to succeed | `port` when `_PORT` is set, else no wait |
 | `VYSU_SERVICE_<name>_ENV` | `k=v` pairs exported to it (`vysu up <name> --env K=V` adds to, and overrides, these) | empty |
 | `VYSU_SERVICE_<name>_TIMEOUT` | seconds to wait for `HEALTH` | `30` |
 | `VYSU_SERVICE_<name>_STOP` | how to stop it | kill whatever listens on `_PORT` |
+| `VYSU_SERVICE_<name>_ISOLATED_PORTS` | the ports `vysu up <name> --isolated` may serve this owner's copy on: a range, a list, or both (`8101-8105`, `8101,8103`) | empty: `--isolated` refused |
 
 ```bash
 VYSU_SERVICE_web_CMD='pnpm --filter web exec vite --port 8100 --strictPort'
 VYSU_SERVICE_web_PORT=8100
 VYSU_SERVICE_web_HEALTH='http://localhost:8100/'
+VYSU_SERVICE_web_ISOLATED_PORTS='8101-8105'
 VYSU_SERVICE_db_CMD='make -s dev-up'
 VYSU_SERVICE_db_HEALTH='docker exec my-db pg_isready -q'
 VYSU_SERVICE_db_STOP='make -s dev-down'
 ```
+
+An isolated service (`vysu up <name> --isolated [--dir <folder>]`) runs the same `_CMD` from the
+checkout the command is run in (the worktree of the repository holding `_DIR`, at the same relative
+folder; `--dir` names another), on the first port of `_ISOLATED_PORTS` that nothing listens on and no
+other live owner holds, with `PORT` exported, logged to `logs/<name>-<port>.log`. The port reaches the
+command through `{port}` in `_CMD`, else by rewriting `_PORT` where `_CMD` and `_HEALTH` spell it
+(`vite --port 8100` becomes `vite --port 8101`). The page keeps its address: this owner's browser
+sessions launch with `--host-resolver-rules=MAP localhost:<_PORT> localhost:<port>`, so urls, cookies,
+storage, an identity provider's callbacks and an API's CORS all still see `http://localhost:<_PORT>`,
+while every other owner keeps the shared server. A persona's browser opened for another view (the
+shared one, or another owner's) is closed and reopened, its login kept, by the next command that
+needs the other view. `vysu down <name>` stops this owner's isolated copy first; a second one stops
+the shared one. `vysu doctor` lists the isolated copies and their owners.
 
 ## Push
 

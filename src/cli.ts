@@ -8,12 +8,25 @@ import { Exit, printError, runCleanups, signalForwarded, VysuError } from './cor
 import { noColor } from './core/ui.ts';
 import { commands } from './commands.ts';
 import { execProjectCommand, projectCommandPath } from './core/project.ts';
-import { usage } from './cmd/help.ts';
+import { helpAsked, helpFor, usage } from './cmd/help.ts';
+import { browserAlias } from './core/aliases.ts';
+import { pointAtIsolated, sessionFollows } from './services/isolated.ts';
 
 module.enableCompileCache?.();
 
+// The commands whose --help is someone else's: `vysu ios swipe --help` is agent-device's help for
+// swipe, `vysu adb --help` adb's.
+const HELP_PASSED_ON = new Set(['ios', 'android', 'adb', 'simctl', '__prim', 'help', '-h', '--help']);
+
+// A die that says how a command is spelled names the full entry too: a usage line is one line, the
+// entry says what each option does.
+// The commands whose first argument is a persona's browser session (the passthrough too).
+const WEB_PERSONA = new Set(['walk', 'shots', 'login', 'flow', 'rec', 'check', 'lang', 'box']);
+
+const USAGE_ERROR = /^usage: |unknown option|unknown service|needs a value|is required/;
+
 async function main(argv: string[]): Promise<number> {
-  const args = [...argv];
+  let args = [...argv];
   // A leading `--no-color` is the global form (`vysu --no-color doctor`); setup, init and doctor
   // take it among their own options too. Only leading, so a `rec` step that says --no-color stays one.
   if (args[0] === '--no-color') {
@@ -21,15 +34,29 @@ async function main(argv: string[]): Promise<number> {
     args.shift();
   }
   setCommandLine(args);
+  const name = args[0];
+  // Own keys only: `vysu toString` is a persona, not Object.prototype's method.
+  const load = name && Object.hasOwn(commands, name) ? commands[name] : undefined;
   try {
-    setConfig(Config.load());
-    const name = args[0];
+    const c = Config.load();
+    setConfig(c);
     if (!name) {
       process.stdout.write(usage());
       return 1;
     }
-    // Own keys only: `vysu toString` is a persona, not Object.prototype's method.
-    const load = Object.hasOwn(commands, name) ? commands[name] : undefined;
+    // Help is asked of the command, wherever it sits among its arguments: `vysu up --help` was taken
+    // for a service, `vysu persona --help` for a persona, `vysu prune --help` for an unknown option
+    // (588 help calls and 145 usage errors in the audit of 25/09 → 12/10).
+    if (load && !HELP_PASSED_ON.has(name) && helpAsked(args.slice(1))) {
+      process.stdout.write(helpFor(name) || usage());
+      return 0;
+    }
+    // An owner that serves the web app from its own worktree (`up <service> --isolated`) sees it in
+    // its browser sessions; a session launched for someone else's view is relaunched for this one.
+    const rule = pointAtIsolated(c);
+    const file = load ? '' : projectCommandPath(name);
+    const persona = load ? (WEB_PERSONA.has(name) ? args[1] : undefined) : file ? undefined : name;
+    if (persona && (!persona.startsWith('-') || /^-(@\d+)?$/.test(persona))) await sessionFollows(c, persona, rule);
     if (load) {
       const code = await (await load()).run(args.slice(1));
       return typeof code === 'number' ? code : 0;
@@ -37,13 +64,12 @@ async function main(argv: string[]): Promise<number> {
     // Any other name is a project command or a persona. The project command wins:
     // `.vysu/commands/seed` is a command the project named, while a persona is only ever a session
     // name. An unknown name is therefore a persona's session, and agent-browser answers for it.
-    const file = projectCommandPath(name);
     if (file) return await execProjectCommand(file, args.slice(1));
-    return await (await import('./web/passthrough.ts')).passthrough(name, args.slice(1));
+    return await (await import('./web/passthrough.ts')).passthrough(name, browserAlias(args.slice(1)));
   } catch (e) {
     if (e instanceof Exit) return e.code;
     if (e instanceof VysuError) {
-      printError(e);
+      printError(load && !e.next && !HELP_PASSED_ON.has(name!) && USAGE_ERROR.test(e.message) ? new VysuError(e.message, `vysu ${name} --help`, e.code) : e);
       return e.code;
     }
     throw e;

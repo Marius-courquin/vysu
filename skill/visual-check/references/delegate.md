@@ -40,8 +40,8 @@ Report: the contract below, 400 words max
 
 Mechanics the checker already knows from this skill: claim a device (`--any`), one `mdo` per
 screen or state, `wait` instead of `sleep`, labels copied from the `screen:` line (never from
-memory), a 5-minute timeout on `mlogin`, `up` and `mrelaunch`, `mlog --errors` before concluding,
-`release --reset`.
+memory), a 5-minute timeout on the shell tool call itself for `mlogin`, `up` and `mrelaunch` (never
+a `timeout` prefix), `mlog --errors` before concluding, `release --reset`.
 
 **Several checkers at once** (one per platform, per persona, per device): vysu cannot tell sibling
 sub-agents apart - same agent process, same environment - so they are one owner, and a claim does

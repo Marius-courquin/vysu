@@ -85,9 +85,11 @@ names that session on every command (`vysu walk <persona>@2 …`, printed on the
 ## 4. Commands
 
 ```bash
+vysu doctor --brief · <command> --help              # problems only · one command's options
 # web
 vysu walk <p> <name> --url <url> [--baseline-url @|<url> | --baseline <name>] [--sizes WxH,…] [--dark] [--full]
-vysu shots <p> <name> … · report <name> [--md] · sheet <name> [--only <glob>] [--strip] · check <p>
+vysu shots <p> <name> … · report <name> [--md] · sheet <name>… [--only <glob>] [--strip] · check <p>
+vysu up <web service> --isolated                  # your worktree's web, same origin, for your sessions only
 vysu flow <p> <file|-> --shots <name> [--keep-going]   # also the batch mode: many go/shot lines, one call
 vysu rec <p> <name> -- "<step>"… · login <p> · <p> <agent-browser args…>
 vysu claim <p> --any                              # a free session of <p>: <p>, <p>@2… (VYSU_WEB_SLOTS)
@@ -106,6 +108,11 @@ vysu mlog [mark | --errors | --device | --tail N] · mlogin ios|android <p> · t
 vysu ios|android <agent-device args…>             # the raw driver, when a verb above does not fit
 ```
 
+`click` (web) and `tap` (mobile) take the **exact** label; `--partial` opts into « contains ».
+`VYSU_WEB_HIDE` hides a dev build's overlays (a devtools button) from every web capture. Give a
+long call (`mlogin`, `up`, `mrelaunch`, `claim --any`) a 5-minute timeout on the shell tool call
+itself, never a `timeout` prefix: vysu bounds its own calls.
+
 `-` as the persona is an anonymous session (a public page, a marketing site, a Storybook story).
 `<p>@2` is `<p>` in a second browser session of its own (its own login, its own page): what
 `claim <p> --any` hands out when `<p>` is busy. The anonymous session has them too: `claim - --any`
@@ -119,7 +126,9 @@ persona session for a task. A persona is not one browser: `claim <persona> --any
 its own session of it, so web checks as the same persona run side by side. In the shared mode an edit anywhere in the checkout reloads every device: judge after
 `vysu mreload`, and read `mlog` before blaming the screen. For a phase that must not be disturbed,
 `vysu up <platform> --isolated` from your own worktree gives you your own Metro on your own port
-(about 1-1.5 GB of RAM: a mode for isolated phases, not the default).
+(about 1-1.5 GB of RAM: a mode for isolated phases, not the default). The web dev server is shared
+the same way: never stop someone else's; `vysu up <web service> --isolated` serves your worktree to
+your browser sessions under the same address (`vysu down <service>` when done).
 
 ## 6. Reporting to the person
 
