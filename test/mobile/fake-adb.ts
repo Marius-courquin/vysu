@@ -109,6 +109,10 @@ esac
     VYSU_PROJECT_DIR: join(dir, 'proj'),
     VYSU_ANDROID_AVD: Object.values(emulators)[0],
     VYSU_LOCK_WAIT: '2',
+    // The reaper and the memory guard read the real machine (simctl, sysctl): slow and loaded on a CI
+    // runner. Their own tests turn them back on.
+    VYSU_IDLE_MINUTES: '0',
+    VYSU_MEMORY_MIN_FREE: '0',
   };
   return {
     dir,
