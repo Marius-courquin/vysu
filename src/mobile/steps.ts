@@ -162,6 +162,10 @@ async function tapMissed(p: Platform, label: string, t: Aim): Promise<string> {
   if (t.kind === 'none' && t.holders.length) {
     return `nothing labelled exactly « ${label} » · it is part of ${t.holders.map((h) => `« ${clip(h)} »`).join(' · ')} (tap that label, or --partial)`;
   }
+  // agent-device 0.21.9 to 0.21.26 anchors an iOS press on the app's frame, which XCTest reports as null
+  // under iOS 26 glass (a native tab bar, a GlassView): every press then fails the same way, whatever
+  // is reset (issue #11). Saying so spares the device resets the bare message sent people into.
+  if (/INFINITY/.test(pressError)) return `cannot press « ${label} »: agent-device's iOS runner could not place the press (point.x != INFINITY: the app's frame reads as null, iOS 26 glass); agent-device <= 0.21.8 is not affected (npm i -g agent-device@0.21.8)`;
   const near = await mnearOf(p, label, t.kind !== 'unread');
   if (t.kind === 'hit' || (near?.state === 'in' && t.kind !== 'hidden')) return `« ${label} » is on screen, but the press failed${pressError ? ` (${pressError})` : ''}`;
   if (near?.state === 'covered' || near?.state === 'offscreen') return `cannot press « ${label} »: ${nearWords(near)}`;

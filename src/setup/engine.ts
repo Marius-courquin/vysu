@@ -66,11 +66,15 @@ export type NodeTool = (typeof TOOLS)[number];
 // `tools.env` in the engine root names the versions this engine was checked against: one file to
 // raise when the engine starts relying on something newer, read by setup, update, doctor and
 // version rather than by four copies of the same two numbers. Read each time: `update` reads the
-// one it just pulled.
-export function toolMin(tool: NodeTool): string {
+// one it just pulled. A MAX line holds a tool back from a release known to break the engine (one that
+// `@latest` would otherwise install on the next setup).
+export const toolMin = (tool: NodeTool): string => toolBound(tool, 'MIN');
+export const toolMax = (tool: NodeTool): string => toolBound(tool, 'MAX');
+
+function toolBound(tool: NodeTool, bound: 'MIN' | 'MAX'): string {
   const text = readText(join(ENGINE, 'tools.env'));
   if (!text) return '';
-  const key = tool === 'agent-browser' ? 'AGENT_BROWSER_MIN' : 'AGENT_DEVICE_MIN';
+  const key = `${tool === 'agent-browser' ? 'AGENT_BROWSER' : 'AGENT_DEVICE'}_${bound}`;
   try {
     return parseShellEnv(text, () => undefined, '').find((a) => a.key === key)?.value ?? '';
   } catch {
@@ -129,28 +133,34 @@ export async function toolsCheck(mode: 'install' | 'report'): Promise<void> {
   const versions = await Promise.all(TOOLS.map((t) => toolVersion(t)));
   for (const [i, tool] of TOOLS.entries()) {
     const want = toolMin(tool);
+    const max = toolMax(tool);
+    const spec = `${tool}@${max || 'latest'}`;
     let have = versions[i]!;
     if (!have) {
       if (mode === 'install') {
         info(`${tool}: installing…`);
-        await npmGlobal(tool);
+        await npmGlobal(spec);
         have = await toolVersion(tool, true);
       }
       if (!have) {
-        miss(`${tool}: missing — no browser or device automation without it`, `npm i -g ${tool}`);
+        miss(`${tool}: missing — no browser or device automation without it`, `npm i -g ${spec}`);
         continue;
       }
     }
     if (want && versionBelow(have, want)) {
       if (mode === 'install') {
         info(`${tool}: ${have} → ${want} or better, upgrading…`);
-        await npmGlobal(`${tool}@latest`);
+        await npmGlobal(spec);
         have = await toolVersion(tool, true);
       }
       if (want && versionBelow(have, want)) {
-        warn(`${tool}: ${have}, this engine expects >= ${want}`, `npm i -g ${tool}@latest`);
+        warn(`${tool}: ${have}, this engine expects >= ${want}`, `npm i -g ${spec}`);
         continue;
       }
+    }
+    if (max && versionBelow(max, have)) {
+      warn(`${tool}: ${have}, newer than ${max}, the last release this engine was checked with (tools.env)`, `npm i -g ${spec}`);
+      continue;
     }
     ok(`${tool}: ${have}`);
   }
