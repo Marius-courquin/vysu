@@ -7,7 +7,7 @@ import { personaRequire, personaVar } from '../core/personas.ts';
 import { commaList, sleep } from '../core/text.ts';
 import * as mobile from '../mobile/api.ts';
 import { ab, evalValue, lastLine } from '../web/ab.ts';
-import type { AuthContext, Box } from './types.ts';
+import type { AuthContext, Box, ClickOptions } from './types.ts';
 
 // Silent outside `vysu auth test`, so a login prints the one line it always printed and a test
 // reads as the list of what held.
@@ -17,12 +17,27 @@ export function stepsOn(on: boolean): void {
 }
 export const stepsAreOn = (): boolean => steps;
 
-export async function webClickAny(persona: string, names: string[]): Promise<boolean> {
-  for (const name of names) {
-    if (!name) continue;
-    if ((await ab(persona, ['find', 'role', 'button', 'click', '--name', name], { stderr: 'drop' })).code === 0) return true;
+// The first of these buttons that is there, looked for again every half second for `wait` seconds:
+// a page that draws a loader first (a dev build mounts its devtools buttons before the app's own) is
+// not a page without the button. One look when `wait` is 0.
+export async function webClickAny(persona: string, names: string[], wait = 0): Promise<boolean> {
+  const end = Date.now() + wait * 1000;
+  for (;;) {
+    for (const name of names) {
+      if (!name) continue;
+      if ((await ab(persona, ['find', 'role', 'button', 'click', '--name', name], { stderr: 'drop' })).code === 0) return true;
+    }
+    if (Date.now() >= end) return false;
+    await sleep(500);
   }
-  return false;
+}
+
+// `webClickAny(persona, 'a', 'b', { wait: 15 })`: the names, and the options a last argument may carry.
+export function clickArgs(args: Array<string | ClickOptions>): { names: string[]; wait: number } {
+  const last = args.at(-1);
+  const o = typeof last === 'object' ? last : undefined;
+  const names = (o ? args.slice(0, -1) : args).filter((a): a is string => typeof a === 'string');
+  return { names, wait: Math.max(0, Number(o?.wait) || 0) };
 }
 
 export function parseBoxes(json: string): Box[] {
@@ -42,7 +57,10 @@ export function context(): AuthContext {
       return r.stdout;
     },
     webTry: (persona, ...args) => ab(persona, args, { stderr: 'drop' }),
-    webClickAny: (persona, ...names) => webClickAny(persona, names),
+    webClickAny(persona, ...args) {
+      const { names, wait } = clickArgs(args);
+      return webClickAny(persona, names, wait);
+    },
     async mob(platform, ...args) {
       const r = await mobile.mob(platform, args);
       if (r.stderr) process.stderr.write(r.stderr);

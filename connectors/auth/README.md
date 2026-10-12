@@ -89,7 +89,7 @@ connector as functions.
 |---|---|---|
 | `web(persona, …args)` → stdout | `web <persona> <args…>` | agent-browser in the persona's session, locked and restored; a failure ends vysu with its exit code (bash: `set -e`) |
 | `webTry(persona, …args)` → `{ code, stdout, stderr }` | `web … >/dev/null 2>&1 \|\| …` | the same, never failing, saying nothing |
-| `webClickAny(persona, …names)` → boolean | `web_click_any <persona> "<name>"…` | the first visible button by role and name |
+| `webClickAny(persona, …names, { wait })` → boolean | `web_click_any <persona> [--wait <s>] "<name>"…` | the first visible button by role and name; with `wait`, looked for again every half second for that many seconds (a page drawn behind a loader) |
 | `mob(platform, …args)` · `mobTry(…)` | `mob <platform> <args…>` | agent-device on the chosen simulator or emulator, locked |
 | `mobPressIf(platform, label)` | `mob_press_if <platform> "<label>"` | press by accessible label, else by visible text |
 | `mobPressAny(platform, 'a,b')` | `mob_press_any <platform> "<a>,<b>"` | press the first of those labels that is there (a system dialog) |
