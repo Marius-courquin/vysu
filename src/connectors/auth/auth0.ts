@@ -8,6 +8,7 @@
 //   VYSU_AUTH0_SIGNIN_LABELS      [Se connecter,Sign in]          the door's button, web and mobile
 //   VYSU_AUTH0_CONTINUE_LABELS    [Continuer,Continue]            Universal Login's submit
 //   VYSU_AUTH0_DOOR_TEXT          [Se connecter]                  the mobile door screen's text
+//   VYSU_AUTH0_DOOR_WAIT          [30]                            mobile: seconds the door (or someone signed in) may take to show
 //   VYSU_AUTH0_HOME_TEXT          [Bienvenue]                     the text that proves the login
 //   VYSU_AUTH0_PASSWORD_TEXT      [mot de passe]                  the password page's own text
 //   VYSU_AUTH0_MENU_LABEL         [Menu]                          mobile: the control that opens the menu holding the logout
@@ -25,12 +26,76 @@ const domain = (v: AuthContext): string => opt(v, 'DOMAIN', 'auth0.com');
 const TOKEN_JS =
   "(() => { for (const k of Object.keys(localStorage)) { if (!k.startsWith('@@auth0spajs@@') || k.endsWith('@@user@@')) continue; const t = JSON.parse(localStorage.getItem(k) || '{}'); if (t.body && t.body.access_token) return t.body.access_token; } return ''; })()";
 
-// The centre of the first text field on screen, in points, for the surfaces the platform's
-// accessibility cannot read: the picture is all there is to go by there.
+// The centre of the first text field on screen, in what a press takes, for the surfaces the
+// platform's accessibility cannot read: the picture is all there is to go by there.
 async function firstField(v: AuthContext, platform: Platform): Promise<[string, string] | null> {
   const box = (await v.mobFields(platform))[0];
   if (!box) return null;
   return [String(Math.floor(box.x + Math.floor(box.w / 2))), String(Math.floor(box.y + Math.floor(box.h / 2)))];
+}
+
+// A text typed into the field at that point. A press that does not give the field the focus yet (the
+// sheet still settling) leaves agent-device with nowhere to type: TEXT_INPUT_NOT_FOCUSED, 13 failed
+// iOS logins in the audit of 2026-10-12. Pressed again, a little later, and typed once more.
+async function typeAt(v: AuthContext, platform: Platform, point: [string, string], text: string): Promise<void> {
+  await v.mob(platform, 'press', ...point);
+  await v.sleep(1);
+  if ((await v.mobTry(platform, 'type', text)).code === 0) return;
+  await v.mob(platform, 'press', ...point);
+  await v.sleep(2);
+  await v.mob(platform, 'type', text);
+}
+
+// The text into the first of these fields that is on screen. agent-device's fill presses the field and
+// types, then reads the field back, and two things go wrong there on a loaded machine: the press does
+// not give the focus (TEXT_INPUT_NOT_FOCUSED, iOS) and the read-back does not match (« Android fill
+// verification failed », 13 Android logins in the audit, in the Custom Tab). The field is then pressed
+// and filled once more; read back; and last cleared and typed into. '' when it took, else what
+// agent-device said.
+const FILL_MISSED = /TEXT_INPUT_NOT_FOCUSED|fill verification failed|could not confirm masked/;
+export async function fillField(v: AuthContext, platform: Platform, selectors: string[], text: string): Promise<string> {
+  let said = '';
+  for (const sel of selectors) {
+    const r = await v.mobTry(platform, 'fill', sel, text);
+    if (r.code === 0) return '';
+    said = `${r.stderr}${r.stdout}`.trim();
+    // Not on screen by that selector: the next one.
+    if (!FILL_MISSED.test(said)) continue;
+    await v.mobTry(platform, 'press', sel);
+    await v.sleep(1);
+    const again = await v.mobTry(platform, 'fill', sel, text);
+    if (again.code === 0) return '';
+    const got = await v.mobTry(platform, 'get', 'text', sel);
+    if (got.code === 0 && got.stdout.includes(text)) return '';
+    await v.mobTry(platform, 'fill', sel, '');
+    const typed = await v.mobTry(platform, 'type', text);
+    if (typed.code === 0) return '';
+    said = `${typed.stderr}${typed.stdout}`.trim();
+  }
+  return said.split('\n').find((l) => /Error/.test(l)) ?? said.split('\n')[0] ?? '';
+}
+
+// The door, or someone already signed in: whichever shows first, looked for in turns for up to
+// VYSU_AUTH0_DOOR_WAIT seconds. The door was given 8 s, and on a loaded machine the first screen took
+// longer than that: 54 Android logins ended « not on the door screen » on a door still coming
+// (2026-09/10). A signed-in app is no reason to wait for the door: it is logged out at once.
+async function doorOrSignedIn(v: AuthContext, platform: Platform): Promise<'door' | 'in' | ''> {
+  const door = opt(v, 'DOOR_TEXT', 'Se connecter');
+  const menu = opt(v, 'MENU_LABEL', 'Menu');
+  const s = Number(opt(v, 'DOOR_WAIT', '30'));
+  const budget = Number.isFinite(s) && s > 0 ? s * 1000 : 30000;
+  const slice = 4000;
+  for (let left = budget; left > 0; left -= slice + 1500) {
+    if (await v.mobWaitText(platform, door, Math.min(slice, left))) return 'door';
+    if (await v.mobWaitText(platform, menu, 1500)) return 'in';
+  }
+  return '';
+}
+
+// The login form inside the system web surface, by role (the visible « e-mail » field on iOS) or by
+// the bare `username` id Auth0 gives it in the Custom Tab.
+async function formShows(v: AuthContext, platform: Platform): Promise<boolean> {
+  return (await v.mobTry(platform, 'wait', 'role="textfield"', '20000')).code === 0 || (await v.mobTry(platform, 'wait', 'id="username"', '8000')).code === 0;
 }
 
 // The buttons on screen that carry one of these labels (as the selectors read them, whatever the case:
@@ -153,8 +218,12 @@ export const connector: AuthConnector = {
     // viewer that then hid « Menu » from the logout (iOS 18 and API 30, 2026-09-24).
     await v.mobileRelaunch(platform);
     await v.mobPressAny(platform, 'Autoriser,Allow'); // push permission, asked at first boot
-    if (!(await v.mobWaitText(platform, door, 8000)) && !(await logout(v, platform))) {
-      v.die(`${platform}: not on the door screen and no way to log out from here`);
+    if ((await doorOrSignedIn(v, platform)) !== 'door' && !(await logout(v, platform))) {
+      // No logout within reach (a screen with no menu, a gate the labels do not name): on Android the
+      // app's data is wiped instead, which signs anyone out, and the door is looked for again.
+      if (!(await v.mobileReset(platform)) || (await doorOrSignedIn(v, platform)) !== 'door') {
+        v.die(`${platform}: not on the door screen and no way to log out from here${platform === 'android' ? ' (nor after clearing the app data)' : ''}`);
+      }
     }
     if (!(await v.mobPressIf(platform, door))) await v.mob(platform, 'press', `text="${door}"`, '--settle');
     await v.mobPressAny(platform, 'Continuer,Continue'); // iOS consent: « … wants to use auth0.com to sign in »
@@ -165,46 +234,40 @@ export const connector: AuthConnector = {
       await v.mobPressAny('android', 'Accepter et continuer,Accept & continue');
       await v.mobPressAny('android', 'Non merci,No thanks');
     }
-    // The field's label is the visible « e-mail » one on iOS, a bare "username" in the Custom Tab.
-    const form =
-      (await v.mobTry(platform, 'wait', 'role="textfield"', '20000')).code === 0 || (await v.mobTry(platform, 'wait', 'id="username"', '8000')).code === 0;
+    // An ANR dialog (Chrome's own, under load) over the Custom Tab hides the form: answered first.
+    let form = await formShows(v, platform);
+    if (!form && (await v.mobileUnblock(platform))) form = await formShows(v, platform);
     if (!form) {
-      if (platform !== 'ios') v.die(`${platform}: the login form did not show up`);
-      // iOS 18 (the old iPhone): agent-device cannot read the SafariViewService sheet. The fields are
-      // then read out of the picture (mobFields) rather than tapped at the constants this used to
-      // carry (« 57 % and 65 % of the height »), which no longer hold as soon as Auth0 moves a logo.
-      // Identifier-first means one field at a time: the first box is the e-mail, and after the
+      // The form is on screen and not in the tree: agent-device cannot read the SafariViewService
+      // sheet on iOS 18 (the old iPhone), nor Auth0's fields in the Custom Tab on API 30 (Pixel 4a). The
+      // fields are then read out of the picture (mobFields) rather than tapped at the constants this
+      // used to carry (« 57 % and 65 % of the height »), which no longer hold as soon as Auth0 moves a
+      // logo. Identifier-first means one field at a time: the first box is the e-mail, and after the
       // submit the same probe, run again on the password page, gives the password.
-      let point = await firstField(v, 'ios');
-      if (!point) return v.die('ios: no text field found on the sheet (fields saw none)');
-      await v.mob('ios', 'press', ...point);
-      await v.sleep(1);
-      await v.mob('ios', 'type', email);
-      await v.mob('ios', 'keyboard', 'return');
+      const surface = platform === 'ios' ? 'sheet' : 'Custom Tab';
+      let point = await firstField(v, platform);
+      if (!point) return v.die(`${platform}: the login form did not show up: no text field in the tree nor on the ${surface} (fields saw none)`);
+      await typeAt(v, platform, point, email);
+      await v.mob(platform, 'keyboard', 'return');
       await v.sleep(4);
-      point = await firstField(v, 'ios');
-      if (!point) return v.die('ios: no password field found after the e-mail (fields saw none)');
-      await v.mob('ios', 'press', ...point);
-      await v.sleep(1);
-      await v.mob('ios', 'type', password);
-      await v.mob('ios', 'keyboard', 'return');
+      point = await firstField(v, platform);
+      if (!point) return v.die(`${platform}: no password field found after the e-mail (fields saw none)`);
+      await typeAt(v, platform, point, password);
+      await v.mob(platform, 'keyboard', 'return');
       await v.sleep(6);
-      await v.mobPressAny('ios', 'Autoriser,Allow');
-      await v.mobWaitText('ios', home, 30000);
-      await v.mobPressAll('ios', after);
-      v.mstateSet('ios', 'persona', persona);
-      console.log(`ios: logged in as ${persona} (${email}) — fields read from the capture (iOS 18 sheet not readable)`);
+      await v.mobPressAny(platform, 'Autoriser,Allow');
+      await v.mobWaitText(platform, home, 30000);
+      await v.mobPressAll(platform, after);
+      v.mstateSet(platform, 'persona', persona);
+      console.log(`${platform}: logged in as ${persona} (${email}) — fields read from the capture (${surface} not readable)`);
       return;
     }
-    if ((await v.mobTry(platform, 'fill', 'role="textfield"', email)).code !== 0) await v.mob(platform, 'fill', 'id="username"', email);
+    let missed = await fillField(v, platform, ['role="textfield"', 'id="username"'], email);
+    if (missed) v.die(`${platform}: the e-mail field could not be filled: ${missed}`);
     await submit(v, platform);
     await v.mob(platform, 'wait', 'text', passwordText, '20000');
-    if (
-      (await v.mobTry(platform, 'fill', 'role="securetextfield"', password)).code !== 0 &&
-      (await v.mobTry(platform, 'fill', 'id="password"', password)).code !== 0
-    ) {
-      await v.mob(platform, 'fill', 'label="Mot de passe"', password);
-    }
+    missed = await fillField(v, platform, ['role="securetextfield"', 'id="password"', 'label="Mot de passe"'], password);
+    if (missed) v.die(`${platform}: the password field could not be filled: ${missed}`);
     await submit(v, platform);
     await v.sleep(3);
     await v.mobPressAny(platform, 'Plus tard,Not Now'); // Safari's « save this password? »

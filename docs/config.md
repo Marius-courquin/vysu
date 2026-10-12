@@ -61,6 +61,7 @@ Options of the `auth0` connector, all optional; the defaults live in
 | `VYSU_AUTH0_SIGNIN_LABELS` | names of the sign-in button, comma-separated | `Se connecter,Sign in` |
 | `VYSU_AUTH0_CONTINUE_LABELS` | names of the continue button of the identifier-first step | `Continuer,Continue` |
 | `VYSU_AUTH0_DOOR_TEXT` | the text of the mobile door screen | `Sign in` |
+| `VYSU_AUTH0_DOOR_WAIT` | seconds `mlogin` waits for the door, or for someone signed in (`VYSU_AUTH0_MENU_LABEL`), after the relaunch; it moves on as soon as either shows (default 30) | `45` |
 | `VYSU_AUTH0_HOME_TEXT` | the mobile text that proves the login went through | `Welcome` |
 | `VYSU_AUTH0_PASSWORD_TEXT` | the text that identifies the password step | `password` |
 | `VYSU_AUTH0_MENU_LABEL` / `VYSU_AUTH0_LOGOUT_LABEL` | the two labels of the mobile sign-out: the control that opens the menu, and the logout in it (or on a screen with no menu) | `Menu` / `Sign out` |

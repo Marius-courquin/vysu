@@ -9,7 +9,8 @@
 // start-up (~150 ms) for each. A library that cannot be loaded, or is older than tools.env asks, falls
 // back to the CLI with the same arguments; VYSU_AGENT_DEVICE=cli forces that.
 import { spawn } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { config } from '../core/ctx.ts';
@@ -124,7 +125,16 @@ function childEnv(): NodeJS.ProcessEnv {
 // `ad <platform> <args…>`: the CLI on the chosen device, its output handed back.
 export async function ad(p: Platform, args: string[], o: { inherit?: boolean } = {}): Promise<RunResult> {
   await select(p);
-  return runCli([...args, ...targetFlags(p)], o);
+  const r = await runCli([...args, ...targetFlags(p)], o);
+  if (r.code === 0 || p !== 'ios' || o.inherit) return r;
+  let w = runnerBuildWhy(p, `${r.stdout}${r.stderr}`);
+  if (!w) return r;
+  if (!w.known) {
+    const again = await runCli([...args, ...targetFlags(p)], o);
+    if (again.code === 0) return again;
+    w = runnerBuildWhy(p, `${again.stdout}${again.stderr}`) ?? w;
+  }
+  return { ...r, stderr: `${r.stderr}vysu: ios: ${w.why}\n` };
 }
 
 // The CLI with no device (session list, close).
@@ -243,7 +253,64 @@ function base(p: Platform): Json {
     : { session: sessionName(p), platform: 'android', serial: serial.value };
 }
 
+// --- the XCUITest runner that did not build ---------------------------------------------------------
+
+// « xcodebuild build-for-testing failed » is all agent-device says when its iOS runner does not build,
+// and an agent then retried the same mlogin nine times in a row (2026-09-27): the runner log said why
+// on every one, « iOS 26.5 is not installed » after an Xcode update, which no retry fixes. The cause
+// is read from the end of that log and said with the failure; a build that failed for no reason the
+// log names is retried once, as a transient one.
+const RUNNER_BUILD = 'xcodebuild build-for-testing failed';
+export function runnerBuildCause(log: string): string {
+  const at = log.lastIndexOf('xcodebuild build-for-testing');
+  const tail = at >= 0 ? log.slice(at) : log;
+  const missing = /error:\s*((?:iOS|iPadOS) [\d.]+ is not installed)/.exec(tail);
+  if (missing) return `${missing[1]} (Xcode > Settings > Components, or xcode-select the Xcode that has it)`;
+  if (/Unable to find a destination matching/.test(tail)) return 'Xcode sees no simulator destination for this device (xcrun simctl list devices; the runtime may belong to another Xcode)';
+  const err = tail.split('\n').find((l) => /(^|\s)error: /.test(l) && !/Writing error result bundle/.test(l));
+  return err ? err.trim().slice(0, 200) : '';
+}
+function logTail(path: string, bytes = 256 * 1024): string {
+  try {
+    const size = statSync(path).size;
+    const fd = openSync(path, 'r');
+    try {
+      const buf = Buffer.alloc(Math.min(bytes, size));
+      readSync(fd, buf, 0, buf.length, Math.max(0, size - buf.length));
+      return buf.toString('utf8');
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return '';
+  }
+}
+function runnerLog(p: Platform, said: string): string {
+  const named = /Diagnostics Log: (\S*runner\.log)/.exec(said)?.[1];
+  return named ?? join(homedir(), '.agent-device', 'sessions', sessionName(p), 'runner.log');
+}
+// The failure, with its cause when the log has one; '' when the answer is no runner build failure.
+function runnerBuildWhy(p: Platform, said: string): { why: string; known: boolean } | null {
+  if (!said.includes(RUNNER_BUILD)) return null;
+  const log = runnerLog(p, said);
+  const cause = runnerBuildCause(logTail(log));
+  return { why: cause ? `the iOS runner did not build: ${cause} (${log})` : `the iOS runner did not build (${log})`, known: !!cause };
+}
+
 export async function adCall(p: Platform, call: Call): Promise<Answer> {
+  const a = await adCallOnce(p, call);
+  if (a.ok || p !== 'ios') return a;
+  let w = runnerBuildWhy(p, `${a.error.message ?? ''} ${JSON.stringify(a.error)}`);
+  if (!w) return a;
+  if (!w.known) {
+    const again = await adCallOnce(p, call);
+    if (again.ok) return again;
+    w = runnerBuildWhy(p, `${again.error.message ?? ''} ${JSON.stringify(again.error)}`) ?? w;
+  }
+  return { ...a, error: { ...a.error, message: `${a.error.message ?? RUNNER_BUILD}: ${w.why}` } };
+}
+
+async function adCallOnce(p: Platform, call: Call): Promise<Answer> {
   await select(p);
   const lib = await agentLib();
   if (lib) {
@@ -372,6 +439,11 @@ export const calls = {
   press: (target: string, o: { settle?: boolean } = {}): Call => ({
     cli: ['press', target, ...(o.settle ? ['--settle'] : [])],
     lib: (c, b) => c.interactions.press!({ ...b, ...targetOf(target), settle: o.settle || undefined }),
+  }),
+  // A point, in the snapshot's own units (points on iOS, pixels on Android).
+  pressAt: (x: number, y: number, o: { settle?: boolean } = {}): Call => ({
+    cli: ['press', String(x), String(y), ...(o.settle ? ['--settle'] : [])],
+    lib: (c, b) => c.interactions.press!({ ...b, x, y, settle: o.settle || undefined }),
   }),
   findPress: (query: string): Call => ({
     cli: ['find', query, 'press', '--first'],

@@ -13,6 +13,7 @@ import { tool } from '../img/tools.ts';
 import { adCall, answerJson, calls } from './agent.ts';
 import { androidSerial, mobileScale } from './device.ts';
 import { sessionOpen } from './launch.ts';
+import { anrWait, nodesOf } from './snap.ts';
 
 export function snapFile(p: Platform): string {
   return join(config().state, `.snap-${p}-${slug(devices.of(p))}.json`);
@@ -76,7 +77,11 @@ export async function mscreen(p: Platform, fresh = false): Promise<string> {
     scale = await mobileScale('android');
     if ((await screenPy(['editable', f])).code === 0 && (await keyboardUp(p))) kb = 'yes';
   }
-  return (await screenPy(['line', f, '--prev', `${f}.keys`, '--save', `${f}.keys`, '--keyboard', kb, '--scale', scale])).out.replace(/\n$/, '');
+  const line = (await screenPy(['line', f, '--prev', `${f}.keys`, '--save', `${f}.keys`, '--keyboard', kb, '--scale', scale])).out.replace(/\n$/, '');
+  // An ANR dialog is the one system dialog that says nothing of itself but its two buttons: named, so
+  // the agent reads « the app is not responding » rather than a screen of two words.
+  if (p === 'android' && anrWait(nodesOf(readSnapshot(f).data))) return `${line} · ANR dialog: an app is not responding (vysu mdo answers « Attendre » on a failed step; or tap "Attendre")`;
+  return line;
 }
 
 // Where a text a step did not find is, in the words the step's ✗ line ends on (img/screen.ts): the

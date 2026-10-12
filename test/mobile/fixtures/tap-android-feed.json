@@ -1,0 +1,828 @@
+{
+"success": true,
+"data": {
+"nodes": [
+{
+"index": 0,
+"type": "android.widget.ScrollView",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 1080,
+"height": 2400
+},
+"depth": 0
+},
+{
+"index": 1,
+"type": "android.widget.ScrollView",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 1080,
+"height": 2400
+},
+"depth": 1,
+"parentIndex": 0
+},
+{
+"index": 2,
+"type": "android.view.ViewGroup",
+"label": "Fermer",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 1080,
+"height": 2400
+},
+"hittable": true,
+"depth": 2,
+"parentIndex": 1
+},
+{
+"index": 3,
+"type": "androidx.recyclerview.widget.RecyclerView",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 1080,
+"height": 2126
+},
+"hittable": true,
+"depth": 2,
+"parentIndex": 1
+},
+{
+"index": 4,
+"type": "android.widget.ScrollView",
+"identifier": "community-all",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 1080,
+"height": 2126
+},
+"hittable": true,
+"depth": 3,
+"parentIndex": 3
+},
+{
+"index": 5,
+"type": "android.widget.Button",
+"label": "[TEST motion] Ouverture B",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 1080,
+"height": 345
+},
+"hittable": true,
+"depth": 4,
+"parentIndex": 4
+},
+{
+"index": 6,
+"type": "android.widget.TextView",
+"label": "Discussion de test du lot mouvement (a supprimer).",
+"value": "Discussion de test du lot mouvement (a supprimer).",
+"rect": {
+"x": 169,
+"y": 120,
+"width": 875,
+"height": 112
+},
+"depth": 5,
+"parentIndex": 5
+},
+{
+"index": 7,
+"type": "android.view.ViewGroup",
+"identifier": "post-body",
+"rect": {
+"x": 169,
+"y": 120,
+"width": 874,
+"height": 112
+},
+"depth": 5,
+"parentIndex": 5
+},
+{
+"index": 8,
+"type": "android.view.ViewGroup",
+"identifier": "card-footer",
+"rect": {
+"x": 169,
+"y": 260,
+"width": 874,
+"height": 58
+},
+"depth": 5,
+"parentIndex": 5
+},
+{
+"index": 9,
+"type": "android.view.ViewGroup",
+"identifier": "card-footer-counters",
+"rect": {
+"x": 871,
+"y": 260,
+"width": 172,
+"height": 58
+},
+"depth": 5,
+"parentIndex": 5
+},
+{
+"index": 10,
+"type": "android.widget.Button",
+"label": "Ajouter une réaction",
+"rect": {
+"x": 871,
+"y": 260,
+"width": 58,
+"height": 58
+},
+"hittable": true,
+"depth": 5,
+"parentIndex": 5
+},
+{
+"index": 11,
+"type": "android.widget.Button",
+"label": "Commentaires · 0",
+"rect": {
+"x": 952,
+"y": 260,
+"width": 91,
+"height": 58
+},
+"hittable": true,
+"depth": 5,
+"parentIndex": 5
+},
+{
+"index": 12,
+"type": "com.horcrux.svg.SvgView",
+"identifier": "phosphor-react-native-chat-circle-regular",
+"rect": {
+"x": 952,
+"y": 263,
+"width": 52,
+"height": 52
+},
+"depth": 6,
+"parentIndex": 11
+},
+{
+"index": 13,
+"type": "android.widget.TextView",
+"label": "0",
+"value": "0",
+"rect": {
+"x": 1018,
+"y": 260,
+"width": 25,
+"height": 58
+},
+"depth": 6,
+"parentIndex": 11
+},
+{
+"index": 14,
+"type": "android.widget.Button",
+"label": "[TEST motion] Ouverture A",
+"rect": {
+"x": 0,
+"y": 346,
+"width": 1080,
+"height": 438
+},
+"hittable": true,
+"depth": 4,
+"parentIndex": 4
+},
+{
+"index": 15,
+"type": "android.widget.TextView",
+"label": "CG",
+"value": "CG",
+"rect": {
+"x": 62,
+"y": 406,
+"width": 54,
+"height": 41
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 16,
+"type": "android.widget.TextView",
+"label": "GESTIONNAIRE",
+"value": "GESTIONNAIRE",
+"rect": {
+"x": 169,
+"y": 380,
+"width": 231,
+"height": 35
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 17,
+"type": "android.widget.ImageView",
+"label": "Syndic Lumière & Associés",
+"rect": {
+"x": 414,
+"y": 374,
+"width": 102,
+"height": 34
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 18,
+"type": "android.widget.TextView",
+"label": "Camille Gestion",
+"value": "Camille Gestion",
+"rect": {
+"x": 169,
+"y": 420,
+"width": 276,
+"height": 48
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 19,
+"type": "android.widget.TextView",
+"label": "· 22 min",
+"value": "· 22 min",
+"rect": {
+"x": 458,
+"y": 423,
+"width": 123,
+"height": 41
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 20,
+"type": "android.view.View",
+"value": "[TEST motion] Ouverture A",
+"rect": {
+"x": 169,
+"y": 486,
+"width": 875,
+"height": 55
+},
+"depth": 5,
+"parentIndex": 14,
+"inheritsLabel": true
+},
+{
+"index": 21,
+"type": "android.widget.TextView",
+"label": "Discussion de test du lot mouvement (a supprimer).",
+"value": "Discussion de test du lot mouvement (a supprimer).",
+"rect": {
+"x": 169,
+"y": 559,
+"width": 875,
+"height": 112
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 22,
+"type": "android.view.ViewGroup",
+"identifier": "post-body",
+"rect": {
+"x": 169,
+"y": 559,
+"width": 874,
+"height": 112
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 23,
+"type": "android.view.ViewGroup",
+"identifier": "card-footer",
+"rect": {
+"x": 169,
+"y": 699,
+"width": 874,
+"height": 58
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 24,
+"type": "android.view.ViewGroup",
+"identifier": "card-footer-counters",
+"rect": {
+"x": 871,
+"y": 699,
+"width": 172,
+"height": 58
+},
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 25,
+"type": "android.widget.Button",
+"label": "Ajouter une réaction",
+"rect": {
+"x": 871,
+"y": 699,
+"width": 58,
+"height": 58
+},
+"hittable": true,
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 26,
+"type": "android.widget.Button",
+"label": "Commentaires · 0",
+"rect": {
+"x": 952,
+"y": 699,
+"width": 91,
+"height": 58
+},
+"hittable": true,
+"depth": 5,
+"parentIndex": 14
+},
+{
+"index": 27,
+"type": "com.horcrux.svg.SvgView",
+"identifier": "phosphor-react-native-chat-circle-regular",
+"rect": {
+"x": 952,
+"y": 702,
+"width": 52,
+"height": 53
+},
+"depth": 6,
+"parentIndex": 26
+},
+{
+"index": 28,
+"type": "android.widget.TextView",
+"label": "0",
+"value": "0",
+"rect": {
+"x": 1018,
+"y": 699,
+"width": 25,
+"height": 58
+},
+"depth": 6,
+"parentIndex": 26
+},
+{
+"index": 29,
+"type": "android.widget.Button",
+"label": "Test ordre PJ",
+"rect": {
+"x": 0,
+"y": 785,
+"width": 1080,
+"height": 955
+},
+"hittable": true,
+"depth": 4,
+"parentIndex": 4
+},
+{
+"index": 30,
+"type": "android.widget.TextView",
+"label": "SH",
+"value": "SH",
+"rect": {
+"x": 64,
+"y": 845,
+"width": 51,
+"height": 41
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 31,
+"type": "android.widget.TextView",
+"label": "VOUS",
+"value": "VOUS",
+"rect": {
+"x": 169,
+"y": 813,
+"width": 875,
+"height": 35
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 32,
+"type": "android.widget.TextView",
+"label": "Sacha Habitant",
+"value": "Sacha Habitant",
+"rect": {
+"x": 169,
+"y": 853,
+"width": 270,
+"height": 48
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 33,
+"type": "android.widget.TextView",
+"label": "· 5 j",
+"value": "· 5 j",
+"rect": {
+"x": 452,
+"y": 856,
+"width": 55,
+"height": 41
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 34,
+"type": "android.view.View",
+"label": "Test ordre PJ",
+"value": "Test ordre PJ",
+"rect": {
+"x": 169,
+"y": 918,
+"width": 875,
+"height": 55
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 35,
+"type": "android.widget.TextView",
+"label": "Test de l'ordre des pièces jointes.",
+"value": "Test de l'ordre des pièces jointes.",
+"rect": {
+"x": 169,
+"y": 992,
+"width": 875,
+"height": 56
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 36,
+"type": "android.view.ViewGroup",
+"identifier": "post-body",
+"rect": {
+"x": 169,
+"y": 992,
+"width": 874,
+"height": 56
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 37,
+"type": "android.view.ViewGroup",
+"identifier": "feed-photos-carousel",
+"rect": {
+"x": 0,
+"y": 1076,
+"width": 1080,
+"height": 552
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 38,
+"type": "android.widget.ImageView",
+"label": "Photo 1 sur 3",
+"rect": {
+"x": 170,
+"y": 1076,
+"width": 441,
+"height": 552
+},
+"hittable": true,
+"depth": 6,
+"parentIndex": 37
+},
+{
+"index": 39,
+"type": "android.widget.ImageView",
+"label": "Photo 2 sur 3",
+"rect": {
+"x": 626,
+"y": 1076,
+"width": 441,
+"height": 552
+},
+"hittable": true,
+"depth": 6,
+"parentIndex": 37
+},
+{
+"index": 40,
+"type": "android.view.ViewGroup",
+"identifier": "discussion-cover",
+"rect": {
+"x": 169,
+"y": 1076,
+"width": 874,
+"height": 552
+},
+"hittable": false,
+"depth": 5,
+"parentIndex": 29,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 41,
+"type": "android.view.ViewGroup",
+"identifier": "card-footer",
+"rect": {
+"x": 169,
+"y": 1655,
+"width": 874,
+"height": 58
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 42,
+"type": "android.view.ViewGroup",
+"identifier": "card-footer-counters",
+"rect": {
+"x": 766,
+"y": 1655,
+"width": 277,
+"height": 58
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 43,
+"type": "android.widget.Button",
+"label": "Ajouter une réaction",
+"rect": {
+"x": 766,
+"y": 1655,
+"width": 58,
+"height": 58
+},
+"hittable": true,
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 44,
+"type": "android.widget.Button",
+"label": "Commentaires · 0",
+"rect": {
+"x": 847,
+"y": 1655,
+"width": 91,
+"height": 58
+},
+"hittable": true,
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 45,
+"type": "com.horcrux.svg.SvgView",
+"identifier": "phosphor-react-native-chat-circle-regular",
+"rect": {
+"x": 847,
+"y": 1658,
+"width": 52,
+"height": 52
+},
+"depth": 6,
+"parentIndex": 44
+},
+{
+"index": 46,
+"type": "android.widget.TextView",
+"label": "0",
+"value": "0",
+"rect": {
+"x": 913,
+"y": 1655,
+"width": 25,
+"height": 58
+},
+"depth": 6,
+"parentIndex": 44
+},
+{
+"index": 47,
+"type": "com.horcrux.svg.SvgView",
+"identifier": "phosphor-react-native-paperclip-regular",
+"rect": {
+"x": 961,
+"y": 1658,
+"width": 52,
+"height": 52
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 48,
+"type": "android.widget.TextView",
+"label": "1",
+"value": "1",
+"rect": {
+"x": 1027,
+"y": 1655,
+"width": 16,
+"height": 58
+},
+"depth": 5,
+"parentIndex": 29
+},
+{
+"index": 49,
+"type": "android.widget.Button",
+"label": "Un logo pour le panneau de l'entrée ?",
+"rect": {
+"x": 0,
+"y": 1741,
+"width": 1080,
+"height": 385
+},
+"hittable": true,
+"depth": 4,
+"parentIndex": 4
+},
+{
+"index": 50,
+"type": "android.widget.TextView",
+"label": "SH",
+"value": "SH",
+"rect": {
+"x": 64,
+"y": 1801,
+"width": 51,
+"height": 41
+},
+"depth": 5,
+"parentIndex": 49
+},
+{
+"index": 51,
+"type": "android.widget.TextView",
+"label": "VOUS",
+"value": "VOUS",
+"rect": {
+"x": 169,
+"y": 1769,
+"width": 875,
+"height": 35
+},
+"depth": 5,
+"parentIndex": 49
+},
+{
+"index": 52,
+"type": "android.widget.TextView",
+"label": "Sacha Habitant",
+"value": "Sacha Habitant",
+"rect": {
+"x": 169,
+"y": 1809,
+"width": 270,
+"height": 48
+},
+"depth": 5,
+"parentIndex": 49
+},
+{
+"index": 53,
+"type": "android.widget.TextView",
+"label": "· 2 sem",
+"value": "· 2 sem",
+"rect": {
+"x": 452,
+"y": 1812,
+"width": 112,
+"height": 41
+},
+"depth": 5,
+"parentIndex": 49
+},
+{
+"index": 54,
+"type": "android.view.View",
+"value": "Un logo pour le panneau de l'entrée ?",
+"rect": {
+"x": 169,
+"y": 1874,
+"width": 875,
+"height": 55
+},
+"depth": 5,
+"parentIndex": 49,
+"inheritsLabel": true
+},
+{
+"index": 55,
+"type": "android.widget.TextView",
+"label": "Proposition de logo pour le panneau, et la lampe qu'on pourrait mettre au-dessus.",
+"value": "Proposition de logo pour le panneau, et la lampe qu'on pourrait mettre au-dessus.",
+"rect": {
+"x": 169,
+"y": 1948,
+"width": 875,
+"height": 112
+},
+"depth": 5,
+"parentIndex": 49
+},
+{
+"index": 56,
+"type": "android.view.ViewGroup",
+"identifier": "post-body",
+"rect": {
+"x": 169,
+"y": 1948,
+"width": 874,
+"height": 112
+},
+"depth": 5,
+"parentIndex": 49
+},
+{
+"index": 57,
+"type": "android.view.ViewGroup",
+"identifier": "feed-photos-carousel",
+"rect": {
+"x": 0,
+"y": 2088,
+"width": 1080,
+"height": 38
+},
+"depth": 5,
+"parentIndex": 49
+},
+{
+"index": 58,
+"type": "android.widget.ImageView",
+"label": "Photo 1 sur 2",
+"rect": {
+"x": 170,
+"y": 2088,
+"width": 735,
+"height": 38
+},
+"hittable": true,
+"depth": 6,
+"parentIndex": 57
+},
+{
+"index": 59,
+"type": "android.widget.ImageView",
+"label": "Photo 2 sur 2",
+"rect": {
+"x": 920,
+"y": 2088,
+"width": 160,
+"height": 38
+},
+"hittable": true,
+"depth": 6,
+"parentIndex": 57
+}
+]
+}
+}

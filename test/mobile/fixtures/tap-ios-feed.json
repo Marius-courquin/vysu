@@ -1,0 +1,512 @@
+{
+"success": true,
+"data": {
+"nodes": [
+{
+"index": 0,
+"type": "Application",
+"label": "Nidz (prep)",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 402,
+"height": 874
+},
+"depth": 0
+},
+{
+"index": 1,
+"parentIndex": 0,
+"type": "Other",
+"identifier": "terms-layer-app",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 402,
+"height": 874
+},
+"depth": 1,
+"hittable": false,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 2,
+"parentIndex": 0,
+"type": "Image",
+"label": "Nidz",
+"rect": {
+"x": 187.6666717529297,
+"y": 72.6666669845581,
+"width": 27,
+"height": 28
+},
+"depth": 1
+},
+{
+"index": 3,
+"parentIndex": 0,
+"type": "Button",
+"label": "Menu",
+"rect": {
+"x": 14,
+"y": 67.6666668355465,
+"width": 38,
+"height": 38
+},
+"depth": 1
+},
+{
+"index": 4,
+"parentIndex": 0,
+"type": "Button",
+"label": "Notifications",
+"rect": {
+"x": 312.6666564941406,
+"y": 67.33333349227905,
+"width": 38.66668701171875,
+"height": 38.33332824707031
+},
+"depth": 1
+},
+{
+"index": 5,
+"parentIndex": 0,
+"type": "StaticText",
+"label": "9+",
+"rect": {
+"x": 334.99999046325684,
+"y": 65.66666674613953,
+"width": 15.333343505859375,
+"height": 13.333328247070312
+},
+"depth": 1
+},
+{
+"index": 6,
+"parentIndex": 0,
+"type": "Button",
+"label": "Messages",
+"rect": {
+"x": 358.33332443237305,
+"y": 67.33333349227905,
+"width": 38.33331298828125,
+"height": 38.33332824707031
+},
+"depth": 1
+},
+{
+"index": 7,
+"parentIndex": 0,
+"type": "ScrollView",
+"rect": {
+"x": 0,
+"y": 105.66666793823242,
+"width": 355.66666666666663,
+"height": 44
+},
+"depth": 1
+},
+{
+"index": 8,
+"parentIndex": 7,
+"type": "Other",
+"label": "Actualités",
+"rect": {
+"x": 8,
+"y": 105.66666793823242,
+"width": 90.33333587646484,
+"height": 44
+},
+"depth": 2
+},
+{
+"index": 9,
+"parentIndex": 7,
+"type": "Other",
+"label": "Discussions",
+"rect": {
+"x": 102.33333587646484,
+"y": 105.66666793823242,
+"width": 103.99999237060547,
+"height": 44
+},
+"depth": 2
+},
+{
+"index": 10,
+"parentIndex": 7,
+"type": "Other",
+"label": "Activités",
+"rect": {
+"x": 210.3333282470703,
+"y": 105.66666793823242,
+"width": 79.66667175292969,
+"height": 44
+},
+"depth": 2
+},
+{
+"index": 11,
+"parentIndex": 7,
+"type": "Other",
+"label": "Prêts",
+"rect": {
+"x": 294,
+"y": 105.66666793823242,
+"width": 53.666656494140625,
+"height": 44
+},
+"depth": 2
+},
+{
+"index": 12,
+"parentIndex": 7,
+"type": "Other",
+"label": "Barre de défilement verticale, 2 pages",
+"value": "0 %",
+"rect": {
+"x": 322.66666666666663,
+"y": 105.66666793823242,
+"width": 30,
+"height": 44
+},
+"depth": 2
+},
+{
+"index": 13,
+"parentIndex": 7,
+"type": "Other",
+"label": "Barre de défilement verticale, 2 pages",
+"value": "0 %",
+"rect": {
+"x": 322.66666666666663,
+"y": 105.66666793823242,
+"width": 30,
+"height": 44
+},
+"depth": 2
+},
+{
+"index": 14,
+"parentIndex": 0,
+"type": "CollectionView",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 402,
+"height": 874
+},
+"depth": 1
+},
+{
+"index": 15,
+"parentIndex": 14,
+"type": "Cell",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 402,
+"height": 874
+},
+"depth": 2,
+"hittable": false,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 16,
+"parentIndex": 15,
+"type": "ScrollView",
+"rect": {
+"x": 0,
+"y": 0,
+"width": 402,
+"height": 874
+},
+"depth": 4
+},
+{
+"index": 17,
+"parentIndex": 16,
+"type": "Button",
+"label": "Test moment QA 7",
+"rect": {
+"x": 0,
+"y": 150.6666717529297,
+"width": 402,
+"height": 142.99998474121094
+},
+"depth": 5
+},
+{
+"index": 18,
+"parentIndex": 16,
+"type": "Button",
+"label": "Azeaze",
+"rect": {
+"x": 0,
+"y": 294,
+"width": 402,
+"height": 143
+},
+"depth": 5,
+"hittable": false,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 19,
+"parentIndex": 16,
+"type": "Button",
+"label": "Test ordre PJ",
+"rect": {
+"x": 0,
+"y": 437.3333435058594,
+"width": 402,
+"height": 363.3333435058594
+},
+"depth": 5
+},
+{
+"index": 20,
+"parentIndex": 19,
+"type": "ScrollView",
+"rect": {
+"x": 0,
+"y": 548.0000104904175,
+"width": 402,
+"height": 210
+},
+"depth": 7
+},
+{
+"index": 21,
+"parentIndex": 20,
+"type": "Other",
+"label": "Photo 1 sur 3",
+"rect": {
+"x": 64.66666412353516,
+"y": 548.0000104904175,
+"width": 168,
+"height": 210
+},
+"depth": 8
+},
+{
+"index": 22,
+"parentIndex": 20,
+"type": "Other",
+"label": "Photo 2 sur 3",
+"rect": {
+"x": 238.66666412353516,
+"y": 548.0000104904175,
+"width": 163.33333587646484,
+"height": 210
+},
+"depth": 8
+},
+{
+"index": 23,
+"parentIndex": 20,
+"type": "Other",
+"label": "Barre de défilement verticale, 2 pages",
+"value": "0 %",
+"rect": {
+"x": 370.99999745686847,
+"y": 548.0000104904175,
+"width": 30,
+"height": 210
+},
+"depth": 8
+},
+{
+"index": 24,
+"parentIndex": 20,
+"type": "Other",
+"label": "Barre de défilement verticale, 2 pages",
+"value": "0 %",
+"rect": {
+"x": 370.99999745686847,
+"y": 548.0000104904175,
+"width": 30,
+"height": 210
+},
+"depth": 8
+},
+{
+"index": 25,
+"parentIndex": 16,
+"type": "Button",
+"label": "Un logo pour le panneau de l'entrée ?",
+"rect": {
+"x": 0,
+"y": 801,
+"width": 402,
+"height": 73
+},
+"depth": 5,
+"hittable": false,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 26,
+"parentIndex": 16,
+"type": "Other",
+"label": "Barre de défilement horizontale, 1 page",
+"value": "0 %",
+"rect": {
+"x": 62,
+"y": 841,
+"width": 278,
+"height": 30
+},
+"depth": 5,
+"hittable": false,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 27,
+"parentIndex": 16,
+"type": "Other",
+"label": "Barre de défilement horizontale, 1 page",
+"value": "0 %",
+"rect": {
+"x": 62,
+"y": 841,
+"width": 278,
+"height": 30
+},
+"depth": 5,
+"hittable": false,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 28,
+"parentIndex": 14,
+"type": "Image",
+"identifier": "AdditionalDimmingOverlay",
+"rect": {
+"x": 0,
+"y": 731,
+"width": 402,
+"height": 143
+},
+"depth": 2,
+"hittable": false,
+"interactionBlocked": "covered",
+"presentationHints": [
+"covered"
+]
+},
+{
+"index": 29,
+"parentIndex": 14,
+"type": "Other",
+"label": "Barre de défilement verticale, 4 pages",
+"value": "0 %",
+"rect": {
+"x": 369,
+"y": 62,
+"width": 30,
+"height": 750
+},
+"depth": 2
+},
+{
+"index": 30,
+"parentIndex": 14,
+"type": "Other",
+"label": "Barre de défilement verticale, 4 pages",
+"value": "0 %",
+"rect": {
+"x": 369,
+"y": 62,
+"width": 30,
+"height": 750
+},
+"depth": 2
+},
+{
+"index": 31,
+"parentIndex": 0,
+"type": "TabBar",
+"label": "Barre d’onglets",
+"rect": {
+"x": 0,
+"y": 791,
+"width": 402,
+"height": 83
+},
+"depth": 1
+},
+{
+"index": 32,
+"parentIndex": 31,
+"type": "Button",
+"label": "Incidents",
+"rect": {
+"x": 25,
+"y": 795,
+"width": 104.66666666666669,
+"height": 54
+},
+"depth": 2
+},
+{
+"index": 33,
+"parentIndex": 31,
+"type": "Button",
+"label": "Communauté",
+"rect": {
+"x": 113.66666666666666,
+"y": 795,
+"width": 104.66666666666666,
+"height": 54
+},
+"depth": 2
+},
+{
+"index": 34,
+"parentIndex": 31,
+"type": "Button",
+"label": "Ma résidence",
+"rect": {
+"x": 202.33333333333334,
+"y": 795,
+"width": 104.66666666666666,
+"height": 54
+},
+"depth": 2
+},
+{
+"index": 35,
+"parentIndex": 31,
+"type": "Button",
+"label": "Rechercher",
+"rect": {
+"x": 319,
+"y": 791,
+"width": 62,
+"height": 62
+},
+"depth": 2
+}
+]
+}
+}
