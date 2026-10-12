@@ -69,6 +69,8 @@ function fake(s: Script): { v: AuthContext; calls: string[] } {
     mobileRelaunch: async () => undefined,
     mobileLoadBundle: async () => undefined,
     mobilePrepare: async () => undefined,
+    mobileUnblock: async () => '',
+    mobileReset: async () => false,
     mstateSet: () => undefined,
     personaRequire: () => ({ email: 'a@b.fr', password: 'pw' }),
     personaVar: () => '',

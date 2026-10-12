@@ -71,7 +71,7 @@ vysu mlogin ios alice                         # once per persona and install; a 
 vysu mdo ios --shots s1 -- 'open notifications' 'wait idle' 'shot list' \
     'tap "Incidents" --wait "Récents"' 'expect no "Page introuvable"' 'shot incidents'
 vysu mwait ios "Welcome" --timeout 15         # or --gone, --idle: instead of any sleep
-vysu mtap ios "Help" --wait "FAQ"             # by label, then text, then "contains", settled
+vysu mtap ios "Help" --wait "FAQ"             # the whole label (any case), pressed on its text, settled
 vysu mshot ios <name> [label] [--full]        # 1x; the same label again says « vs previous: … »
 vysu mreload ios                              # this device's JS only, in place (3-10 s)
 vysu mlog mark … vysu mlog --errors [--device]   # what the app logged since the mark, errors only
@@ -120,7 +120,7 @@ stdin, `#` comments):
 
 | Step | What it does |
 |---|---|
-| `tap "<label>" [--wait "<text>"]` | by label, then visible text, then "contains"; then waits for the text |
+| `tap "<label>" [--partial] [--wait "<text>"]` | the whole label or visible text (any case), pressed on the text itself; `--partial`: part of it; then waits for the text |
 | `wait "<text>" [s]` · `wait gone "<text>" [s]` · `wait idle [s]` | until it shows / goes / two snapshots agree (10 s default) |
 | `fill "<label>" "<value>"` · `type "<text>"` · `key return\|dismiss\|back` | fields by label (Android also shows `focus "<field>"`) |
 | `scroll-to "<label>" [max]` · `expect [no] "<text>"` · `screen` | bring it on screen, assert, print the screen line |
@@ -277,7 +277,7 @@ vysu mrec ios seam --crop 0,0,402,200 -- "press 173 822" "sleep 1.5" "press 258 
 `sleep <s>`, `shot <label> [--full]`, `relaunch [--textsize …]`, `#` for a comment, or any
 agent-device command. `tap t:` resolves the label in `VYSU_LOCALES/<lang>.json` **for the language
 `vysu` applied last**: the journey survives a wording change and plays identically in every
-language (an interpolated value keeps its longest literal, which the "contains" fallback finds).
+language (an interpolated value keeps its longest literal, matched as part of the label).
 `vysu` stays agnostic: the journey is data, the same runner works for any app - never code an app's
 behaviour into the engine. A failing step (a label absent from the screen) stops `mflow` with its
 number, but **not `mrec`**: that one reports it, plays the rest and keeps its clip.

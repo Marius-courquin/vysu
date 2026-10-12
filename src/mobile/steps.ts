@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die, VysuError } from '../core/errors.ts';
 import type { Platform } from '../core/hold.ts';
-import { i18nLabel } from '../core/i18n.ts';
+import { i18nAim } from '../core/i18n.ts';
 import { ev, evTouch, now, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
 import { chunks, RUN_BEAT_MS } from '../img/pace.ts';
@@ -470,7 +470,9 @@ export async function mobileStep(p: Platform, shots: string, step: string): Prom
     if (!w) return false;
     const key = (w[0] ?? '').replace(/^t:/, '');
     try {
-      ev.label = i18nLabel(mstateGet(p, 'lang', config().get('LANG')), key);
+      const aim = i18nAim(mstateGet(p, 'lang', config().get('LANG')), key);
+      ev.label = aim.label;
+      if (aim.partial) w.splice(1, 0, '--partial');
     } catch (e) {
       // A key the file does not hold is this step's failure; no locale folder at all is the flow's.
       if (!(e instanceof VysuError) || /VYSU_LOCALES/.test(e.message)) throw e;

@@ -4,7 +4,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die, VysuError } from '../core/errors.ts';
-import { i18nLabel, langCheck } from '../core/i18n.ts';
+import { i18nAim, langCheck } from '../core/i18n.ts';
 import { lockTake, resourceOf } from '../core/hold.ts';
 import { metaWrite, repoBranch, repoSha } from '../core/meta.ts';
 import { ev, evTouch, typingHuman } from '../core/rec.ts';
@@ -368,8 +368,9 @@ export async function webStep(persona: string, shots: string, step: string, prin
     const partial = / --partial$/.test(key);
     key = key.replace(/ --partial$/, '').replace(/^["']/, '').replace(/["']$/, '').replace(/^t:/, '');
     await webLangInit(persona);
-    ev.label = i18nLabel(webLang, key);
-    return webClick(persona, ev.label, partial);
+    const aim = i18nAim(webLang, key);
+    ev.label = aim.label;
+    return webClick(persona, ev.label, partial || aim.partial);
   }
   if (step.startsWith('click ') || step.startsWith('tap ')) {
     const w = words(step.slice(step.indexOf(' ') + 1));

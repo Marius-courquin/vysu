@@ -7,8 +7,8 @@ import { die } from './errors.ts';
 import { commaList } from './text.ts';
 
 // An interpolated value (« {{n}} messages ») keeps its longest literal piece, which a tap then
-// matches with its « contains » fallback.
-export function i18nLabel(lang: string, key: string): string {
+// matches as part of the label (`partial`): taps match whole labels otherwise.
+export function i18nAim(lang: string, key: string): { label: string; partial: boolean } {
   const dir = config().locales;
   if (!dir) die('t:<key> needs VYSU_LOCALES (the folder holding <lang>.json)');
   const file = join(dir, `${lang}.json`);
@@ -23,7 +23,7 @@ export function i18nLabel(lang: string, key: string): string {
   // max() keeps the first of equal lengths.
   const literal = pieces.reduce((best, p) => (p.length > best.length ? p : best), pieces[0] ?? '');
   if (!literal) die(`i18n key « ${key} » is all interpolation (${d})`);
-  return literal;
+  return { label: literal, partial: pieces.length > 1 };
 }
 
 // A language the project declares, or the default one. A flow that names none takes VYSU_LANG.
