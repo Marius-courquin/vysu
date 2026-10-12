@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { anrPackage, anrWait, customTabPackages, keyboardFreeSpot, keyboardUp, tapNorm, tapTarget, type SnapNode } from '../../src/mobile/snap.ts';
-import { swipeAsPan } from '../../src/mobile/steps.ts';
+import { swipeAsPan, tapCalls } from '../../src/mobile/steps.ts';
 import { scaleBoxes } from '../../src/mobile/api.ts';
 
 const fixture = (name: string): SnapNode[] =>
@@ -114,4 +114,21 @@ test('Android field boxes come back in the pixels a press takes', () => {
   assert.equal(scaleBoxes('[{"x":10,"y":300,"w":335,"h":45}]', 2.625), '[{"x":26,"y":788,"w":879,"h":118}]');
   assert.equal(scaleBoxes('[{"x":10}]', 1), '[{"x":10}]');
   assert.equal(scaleBoxes('not json', 2), 'not json');
+});
+
+test('what a tap presses, in order: on iOS a point that fails falls back to the selectors 0.9.2 used', () => {
+  const cli = (cs: ReturnType<typeof tapCalls>): string[] => cs.map((c) => c.cli.join(' '));
+  const hit = { kind: 'hit' as const, x: 10, y: 20, label: 'Voir plus', note: '' };
+  assert.deepEqual(cli(tapCalls('android', hit, 'voir plus', false)), ['press 10 20 --settle']);
+  assert.deepEqual(cli(tapCalls('ios', hit, 'voir plus', false)), [
+    'press 10 20 --settle',
+    'press label="Voir plus" --settle',
+    'press text="Voir plus" --settle',
+    'press label="voir plus" --settle',
+    'press text="voir plus" --settle',
+  ]);
+  assert.deepEqual(cli(tapCalls('ios', { ...hit, alone: true }, 'Voir plus', false)), ['press label="Voir plus" --settle', 'press 10 20 --settle', 'press text="Voir plus" --settle']);
+  assert.deepEqual(cli(tapCalls('ios', { kind: 'unread' }, 'X', true)), ['press label="X" --settle', 'press text="X" --settle', 'find X press --first']);
+  assert.deepEqual(cli(tapCalls('android', { kind: 'none', holders: [] }, 'X', false)), ['press label="X" --settle', 'press text="X" --settle']);
+  assert.deepEqual(tapCalls('ios', { kind: 'hidden', label: 'X' }, 'X', false), []);
 });

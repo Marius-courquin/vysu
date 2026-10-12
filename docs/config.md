@@ -125,7 +125,7 @@ Web only. The defaults live in [`src/connectors/auth/token.ts`](../src/connector
 | `VYSU_ANDROID_CORES` | the CPU cores an emulator is started with (`-cores`) | `2` | `4` |
 | `VYSU_ANDROID_QUICKBOOT` | `1`: an emulator loads its quickboot snapshot and saves it again when it stops; `0`: a cold boot that saves nothing (`-no-snapshot`). Measured on an API 36 AVD on 12/10, 3 GB / 2 cores: cold boot 12 s and 2 s to stop; quickboot 4 s to boot but 11 s to stop (a 2.7 GB RAM image written each time, 2.8 GB on disk per AVD), and the app process restored as the snapshot left it | `0` | `1` |
 | `VYSU_MEMORY_MIN_FREE` | the share of memory free, in %, under which no device boots (macOS: `kern.memorystatus_level`, and the kernel's own pressure at warn or critical; Linux: MemAvailable; Windows: no floor). A boot under it stops idle devices first, then waits VYSU_LOCK_WAIT, then fails naming what runs. `0`: no floor | `20` | `30` |
-| `VYSU_IDLE_MINUTES` | minutes after which a simulator or emulator of the pool, an isolated Metro or the shared Metro vysu started is stopped when nobody claims, locks or uses it (`vysu down idle`, and on the way by `claim`, `up`, `devices` and any boot; a boot that has no room counts a device unused for 2 minutes as idle). An isolated Metro whose owner is gone is stopped whatever its age. `0`: never | `15` | `30` |
+| `VYSU_IDLE_MINUTES` | minutes after which a simulator or emulator of the pool, an isolated Metro or the shared Metro vysu started is stopped when nobody claims, locks or uses it (`vysu down idle`, and on the way by `claim`, `up`, `devices` and any boot; a boot that has no room counts a device of its own platform unused for 2 minutes as idle, and stops the longest idle first, no more than it needs). A device is only ever stopped when vysu booted it itself, in the boot running now (a marker each boot writes, matched against the device's start); its use is read from every state folder under `~/.vysu` (claims, locks, records of use) and from every agent-device journal of that device, whatever project opened it. An isolated Metro whose owner is gone is stopped whatever its age; one recorded by vysu 0.9.2, which kept no owner, is left alone. `0`: never | `15` | `30` |
 | `VYSU_ANDROID_LOCALE` | the locale forced on the emulator at boot; empty leaves it untouched | empty | `fr-FR` |
 
 The default AVD specs:
@@ -194,7 +194,11 @@ sessions launch with `--host-resolver-rules=MAP localhost:<_PORT> localhost:<por
 storage, an identity provider's callbacks and an API's CORS all still see `http://localhost:<_PORT>`,
 while every other owner keeps the shared server. A persona's browser opened for another view (the
 shared one, or another owner's) is closed and reopened, its login kept, by the next command that
-needs the other view. `vysu down <name>` stops this owner's isolated copy first; a second one stops
+needs the other view; the page it showed is not reopened, and the command says which page that was
+and whose view it served. Two owners working on one persona, one isolated and one not, therefore
+close each other's browser at every turn: give each its own persona or slot (`alice@2`). vysu 0.9.2
+knows nothing of these rules: a 0.9.2 command drives the browser as it was launched, the isolated
+worktree included. `vysu down <name>` stops this owner's isolated copy first; a second one stops
 the shared one. `vysu doctor` lists the isolated copies and their owners.
 
 ## Push
@@ -228,7 +232,7 @@ These are not written to `.vysu/config`; they are exported for one command or on
 | `VYSU_PERSONAS` | the personas file, so one can be tried without moving the state folder | `$VYSU_STATE/personas.env` |
 | `VYSU_SHOTS` | the shots folder | `$VYSU_STATE/shots` |
 | `VYSU_LOCK_WAIT` | seconds a command waits for a busy device or session before giving up, and `claim --any` for a free device | `90` |
-| `VYSU_MOBILE_TIMEOUT` | seconds a mobile command may run once it holds a device; `up`, `claim`, `release`, `mlogin`, `mrelaunch`, `mdo`, `mflow` and `mrec` get twice that. Past it, the processes the command waits on are killed (adb, xcrun, agent-device; never the emulator, the simulator or Metro), its locks are given back, a claim it was making goes, and it exits 124 with « vysu: <cmd> stopped after Ns (VYSU_MOBILE_TIMEOUT) while <what> ». `0`: no ceiling | `300` |
+| `VYSU_MOBILE_TIMEOUT` | seconds a mobile command may run once it holds a device; `up`, `claim`, `release`, `mlogin` and `mrelaunch` get twice that. `mdo`, `mflow` and `mrec` get that much per step (each step starts the count again, a `relaunch` step and each run of an `mdo` matrix twice that), so a long script that keeps moving is never cut. A stream has no ceiling: `vysu adb logcat` (without `-d`, `-c`, `-t`), `vysu simctl … log stream`, `vysu simctl io … recordVideo`. Past it, the processes the command waits on are killed (adb, xcrun, agent-device; never the emulator, the simulator or Metro), its locks are given back, a claim it was making goes, and it exits 124 with « vysu: <cmd> stopped after Ns (VYSU_MOBILE_TIMEOUT) while <what> » (a step runner: « stopped: one step ran Ns »). `0`: no ceiling | `300` |
 | `VYSU_WEB_TIMEOUT` | seconds one agent-browser call may take before vysu stops it (a batch gets 30 s more per command it holds); past it, the session's browser is stopped too, since a page script that never settles holds every later call of that session, and the next command reopens it with the login it had saved. `0`: no ceiling | `60` |
 | `VYSU_WEB_SLOTS` | browser sessions per persona that `claim <persona> --any` picks from (`<persona>`, `<persona>@2`…), each a headless browser of its own | `4` |
 | `VYSU_CHECKER_MODELS` | the model a visual-checker sub-agent runs on, per agent tool, as `family=model` pairs (`claude=sonnet,codex=gpt-5.6-luna`); the family is the caller's name as vysu detects it (`claude:41234` → `claude`). `vysu checker` answers for the caller, `vysu init` writes the Claude Code definition with it | empty: inherit the caller's model |

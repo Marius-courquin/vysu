@@ -31,6 +31,18 @@ const TOKEN_JS =
 const USER_JS =
   "(() => { for (const k of Object.keys(localStorage)) { if (!k.startsWith('@@auth0spajs@@')) continue; try { const t = JSON.parse(localStorage.getItem(k) || '{}'); const u = (t.decodedToken || (t.body && t.body.decodedToken) || {}).user; if (u && u.email) return u.email; } catch (e) {} } return ''; })()";
 
+// When the session's cached login runs out, in seconds since the epoch: the latest `expiresAt`
+// auth0-spa-js wrote beside an access token, 0 when it holds none. The app refreshes it on load when it
+// can, so a login read as expired after the page settled is one the app could not renew.
+const EXPIRES_JS =
+  "(() => { let at = 0; for (const k of Object.keys(localStorage)) { if (!k.startsWith('@@auth0spajs@@') || k.endsWith('@@user@@')) continue; try { const t = JSON.parse(localStorage.getItem(k) || '{}'); if (t.body && t.body.access_token && Number(t.expiresAt) > at) at = Number(t.expiresAt); } catch (e) {} } return String(at); })()";
+
+// A login held, still valid and not sent to a door: what « already signed in » needs, all three. The
+// identity cache alone outlives the token by days, and a page that has not moved yet may be a door.
+export function stillSignedIn(expiresAt: number, nowSeconds: number, door: boolean): boolean {
+  return !door && expiresAt > nowSeconds + 30;
+}
+
 // What the page shows, for a login that found no way in: where it is, and the names of what can be
 // clicked on it.
 const PAGE_JS =
@@ -242,10 +254,12 @@ async function door(v: AuthContext, persona: string, url: string, signin: string
   let clicked = await v.webClickAny(persona, ...signin, { wait: first });
   if (!clicked && holder) {
     const at = v.lastLine((await v.webTry(persona, 'get', 'url')).stdout);
-    if (at.replace(/\/$/, '') !== url.replace(/\/$/, '')) {
+    const page = v.value((await v.webTry(persona, 'eval', PAGE_JS)).stdout);
+    const expires = Number(v.value((await v.webTry(persona, 'eval', EXPIRES_JS)).stdout)) || 0;
+    if (at.replace(/\/$/, '') !== url.replace(/\/$/, '') && stillSignedIn(expires, Math.floor(Date.now() / 1000), showsDoor(page, signin))) {
       if (holder.toLowerCase() !== email.toLowerCase()) {
         v.die(
-          `login: this session is signed in as ${holder}, not ${email} (${pageSays(v.value((await v.webTry(persona, 'eval', PAGE_JS)).stdout))})`,
+          `login: this session is signed in as ${holder}, not ${email} (${pageSays(page)})`,
           fresh(persona),
         );
       }
@@ -328,9 +342,19 @@ export const connector: AuthConnector = {
     // viewer that then hid « Menu » from the logout (iOS 18 and API 30, 2026-09-24).
     await v.mobileRelaunch(platform);
     await v.mobPressAny(platform, 'Autoriser,Allow'); // push permission, asked at first boot
-    if ((await doorOrSignedIn(v, platform)) !== 'door' && !(await logout(v, platform))) {
+    const first = await doorOrSignedIn(v, platform);
+    if (first !== 'door' && !(await logout(v, platform))) {
       // No logout within reach (a screen with no menu, a gate the labels do not name): on Android the
-      // app's data is wiped instead, which signs anyone out, and the door is looked for again.
+      // app's data is wiped instead, which signs anyone out, and the door is looked for again. Only
+      // when the app shows its own signed-in screens, though: a door that simply has not shown yet (a
+      // bundle still loading, Expo's loader, the app in another language than DOOR_TEXT) is no reason to
+      // wipe a login and everything the app keeps.
+      const own = first === 'in' || (await v.mobWaitText(platform, opt(v, 'MENU_LABEL', 'Menu'), 1500)) || (await v.mobWaitText(platform, opt(v, 'LOGOUT_LABEL', 'Se déconnecter'), 1500));
+      if (!own) {
+        v.die(
+          `${platform}: not on the door screen: neither « ${door} » nor the app's « ${opt(v, 'MENU_LABEL', 'Menu')} » showed (still loading, Expo's loader, another language?); the app data is left as it is (VYSU_AUTH0_DOOR_TEXT, VYSU_AUTH0_DOOR_WAIT)`,
+        );
+      }
       if (!(await v.mobileReset(platform)) || (await doorOrSignedIn(v, platform)) !== 'door') {
         v.die(`${platform}: not on the door screen and no way to log out from here${platform === 'android' ? ' (nor after clearing the app data)' : ''}`);
       }

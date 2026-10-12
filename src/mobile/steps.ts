@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die, VysuError } from '../core/errors.ts';
 import type { Platform } from '../core/hold.ts';
+import { ceilingStep } from '../core/ceiling.ts';
 import { i18nAim } from '../core/i18n.ts';
 import { ev, evTouch, now, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
@@ -112,21 +113,11 @@ export async function mtap(p: Platform, args: string[]): Promise<boolean> {
   }
   const t = await tapAim(p, label, partial);
   let pressed: string | null = null;
-  if (t.kind === 'hit') {
-    // iOS: a node the label alone names is pressed through its selector, agent-device's own element
-    // tap; coordinates are kept for what only a point can reach (a card's text, off its photo), since
-    // agent-device 0.21.7+ taps coordinates wrongly under iOS 26's glass (vysu #11).
-    if (p === 'ios' && t.alone) pressed = await adPress(p, calls.press(`label="${t.label}"`, { settle: true }));
-    pressed ??= await adPress(p, calls.pressAt(t.x, t.y, { settle: true }));
-    if (pressed !== null) pressed = `${pressed} · « ${t.label} »${t.note ? ` ${t.note}` : ''}`;
-  } else if (t.kind !== 'hidden') {
-    // Nothing in the snapshot carries it (or there was no snapshot to read): agent-device's own exact
-    // selectors, which read a tree of their own, then with --partial its contains-search.
-    pressed =
-      (await adPress(p, calls.press(`label="${label}"`, { settle: true }))) ??
-      (await adPress(p, calls.press(`text="${label}"`, { settle: true }))) ??
-      (partial ? await adPress(p, calls.findPress(label)) : null);
+  for (const c of tapCalls(p, t, label, partial)) {
+    pressed = await adPress(p, c);
+    if (pressed !== null) break;
   }
+  if (pressed !== null && t.kind === 'hit') pressed = `${pressed} · « ${t.label} »${t.note ? ` ${t.note}` : ''}`;
   if (pressed === null) {
     tell(`vysu: ${p}: ${await tapMissed(p, label, t)}`);
     return false;
@@ -145,8 +136,25 @@ export async function mtap(p: Platform, args: string[]): Promise<boolean> {
   return false;
 }
 
+// The presses a tap tries, in this order, until one goes through. A node found in the snapshot is
+// pressed where tapTarget aims; on iOS a node the label alone names goes through its selector first,
+// agent-device's own element tap, since agent-device 0.21.7+ taps coordinates wrongly under iOS 26's
+// glass (vysu #11), and a point that fails there falls back to the selectors 0.9.2 pressed by. Nothing
+// in the snapshot carries it (or there was no snapshot to read): agent-device's own exact selectors,
+// which read a tree of their own, then with --partial its contains-search.
+export function tapCalls(p: Platform, t: Aim, label: string, partial: boolean): Call[] {
+  const selectors = (l: string): Call[] => [calls.press(`label="${l}"`, { settle: true }), calls.press(`text="${l}"`, { settle: true })];
+  if (t.kind === 'hidden') return [];
+  if (t.kind !== 'hit') return [...selectors(label), ...(partial ? [calls.findPress(label)] : [])];
+  const at = calls.pressAt(t.x, t.y, { settle: true });
+  if (p !== 'ios') return [at];
+  const seen = new Set<string>();
+  const sel = [...selectors(t.label), ...selectors(label)].filter((c) => !seen.has(c.cli.join(' ')) && !!seen.add(c.cli.join(' ')));
+  return t.alone ? [sel[0]!, at, ...sel.slice(1)] : [at, ...sel];
+}
+
 // Where a tap aims, read from a fresh snapshot of the screen; `unread` when there is none to read.
-type Aim = TapTarget | { kind: 'unread' };
+export type Aim = TapTarget | { kind: 'unread' };
 async function tapAim(p: Platform, label: string, partial: boolean): Promise<Aim> {
   pressError = '';
   if (!(await msnap(p))) return { kind: 'unread' };
@@ -455,6 +463,7 @@ export const shotRun = { prefix: '', taken: [] as string[] };
 //   perm <name> grant|deny|reset · press … · longpress … · any other agent-device verb
 // A step's words are read the way a shell quotes them and are never expanded.
 export async function mobileStep(p: Platform, shots: string, step: string): Promise<boolean> {
+  ceilingStep(step.startsWith('relaunch'));
   snapState.fresh = false;
   const rest = (verb: string): string => step.slice(verb.length + 1);
   const is = (verb: string): boolean => step.startsWith(`${verb} `);

@@ -71,11 +71,22 @@ async function landing(persona: string, url: string): Promise<string> {
   return lastLine((await ab(persona, ['get', 'url'], { stderr: 'drop' })).stdout).trim();
 }
 
+// Signed in on the baseline's origin and still sent elsewhere on that same origin: the page is new, the
+// deployed app does not have it yet (a branch adding a screen, diffed against prep). What prep shows
+// is captured, said as such, rather than nothing; another origin (the identity provider) is still a
+// login that did not take. '' when the baseline is not that case.
+export function baselineMissing(why: string, origin: string): string {
+  const m = /^lands on (\S+) instead of /.exec(why);
+  if (!m) return '';
+  return `baseline: ${origin.replace(/^https?:\/\//, '')} has no such page (landed on ${m[1]})`;
+}
+
 // Before a baseline is captured: is it the page the persona would see? When not, the persona is
 // logged in on the baseline's origin through the project's auth connector (its session there is the
 // same browser profile, one login per origin), and looked at again; a baseline that still lands
-// elsewhere is refused rather than diffed.
-async function baselineReady(persona: string, url: string, baseurl: string): Promise<void> {
+// elsewhere is refused rather than diffed, unless only the page is missing there (baselineMissing),
+// which is answered as a line to print.
+async function baselineReady(persona: string, url: string, baseurl: string): Promise<string> {
   const origin = where(baseurl)?.origin ?? baseurl;
   const astray = async (): Promise<string> => {
     const landed = await landing(persona, baseurl);
@@ -84,7 +95,7 @@ async function baselineReady(persona: string, url: string, baseurl: string): Pro
     return baselineAstray(baseurl, landed, await landing(persona, url));
   };
   let why = await astray();
-  if (!why) return;
+  if (!why) return '';
   const anonymous = persona.replace(/@\d+$/, '') === '-';
   const c = config();
   const refuse = (more: string): never =>
@@ -104,7 +115,8 @@ async function baselineReady(persona: string, url: string, baseurl: string): Pro
     refuse(` and the login there failed (${e.message})`);
   }
   why = await astray();
-  if (why) refuse(` even signed in (the page may not exist on ${origin} yet)`);
+  if (!why) return '';
+  return baselineMissing(why, origin) || refuse(` even signed in (the page may not exist on ${origin} yet)`);
 }
 
 // diff's --ignore for the boxes a selector resolved to, one `--ignore=<box>` each: a box starting left
@@ -184,13 +196,14 @@ export async function shots(persona: string, name: string, args: string[], print
   // Nothing below the fold to reveal without --full: the capture stops at the window either way.
   if (!full) warm = false;
   const diffing = !!(baseline || baseurl);
-  if (baseurl) await baselineReady(persona, url, baseurl);
+  const missing = baseurl ? await baselineReady(persona, url, baseurl) : '';
   // A diff taken on a page that still moves reads as a change: the baseline modes freeze by themselves.
   if (diffing) freeze = true;
 
   const dir = join(c.shots, name);
   mkdirSync(dir, { recursive: true });
-  if (diffing) writeFileSync(join(dir, 'diff.txt'), '');
+  if (diffing) writeFileSync(join(dir, 'diff.txt'), missing ? `${missing}\n` : '');
+  if (missing) print(`${missing}\n`);
   // The boxes of an --ignore selector are resolved viewport by viewport (a header is not the same
   // box at 360 and at 1440), inside the batch, and read back from its results.
   const ignJs = ignore.length ? ignoreJs(ignore.filter(Boolean), full) : '';

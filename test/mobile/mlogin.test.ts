@@ -125,7 +125,7 @@ test('a door slow to show is waited for in turns with the signed-in marker, with
   ]);
   // Neither ever shows: the budget bounds the looks (8 s: two turns, the second one shorter).
   const never = fake({ cfg: { AUTH0_DOOR_WAIT: '8' }, sees: (t) => t !== 'Se connecter' && t !== 'Menu' && t !== 'Se déconnecter' });
-  await assert.rejects(auth0.mobileLogin(never.v, 'ios', 'alice'), /die: ios: not on the door screen and no way to log out from here$/);
+  await assert.rejects(auth0.mobileLogin(never.v, 'ios', 'alice'), /die: ios: not on the door screen: neither « Se connecter » nor the app's « Menu » showed .*the app data is left as it is/);
   const doors = never.calls.filter((c) => c.startsWith('wait ios Se connecter') || c === 'wait ios Menu 1500');
   assert.deepEqual(doors.slice(0, 4), ['wait ios Se connecter 4000', 'wait ios Menu 1500', 'wait ios Se connecter 2500', 'wait ios Menu 1500']);
 });
@@ -143,6 +143,13 @@ test('android with no logout within reach: the app data cleared, then the door',
   // A reset that cannot be done (or that brings no door) ends the login, saying what was tried.
   const no = fake({ sees: (t) => t !== 'Se connecter' && t !== 'Se déconnecter' });
   await assert.rejects(auth0.mobileLogin(no.v, 'android', 'alice'), /die: android: not on the door screen and no way to log out from here \(nor after clearing the app data\)/);
+});
+
+test('android with neither the door nor the app showing: the app data is not cleared', async () => {
+  // The bundle still loading: no door, no menu, no logout, ever.
+  const f = fake({ reset: true, cfg: { AUTH0_DOOR_WAIT: '4' }, sees: () => false });
+  await assert.rejects(auth0.mobileLogin(f.v, 'android', 'alice'), /not on the door screen: neither « Se connecter » nor the app's « Menu » showed/);
+  assert.ok(!f.calls.includes('reset android'), f.calls.join('\n'));
 });
 
 test('an ANR dialog over the Custom Tab: answered, and the form looked for again', async () => {

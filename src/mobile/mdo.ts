@@ -5,6 +5,7 @@
 // scripts were made of are in `mobileStep`, so `mflow` and `mrec` read them too.
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { ceilingStep } from '../core/ceiling.ts';
 import { config } from '../core/ctx.ts';
 import { SHEET_EDGE } from '../core/config.ts';
 import { die, exit, VysuError } from '../core/errors.ts';
@@ -105,6 +106,15 @@ export function mdoDetail(out: string[]): string {
   return /^\/.*\.png$/.test(line) ? basename(line) : line;
 }
 
+// A step that only looks (a wait, an expect, a capture, the screen) can run twice; one that acts (a
+// tap, a fill, a key, a relaunch…) only when its error says the touch never reached the app: a press
+// that went through before the dialog came would otherwise be made twice (a second « Envoyer »).
+const LOOKS = /^(#|$|wait |expect |screen$|shot |sleep )/;
+export function anrRetryable(step: string, err: string[]): boolean {
+  if (LOOKS.test(step)) return true;
+  return err.some((l) => /system dialog is blocking (press|click|tap|fill|type)/i.test(l));
+}
+
 // What a run leaves to be undone if vysu dies halfway through a step (a lock given up, an i18n key that
 // does not exist): the devices whose text size it changed, and the one the command started on.
 const run = { platform: 'ios' as Platform, home: '', changed: [] as string[], failed: 0, n: 0 };
@@ -118,8 +128,9 @@ async function mdoStep(p: Platform, shots: string, n: number, step: string): Pro
     screenFollows.on = true;
     let r = await captured(() => mobileStep(p, shots, step));
     // A step that failed under Android's « <app> ne répond pas » failed on the dialog, not on the
-    // screen it was written for: the dialog answered « Attendre », the step runs once more.
-    if (!r.value && p === 'android') {
+    // screen it was written for: the dialog answered « Attendre », the step runs once more, when running
+    // it again cannot act twice.
+    if (!r.value && p === 'android' && anrRetryable(step, r.err)) {
       const pkg = await anrClear(p);
       if (pkg) {
         say(`  (an ANR dialog was over the screen, ${pkg} not responding: pressed « Attendre », step run again)`);
@@ -155,6 +166,8 @@ async function mdoStep(p: Platform, shots: string, n: number, step: string): Pro
 // third step the caller wrote, whichever device and text size it failed on. False when the run has to
 // stop there (a failure without --keep-going).
 async function mdoRun(p: Platform, shots: string, keep: boolean, steps: string[]): Promise<boolean> {
+  // A run of a matrix starts on a relaunch (another device, another text size) and a session to open.
+  ceilingStep(true);
   await mdoSession(p);
   await mscreenReset(p);
   let n = 0;

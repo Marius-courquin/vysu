@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { firstSentence, msOf, pyG, secondsOk, shellWords, WordsError } from '../../src/mobile/words.ts';
-import { mdoDetail, mdoEcho, mdoReason } from '../../src/mobile/mdo.ts';
+import { anrRetryable, mdoDetail, mdoEcho, mdoReason } from '../../src/mobile/mdo.ts';
 import { cropPixels } from '../../src/mobile/rec.ts';
 import { androidLocaleOf, iosLocaleOf } from '../../src/mobile/launch.ts';
 import { pyFloat } from '../../src/mobile/png.ts';
@@ -71,4 +71,17 @@ test('agent-device versions against tools.env', () => {
   assert.ok(!versionBelow('0.21.6', '0.21.6'));
   assert.ok(!versionBelow('0.22.0', '0.21.6'));
   assert.ok(versionBelow('0.9.9', '0.21.0'));
+});
+
+test('under an ANR dialog, a step runs again only if it cannot act twice', () => {
+  assert.equal(anrRetryable('wait "Récents"', []), true);
+  assert.equal(anrRetryable('expect no "Erreur"', []), true);
+  assert.equal(anrRetryable('screen', []), true);
+  assert.equal(anrRetryable('shot list', []), true);
+  // An act whose press may already have landed: not again.
+  assert.equal(anrRetryable('tap "Envoyer"', ['vysu: android: « Envoyer » is on screen, but the press failed (timeout)']), false);
+  assert.equal(anrRetryable('key return', []), false);
+  // The dialog refused the press: it never reached the app.
+  assert.equal(anrRetryable('tap "Envoyer"', ['vysu: android: « Envoyer » is on screen, but the press failed (Android system dialog is blocking click: Application Not Responding: x)']), true);
+  assert.equal(anrRetryable('press 10 20', ['Error (COMMAND_FAILED): Android system dialog is blocking press: Application Not Responding']), true);
 });

@@ -62,7 +62,8 @@ that boots a device a minute or two. Give the shell tool call itself a 5-minute 
 Code: the Bash call's `timeout` parameter; Codex: its exec timeout): left at 2 minutes, the tool
 moves the command to the background, where its answer is lost and the next command races it. Never
 prefix the command with `timeout 300`: macOS has no `timeout`, and vysu bounds its own calls
-(`VYSU_MOBILE_TIMEOUT`, 300 s by default; `VYSU_WEB_TIMEOUT` on the web).
+(`VYSU_MOBILE_TIMEOUT`, 300 s by default, per step for `mdo` / `mflow` / `mrec`, none for a stream
+such as `vysu adb logcat`; `VYSU_WEB_TIMEOUT` on the web).
 
 ```bash
 vysu claim ios --any                          # a free simulator, yours for the task (renewed on use)

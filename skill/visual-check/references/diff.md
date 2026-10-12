@@ -55,7 +55,9 @@ a zone on one run out of two.
   shorthand for "the same path on `VYSU_BASELINE_ORIGIN`" - the deployed main against which a
   branch served locally is read, without a checkout. The persona must have logged in on that origin
   once: `vysu login <p> <baseline-origin>/<login path>`. The reference captures stay in the folder
-  as `<size>-base.png`.
+  as `<size>-base.png`. A page the deployed app does not have yet (signed in, it still lands
+  elsewhere on that origin) is captured as it lands, under a line `baseline: <host> has no such
+  page (landed on <path>)`: every viewport then reads « changed », which is the new page itself.
 - A non-empty diff on a screen the change does not touch is a **defect to explain**. Expected
   noise: relative timestamps ("3 min ago"), about 0.1 % - neutralise it with `--ignore` rather than
   excusing it.

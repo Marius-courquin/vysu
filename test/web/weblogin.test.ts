@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AuthContext } from '../../src/auth/types.ts';
 import { clickArgs } from '../../src/auth/context.ts';
-import { connector as auth0, pageSays, showsDoor } from '../../src/connectors/auth/auth0.ts';
+import { connector as auth0, pageSays, showsDoor, stillSignedIn } from '../../src/connectors/auth/auth0.ts';
 
 const ORIGIN = 'http://localhost:8100';
 const AUTH = 'https://auth.example.com/u/login/identifier?state=x';
@@ -23,6 +23,7 @@ interface Script {
   holder?: string; // the e-mail of the login the session holds before
   after?: string; // … and after the password (default: the persona's)
   landed?: Page; // where the app comes back after Auth0
+  expires?: number; // when the cached token runs out (default: in an hour)
 }
 
 function fake(s: Script): { v: AuthContext; calls: string[] } {
@@ -46,6 +47,7 @@ function fake(s: Script): { v: AuthContext; calls: string[] } {
       if (args[0] === 'get' && args[1] === 'url') return { code: 0, stdout: page.url, stderr: '' };
       const js = args[1] ?? '';
       if (js.includes('decodedToken')) return { code: 0, stdout: JSON.stringify(holder), stderr: '' };
+      if (js.includes('expiresAt')) return { code: 0, stdout: JSON.stringify(String(holder ? (s.expires ?? Math.floor(Date.now() / 1000) + 3600) : 0)), stderr: '' };
       if (js.includes('querySelectorAll')) return { code: 0, stdout: JSON.stringify(JSON.stringify({ url: page.url, names: page.names ?? [] })), stderr: '' };
       return { code: 0, stdout: 'true', stderr: '' };
     },
@@ -157,6 +159,18 @@ test('a login that has expired: the door shows after the short look, the rest of
   await capture(() => auth0.webLogin(v, 'alice', LOGIN));
   assert.ok(calls.includes('click Commencer,Se connecter wait 11'));
   assert.ok(calls.includes('web wait --url **/u/login**'));
+});
+
+test('a login held but expired, or a page that is a door after all: not « already signed in »', async () => {
+  // The identity is still cached, the token ran out an hour ago: the rest of the wait goes to the door.
+  const home = { url: `${ORIGIN}/community/news`, names: ['Menu'] };
+  const { v, calls } = fake({ start: { [LOGIN]: home }, holder: 'a@b.fr', expires: Math.floor(Date.now() / 1000) - 3600 });
+  await assert.rejects(() => auth0.webLogin(v, 'alice', LOGIN), /no sign-in button/);
+  assert.ok(calls.includes('click Commencer,Se connecter wait 11'), calls.join('\n'));
+  assert.equal(stillSignedIn(2000, 1000, false), true);
+  assert.equal(stillSignedIn(1010, 1000, false), false);
+  assert.equal(stillSignedIn(0, 1000, false), false);
+  assert.equal(stillSignedIn(5000, 1000, true), false);
 });
 
 test('signed in as someone else: said, with the way to a clean session', async () => {

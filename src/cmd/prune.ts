@@ -89,10 +89,15 @@ export function lastTouched(dir: string): number {
   return t;
 }
 
-// Why a folder is kept although it matched, or '' to drop it.
-export function keptBecause(dir: string, me: string, nowMs = Date.now(), gone = ownerGone): string {
+// A session that runs for days (a human's terminal, a long-lived agent) is still alive long after
+// its captures stopped mattering: with an age asked for, it protects only what it wrote today.
+export const LIVE_OWNER_HOURS = 24;
+
+// Why a folder is kept although it matched, or '' to drop it. `aged`: the prune is bounded by age.
+export function keptBecause(dir: string, me: string, nowMs = Date.now(), gone = ownerGone, aged = false): string {
   const age = nowMs - lastTouched(dir);
   if (age < RECENT_HOURS * 3_600_000) return `touched ${Math.max(1, Math.round(age / 60_000))} min ago`;
+  if (aged && age >= LIVE_OWNER_HOURS * 3_600_000) return '';
   const who = metaRead(dir).owner;
   if (typeof who === 'string' && who && who !== me && !gone(who)) return `written by ${who}, still running`;
   return '';
@@ -127,7 +132,7 @@ export async function run(args: string[]): Promise<void> {
   const dirs: string[] = [];
   let kept = 0;
   for (const d of pruneable(shots, days, match)) {
-    const why = force ? '' : keptBecause(d, me);
+    const why = force ? '' : keptBecause(d, me, Date.now(), ownerGone, !!days);
     if (!why) dirs.push(d);
     else {
       kept++;

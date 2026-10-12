@@ -34,7 +34,7 @@ import { adb, adbShell, androidAvdOf, androidSelect, androidSerial, emulatorSeri
 import { say, tell } from './io.ts';
 import { mobileKind } from './launch.ts';
 import { metroPort } from './metro.ts';
-import { admit, androidMaxRunning, budgetLine, iosMaxBooted, reapIdle, reapSoon } from './reap.ts';
+import { admit, androidMaxRunning, bootMark, budgetLine, iosMaxBooted, reapIdle, reapSoon } from './reap.ts';
 import { mstateFile, mstateLine } from './state.ts';
 import { adbPath, emulatorPath, needMac, xcrun } from './tools.ts';
 
@@ -316,7 +316,11 @@ export async function claimAny(p: Platform, minutes: number, note: string, nowai
     // No room: what nobody uses is stopped, at most every 30 s, and the pick made again.
     if (Date.now() - reapedAt >= 30000) {
       reapedAt = Date.now();
-      if (await reapIdle({ pressure: true, print: (l) => tell(`vysu: ${l}`) })) {
+      const room = async (): Promise<boolean> => {
+        await poolLoad(p);
+        return (await poolPick(p)).action !== '';
+      };
+      if (await reapIdle({ pressure: p, room, print: (l) => tell(`vysu: ${l}`) })) {
         poolForget();
         continue;
       }
@@ -405,6 +409,7 @@ async function iosBoot(): Promise<boolean> {
   if (udid === 'booted') return false;
   await admit('ios', devices.ios);
   ceilingDoing(`booting « ${devices.ios} »`);
+  bootMark('ios', devices.ios);
   await xcrun(['simctl', 'boot', udid]);
   await simulatorWindow();
   await xcrun(['simctl', 'bootstatus', udid], { timeoutMs: 180000 });
@@ -459,6 +464,7 @@ export function startEmulator(avd: string): void {
     quickboot: quick === '1',
   });
   ceilingDoing(`starting the emulator « ${avd} »`);
+  bootMark('android', avd);
   spawnDetached(emulatorPath(), args, { log: join(config().logs, 'android-emulator.log') });
 }
 async function androidStart(): Promise<boolean> {

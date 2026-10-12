@@ -30,11 +30,26 @@ const read = (p: string): string => {
 // « <port> <pid> <dir> ». The pid is the process that listened when `up` saw the Metro healthy, so
 // `down metro` never kills what another owner later started on a port this one left.
 export const isolatedFile = (): string => join(config().state, `metro-port.${slug(owner())}`);
-function isolatedRecord(): { port: string; pid: string; dir: string } | null {
+// The owner itself rides on a second line (« owner=claude:41234 »): the file is named after its slug,
+// and a slug cannot be read back into an owner (VYSU_OWNER=checker-2 read as pid 2, « Code
+// Helper (Plugin):123 » never matched again), which is how the idle reaper took a live sub-agent's
+// Metro for an orphan. 0.9.2 reads the first line's words and shows the rest as the folder.
+export interface MetroRecord {
+  port: string;
+  pid: string;
+  dir: string;
+  owner: string; // '' in a record an older vysu wrote
+}
+export function parseMetroRecord(text: string): MetroRecord {
+  const [first = '', ...rest] = text.split('\n');
+  const [port = '', pid = '', ...dir] = first.split(' ');
+  const who = rest.find((l) => l.startsWith('owner='))?.slice('owner='.length) ?? '';
+  return { port, pid, dir: dir.join(' '), owner: who };
+}
+export const metroRecordText = (port: string, pid: string, dir: string, who = owner()): string => `${port} ${pid} ${dir}\nowner=${who}\n`;
+function isolatedRecord(): MetroRecord | null {
   const t = read(isolatedFile());
-  if (!t) return null;
-  const [port = '', pid = '', ...dir] = t.replace(/\n$/, '').split(' ');
-  return { port, pid, dir: dir.join(' ') };
+  return t ? parseMetroRecord(t) : null;
 }
 export const isolatedPort = (): string => isolatedRecord()?.port ?? '';
 // The port every owner without an isolated Metro shares: the config's, else 8081.
@@ -233,7 +248,7 @@ export async function metroReserve(p: Platform, portIn: string, dir: string): Pr
     if (!existsSync(join(dir, 'package.json'))) die(`vysu up ${p} --isolated: ${dir} holds no package.json (the Expo app folder)`);
     mkdirSync(config().logs, { recursive: true });
     mkdirSync(config().state, { recursive: true });
-    writeFileSync(isolatedFile(), `${port} 0 ${dir}\n`);
+    writeFileSync(isolatedFile(), metroRecordText(port, '0', dir));
     return port;
   } finally {
     lockDrop('metro-ports');
@@ -259,10 +274,10 @@ export async function metroIsolatedUp(p: Platform, portIn: string, dir: string, 
     await waitHttp(`http://localhost:${port}/status`, 180, `metro :${port} (see ${log})`);
   } catch (e) {
     // A Metro that never answered keeps no port on record, as before the record came first.
-    if (read(isolatedFile()) === `${port} 0 ${dir}\n`) rmSync(isolatedFile(), { force: true });
+    if (read(isolatedFile()) === metroRecordText(port, '0', dir)) rmSync(isolatedFile(), { force: true });
     throw e;
   }
-  writeFileSync(isolatedFile(), `${port} ${metroListenerPid(port)} ${dir}\n`);
+  writeFileSync(isolatedFile(), metroRecordText(port, metroListenerPid(port), dir));
   say(`metro: isolated on :${port} for ${owner()}, from ${dir} (log: ${log})`);
   say('metro: an isolated Metro costs ~1-1.5 GB of RAM (vysu down metro once the phase is over)');
 }

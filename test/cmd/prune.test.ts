@@ -29,3 +29,15 @@ test('a folder touched in the last hours, or written by another live owner, is k
   assert.equal(keptBecause(dir, 'me:1', Date.now(), () => true), '');
   assert.equal(keptBecause(dir, 'claude:42', Date.now(), () => false), '');
 });
+
+test('with an age bound, a live owner protects only what it touched in the last 24 h', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vysu-prune-'));
+  writeFileSync(join(dir, 'meta.json'), JSON.stringify({ owner: 'Terminal:882' }));
+  old(join(dir, 'meta.json'), 72);
+  old(dir, 72);
+  assert.equal(keptBecause(dir, 'me:1', Date.now(), () => false), 'written by Terminal:882, still running');
+  assert.equal(keptBecause(dir, 'me:1', Date.now(), () => false, true), '');
+  old(join(dir, 'meta.json'), 12);
+  old(dir, 12);
+  assert.equal(keptBecause(dir, 'me:1', Date.now(), () => false, true), 'written by Terminal:882, still running');
+});

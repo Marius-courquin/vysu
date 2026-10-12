@@ -215,30 +215,43 @@ export function pointAtIsolated(c: Config): string {
 // (its login saved and restored by the next call) and the next call relaunches it with the right one.
 const ruleFile = (c: Config, session: string): string => join(c.state, `session-rule.${slug(session)}`);
 
+// Two owners on one persona, one isolated and one not, close each other's browser at every turn: the
+// page each was on is gone, and the other one's next call opens on its home. Said whole, so it is not
+// a silent loss: whose view it was, the page it showed, and that it is not reopened there. vysu 0.9.2
+// knows nothing of these rules: a browser it launched or drives shows whatever the browser was
+// launched with, the isolated worktree included, until it is closed.
+export function followLine(session: string, had: string, by: string, url: string, rule: string): string {
+  const view = (r: string): string => {
+    const m = /MAP (\S+) \S+:(\d+)$/.exec(r);
+    return m ? `${m[1]} served from :${m[2]}` : 'the shared server';
+  };
+  const showing = url && url !== 'about:blank' ? `, showing ${url}` : '';
+  const reopen = showing ? ', its login kept but not that page (open it again)' : ' (login kept)';
+  return `vysu: ${session} was open on ${view(had)}${by ? ` for ${by}` : ''}${showing}: closed, the next call reopens it on ${view(rule)}${reopen}`;
+}
+
 export async function sessionFollows(c: Config, persona: string, rule: string): Promise<void> {
   const { ab, daemonPidFile, sessionOf, stopSessionBrowser, webLockOf } = await import('../web/ab.ts');
   const session = sessionOf(persona);
   const file = ruleFile(c, session);
-  const had = read(file).trim();
+  const [had = '', ...rest] = read(file).trim().split('\n');
+  const by = rest.find((l) => l.startsWith('by='))?.slice(3) ?? '';
   if (had === rule) return;
   if (!rule && !existsSync(file)) return;
   await lockTake(webLockOf(persona));
   const pid = Number(read(daemonPidFile(session)).trim());
   if (pid > 0 && processName(pid).includes('agent-browser')) {
+    const url = (await ab(persona, ['get', 'url'], { stderr: 'drop' })).stdout.trim().split('\n').pop() ?? '';
     await ab(persona, ['close'], { stderr: 'drop' });
     // The daemon answers `close` before it is gone, and a call made in between still finds the old
     // browser: its end is waited for, and forced past five seconds.
     for (let i = 0; i < 50 && processName(pid).includes('agent-browser'); i++) await sleep(100);
     if (processName(pid).includes('agent-browser')) stopSessionBrowser(session);
-    const view = (r: string): string => {
-      const m = /MAP (\S+) \S+:(\d+)$/.exec(r);
-      return m ? `${m[1]} served from :${m[2]}` : 'the shared server';
-    };
-    process.stderr.write(`vysu: ${session} was open on ${view(had)}: closed, the next call reopens it on ${view(rule)} (login kept)\n`);
+    process.stderr.write(`${followLine(session, had, by, url, rule)}\n`);
   }
   if (rule) {
     mkdirSync(c.state, { recursive: true });
-    writeFileSync(file, `${rule}\n`);
+    writeFileSync(file, `${rule}\nby=${owner()}\n`);
   } else rmSync(file, { force: true });
 }
 

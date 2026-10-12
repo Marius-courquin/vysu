@@ -4,23 +4,23 @@
 // vysu in the same ten minutes, and the emulators crashed with ANRs. There is no daemon to watch the
 // devices: the idle ones are stopped on the way, by the commands that need room (`claim`, `up`,
 // `devices`, any boot), and by `vysu down idle`. A boot then waits for room: a budget of devices per
-// platform and a floor of free memory.
+// platform and a floor of free memory. Only what vysu booted itself is ever stopped, and anything
+// another project, an older vysu, agent-device or a person may be using right now is kept.
 import { readdirSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
-import { claimField, lockAlive, lockDrop, lockTry, owner, usedRead, type Platform } from '../core/hold.ts';
-import { isLinux, isMac, isWindows, processName } from '../core/host.ts';
+import { claimField, lockAlive, lockDrop, lockTry, owner, ownerGone, usedRead, type Platform } from '../core/hold.ts';
+import { isLinux, isMac, isWindows } from '../core/host.ts';
 import { killPort } from '../core/net.ts';
 import { run } from '../core/proc.ts';
 import { hhmm, nowSeconds, sleep, slug } from '../core/text.ts';
-import { sessionName } from './agent.ts';
-import { adbRaw, emulatorSerials } from './device.ts';
+import { adbRaw, androidAvdOf, emulatorSerials } from './device.ts';
 import { say, tell } from './io.ts';
-import { metroLog, metroPidListening } from './metro.ts';
+import { metroLog, metroPidListening, parseMetroRecord } from './metro.ts';
 import { androidNames, claimState, iosNames, pool, poolForget, poolLine, poolLoad, poolSerial, poolSim } from './pool.ts';
-import { mstateField, mstateFile } from './state.ts';
+import { mstateField } from './state.ts';
 import { xcrun } from './tools.ts';
 
 // --- the settings ------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ export const memoryFloor = (): number => whole(config().get('MEMORY_MIN_FREE'), 
 // coming back, and the one waiting is.
 export const PRESSURE_IDLE_SECONDS = 120;
 
-// --- when a device was last used ---------------------------------------------------------------
+// --- when a device started ---------------------------------------------------------------------
 
 // `ps -o etime`: « [[dd-]hh:]mm:ss ».
 export function etimeSeconds(s: string): number {
@@ -49,8 +49,8 @@ export function etimeSeconds(s: string): number {
 }
 
 // When each device started, from one `ps -A -o etime=,args=`: an emulator by the AVD its qemu runs
-// (`-avd <name>`), a simulator by the UDID in its launchd_sim's path. A device nobody has driven since
-// it booted (or only an older vysu, which leaves no record of use) is idle from its boot.
+// (`-avd <name>`), a simulator by the UDID in its launchd_sim's path: what a boot marker is matched
+// against, and what a device vysu booted and nobody has driven since is idle from.
 export function deviceStarts(ps: string, now: number): Map<string, number> {
   const out = new Map<string, number>();
   const keep = (key: string, at: number): void => {
@@ -99,55 +99,145 @@ const list = (dir: string): string[] => {
 };
 const minutes = (s: number): string => `${Math.max(0, Math.round(s / 60))} min`;
 
-// An owner by the slug its files carry (« claude-41234 »): gone when its pid is, or runs something
-// else now. An owner named by hand has no pid to look at, and is never gone.
-export function slugOwnerGone(s: string, nameOf: (pid: number) => string = processName): boolean {
-  const m = /^(.+)-(\d+)$/.exec(s);
-  if (!m) return false;
-  const now = nameOf(Number(m[2]));
-  if (!now) return true;
-  if (m[1] === 'shell') return false;
-  return slug(now) !== m[1];
-}
-const slugOwnerText = (s: string): string => s.replace(/-(\d+)$/, ':$1');
+// --- who else may be using a device ------------------------------------------------------------
 
-// A claim alive right now, of this owner (by slug) or of anybody's on a device.
-function liveClaims(): Array<{ r: string; who: string }> {
-  const dir = config().claims;
-  const out: Array<{ r: string; who: string }> = [];
-  for (const r of list(dir)) {
-    if (r.startsWith('.')) continue;
-    const f = join(dir, r);
-    if (!(nowSeconds() < Number(claimField(f, 'until') || 0))) continue;
-    out.push({ r, who: claimField(f, 'owner') });
+// A simulator or an emulator is the machine's, not the project's: another project's vysu keeps its
+// own state folder (~/.vysu/<project>), an older vysu records no use at all, agent-device names its
+// sessions after whichever project opened them (« veilleuse-ios-iphone-17-pro » beside
+// « nidz-ios-iphone-17-pro »), and a person may be at the Simulator window. Every trace any of them
+// leaves is read, and what cannot be told apart is kept.
+export function stateDirs(): string[] {
+  const root = join(homedir(), '.vysu');
+  const out = [config().state];
+  for (const d of list(root)) {
+    const p = join(root, d);
+    try {
+      if (statSync(p).isDirectory()) out.push(p);
+    } catch {
+      // gone meanwhile
+    }
   }
-  return out;
+  return [...new Set(out)];
 }
-const deviceLocked = (r: string): boolean => {
-  const d = join(config().locks, r);
+
+// The agent-device sessions bound to a device, whatever project prefixes their name: vysu names one
+// « <project>-<platform>-<device slug> ».
+export function journalsOf(sessions: string[], p: Platform, name: string): string[] {
+  const tail = `-${p}-${slug(name)}`;
+  return sessions.filter((s) => s.endsWith(tail));
+}
+const agentDeviceDir = (): string => process.env.AGENT_DEVICE_STATE_DIR || join(homedir(), '.agent-device');
+// When agent-device last wrote to any session journal of that device.
+function journalTouched(p: Platform, name: string): number {
+  const dir = join(agentDeviceDir(), 'sessions');
+  let at = 0;
+  for (const s of journalsOf(list(dir), p, name)) at = Math.max(at, mtime(join(dir, s, 'events.ndjson')));
+  return at;
+}
+
+// --- vysu's own boots --------------------------------------------------------------------------
+
+// vysu stops only a device it booted itself, in the boot running now: one that a person, another
+// tool or a version of vysu without this marker started is somebody's, however quiet it looks (the
+// reaper of 12/10 counted a simulator « idle since it booted » when nothing it could read said
+// otherwise). Each boot vysu asks for (up, claim --any, a clone) writes the moment it asked; the
+// device's own start, read from `ps`, has to fall right after it.
+export const BOOT_WINDOW_SECONDS = 240;
+const markName = (p: Platform, name: string): string => `booted-${p}-${slug(name)}`;
+
+export function bootMark(p: Platform, name: string): void {
+  try {
+    mkdirSync(config().state, { recursive: true });
+    writeFileSync(join(config().state, markName(p, name)), `${nowSeconds()} ${owner()}\n`);
+  } catch {
+    // no marker: the device is only ever kept
+  }
+}
+
+// The boot a marker was written for is the one running: the device started between a few seconds
+// before vysu asked (clocks read a second apart) and the longest a boot takes to start its process.
+export function bootedByVysu(marks: number[], bootAt: number): boolean {
+  return bootAt > 0 && marks.some((m) => m > 0 && bootAt >= m - 10 && bootAt <= m + BOOT_WINDOW_SECONDS);
+}
+
+// --- when a device was last used ---------------------------------------------------------------
+
+export interface Use {
+  at: number;
+  by: string;
+}
+export interface DeviceSeen {
+  claimedBy: string; // a live claim in any state folder, '' for none
+  locked: boolean; // a command of any state folder on it right now
+  bootAt: number; // its start, from `ps`; 0 unknown
+  marks: number[]; // vysu's boot markers for it
+  uses: Use[]; // every record of use: vysu's, its state, agent-device's journals, the screen reads
+}
+export interface Verdict {
+  stop: boolean;
+  last: number;
+  why: string;
+}
+
+export function deviceVerdict(d: DeviceSeen, now: number, limit: number): Verdict {
+  if (d.claimedBy) return { stop: false, last: 0, why: `claimed by ${d.claimedBy}` };
+  if (d.locked) return { stop: false, last: 0, why: 'in use right now' };
+  // Windows has no `ps`, and a device can start between two reads: no start, no way to tell whose.
+  if (!d.bootAt) return { stop: false, last: 0, why: '(its boot time cannot be read)' };
+  if (!bootedByVysu(d.marks, d.bootAt)) return { stop: false, last: 0, why: `(booted at ${hhmm(d.bootAt)}, not by vysu: left to whoever started it)` };
+  let use: Use = { at: 0, by: '' };
+  for (const u of d.uses) if (u.at > use.at) use = u;
+  const last = Math.max(d.bootAt, use.at);
+  const since = last === d.bootAt && d.bootAt > use.at ? `booted at ${hhmm(last)}, unused since` : `last used${use.by ? ` by ${use.by}` : ''} at ${hhmm(last)}`;
+  if (now - last < limit) return { stop: false, last, why: `(${since}, idle ${minutes(now - last)})` };
+  return { stop: true, last, why: `idle ${minutes(now - last)}, ${since}` };
+}
+
+const claimLive = (f: string): string => (nowSeconds() < Number(claimField(f, 'until') || 0) ? claimField(f, 'owner') || 'somebody' : '');
+const lockIn = (dir: string, r: string): boolean => {
+  const d = join(dir, 'locks', r);
   try {
     return statSync(d).isDirectory() && lockAlive(d);
   } catch {
     return false;
   }
 };
-// The last use of every device, or of one owner's.
-function lastUseBy(ownerSlug = ''): number {
+
+// Everything on record about one device, across every state folder.
+function seen(p: Platform, name: string, bootAt: number): DeviceSeen {
+  const r = `${p}-${slug(name)}`;
+  const dirs = stateDirs();
+  const own = config().state;
+  let claimedBy = claimState(r) ? claimField(join(config().claims, r), 'owner') || 'somebody' : '';
+  let locked = lockIn(own, r);
+  const marks: number[] = [];
+  const uses: Use[] = [{ at: journalTouched(p, name), by: '' }];
+  for (const dir of dirs) {
+    // This project's claims go through claimState, which drops an expired or orphaned one.
+    if (dir !== own) {
+      claimedBy ||= claimLive(join(dir, 'claims', r));
+      locked ||= lockIn(dir, r);
+    }
+    const [mark = '0'] = read(join(dir, markName(p, name))).trim().split(' ');
+    if (Number(mark)) marks.push(Number(mark));
+    const [who = '', at = '0'] = read(join(dir, 'used', r)).trim().split(' ');
+    uses.push({ at: Number(at) || 0, by: who });
+    const f = join(dir, `state-${p}-${slug(name)}.env`);
+    uses.push({ at: Number(mstateField(f, 'at')) || 0, by: mstateField(f, 'by') });
+    uses.push({ at: mtime(join(dir, `.snap-${p}-${slug(name)}.json`)), by: '' });
+  }
+  return { claimedBy, locked, bootAt, marks, uses };
+}
+
+// An owner of this project: the last use of every device, or of one owner's.
+function lastUseBy(who = ''): number {
   let at = 0;
   for (const r of list(join(config().state, 'used'))) {
     const u = usedRead(r);
-    if (ownerSlug && slug(u.who) !== ownerSlug) continue;
+    if (who && u.who !== who) continue;
     at = Math.max(at, u.at);
   }
   return at;
-}
-
-// What any version of vysu leaves on every device call, the installed one included: agent-device's
-// journal of the device's session, and the last screen read. The record of use only exists from this
-// version on, and an agent still on an older one drives the device without writing it.
-function lastTouched(p: Platform, name: string): number {
-  const ad = process.env.AGENT_DEVICE_STATE_DIR || join(homedir(), '.agent-device');
-  return Math.max(mtime(join(ad, 'sessions', sessionName(p, name), 'events.ndjson')), mtime(join(config().state, `.snap-${p}-${slug(name)}.json`)));
 }
 
 // --- stopping what nobody uses -----------------------------------------------------------------
@@ -155,7 +245,10 @@ function lastTouched(p: Platform, name: string): number {
 export interface ReapOptions {
   dry?: boolean;
   minutes?: number;
-  pressure?: boolean;
+  // A boot that has no room: only that platform's devices, the longest idle first, and no more than
+  // it takes for `room` to say there is some.
+  pressure?: Platform;
+  room?: () => Promise<boolean>;
   // Also say what is kept, and why (the dry run).
   verbose?: boolean;
   print: (line: string) => void;
@@ -167,15 +260,16 @@ interface Up {
   id: string; // the UDID, or the emulator's serial
 }
 
-async function upDevices(): Promise<Up[]> {
+async function upDevices(only?: Platform): Promise<Up[]> {
   const out: Up[] = [];
-  if (isMac) {
+  if (isMac && only !== 'android') {
     await poolLoad('ios');
     for (const name of iosNames()) {
       const s = poolSim(name);
       if (s?.state === 'Booted') out.push({ p: 'ios', name, id: s.udid });
     }
   }
+  if (only === 'ios') return out;
   await poolLoad('android');
   for (const name of androidNames()) {
     const s = poolSerial(name);
@@ -203,54 +297,61 @@ export async function reapIdle(o: ReapOptions): Promise<number> {
   const limit = o.pressure ? Math.min(idle * 60, PRESSURE_IDLE_SECONDS) : idle * 60;
   const now = nowSeconds();
   const started = await starts();
-  let stopped = 0;
-  for (const d of await upDevices()) {
-    const r = `${d.p}-${slug(d.name)}`;
+  const due: Array<{ d: Up; v: Verdict }> = [];
+  for (const d of await upDevices(o.pressure)) {
     const label = `${d.p} « ${d.name} »`;
-    const cs = claimState(r);
-    if (cs) {
-      if (o.verbose) say(`kept: ${label} claimed by ${claimField(join(config().claims, r), 'owner')}`);
-      continue;
-    }
-    if (deviceLocked(r)) {
-      if (o.verbose) say(`kept: ${label} in use right now`);
-      continue;
-    }
-    const used = usedRead(r);
-    const f = mstateFile(d.p, d.name);
-    const stateAt = Number(mstateField(f, 'at')) || 0;
-    const bootAt = started.get(d.p === 'ios' ? `udid:${d.id.toUpperCase()}` : `avd:${d.name}`) ?? 0;
-    const touched = lastTouched(d.p, d.name);
-    const last = Math.max(used.at, stateAt, bootAt, touched);
-    // Nothing says when it was used, nor when it booted (Windows has no `ps`): it is left alone.
-    if (!last) {
-      if (o.verbose) say(`kept: ${label} (no record of its last use)`);
-      continue;
-    }
-    const by = used.at >= Math.max(stateAt, touched) ? used.who : stateAt >= touched ? mstateField(f, 'by') : '';
-    const since = last === bootAt && last > Math.max(used.at, stateAt, touched) ? `booted at ${hhmm(last)}, unused since` : `last used${by ? ` by ${by}` : ''} at ${hhmm(last)}`;
-    if (now - last < limit) {
-      if (o.verbose) say(`kept: ${label} (${since}, idle ${minutes(now - last)})`);
+    const v = deviceVerdict(seen(d.p, d.name, started.get(d.p === 'ios' ? `udid:${d.id.toUpperCase()}` : `avd:${d.name}`) ?? 0), now, limit);
+    if (!v.stop) {
+      if (o.verbose) say(`kept: ${label} ${v.why}`);
       continue;
     }
     if (o.dry) {
-      o.print(`would stop: ${label} (idle ${minutes(now - last)}, ${since})`);
+      o.print(`would stop: ${label} (${v.why})`);
       continue;
     }
-    // Under its lock, so a command starting on it meanwhile waits rather than finds it gone.
-    if (!lockTry(r)) continue;
-    try {
-      if (await stopDevice(d)) {
-        stopped++;
-        o.print(`stopped: ${label} (idle ${minutes(now - last)}, ${since})`);
-      }
-    } finally {
-      lockDrop(r);
-    }
+    due.push({ d, v });
   }
+  let stopped = await stopInOrder(
+    due.map((x) => ({ ...x, last: x.v.last })),
+    async ({ d, v }) => {
+      const r = `${d.p}-${slug(d.name)}`;
+      // Under its lock, so a command starting on it meanwhile waits rather than finds it gone.
+      if (!lockTry(r)) return false;
+      try {
+        // What was read before the lock may have moved: a claim made since, or an emulator that stopped
+        // and left its serial to another AVD (emulator-5554 is whichever starts first).
+        if (claimState(r)) return false;
+        if (d.p === 'android' && (await androidAvdOf(d.id)) !== d.name) return false;
+        if (!(await stopDevice(d))) return false;
+        o.print(`stopped: ${d.p} « ${d.name} » (${v.why})`);
+        return true;
+      } finally {
+        lockDrop(r);
+      }
+    },
+    o.room &&
+      (async () => {
+        poolForget();
+        return o.room!();
+      }),
+  );
   if (stopped) poolForget();
-  // A Metro is not what a boot waits for: it keeps the plain idle time even then.
-  stopped += await reapMetros(o, idle * 60, now);
+  // A Metro is not what a boot waits for: a boot under pressure leaves the Metros to the plain pass
+  // (`reapSoon`), which keeps their plain idle time.
+  if (!o.pressure) stopped += await reapMetros(o, idle * 60, now);
+  return stopped;
+}
+
+// The one unused the longest goes first, and with `room` given (a boot waiting), none after there is
+// room: a boot under pressure stopped every device idle for two minutes on both platforms, where one
+// was all it needed.
+export async function stopInOrder<T extends { last: number }>(due: T[], stop: (x: T) => Promise<boolean>, room?: () => Promise<boolean>): Promise<number> {
+  let stopped = 0;
+  for (const x of [...due].sort((a, b) => a.last - b.last)) {
+    if (!(await stop(x))) continue;
+    stopped++;
+    if (room && (await room())) break;
+  }
   return stopped;
 }
 
@@ -261,42 +362,59 @@ export async function reapIdle(o: ReapOptions): Promise<number> {
 // using vysu right now: its own Metro is never idle.
 async function reapMetros(o: ReapOptions, limit: number, now: number): Promise<number> {
   const state = config().state;
-  const me = slug(owner());
+  const me = owner();
   const claims = liveClaims();
   let stopped = 0;
   for (const f of list(state)) {
     if (!f.startsWith('metro-port.')) continue;
-    const s = f.slice('metro-port.'.length);
-    if (s === me) continue;
+    if (f === `metro-port.${slug(me)}`) continue;
     const file = join(state, f);
-    const [port = '', pid = '', ...dir] = read(file).replace(/\n$/, '').split(' ');
+    const rec = parseMetroRecord(read(file));
     // pid 0: being started this very moment.
-    if (pid === '0' && now - mtime(file) < 300) continue;
-    const gone = slugOwnerGone(s);
-    const running = metroPidListening(port, pid);
-    const who = slugOwnerText(s);
+    if (rec.pid === '0' && now - mtime(file) < 300) continue;
+    const running = metroPidListening(rec.port, rec.pid);
+    // A record written before the owner was kept in it (0.9.2) names its owner by a slug only, and a
+    // slug cannot be read back (« checker-2 » is VYSU_OWNER=checker-2, not pid 2): its Metro is left
+    // alone, and the record goes only once nothing has listened there for the idle time.
+    if (!rec.owner) {
+      if (running || now - mtime(file) < limit) {
+        if (o.verbose && running) say(`kept: metro :${rec.port} (isolated, of ${f.slice('metro-port.'.length)}, recorded by an older vysu: its owner cannot be told)`);
+        continue;
+      }
+      if (o.dry) {
+        if (o.verbose) say(`would drop: the record of metro :${rec.port} (not running, its record untouched for ${minutes(now - mtime(file))}, written by an older vysu)`);
+        continue;
+      }
+      rmSync(file, { force: true });
+      continue;
+    }
+    const gone = ownerGone(rec.owner);
     let why = 'its owner is gone';
     if (!gone) {
       if (!running) continue;
-      if (claims.some((c) => slug(c.who) === s)) continue;
-      const last = Math.max(mtime(file), mtime(metroLog(port)), lastUseBy(s));
+      if (claims.some((c) => c.who === rec.owner)) continue;
+      const last = Math.max(mtime(file), mtime(metroLog(rec.port)), lastUseBy(rec.owner));
       if (now - last < limit) continue;
       why = `no claim and no use for ${minutes(now - last)}`;
     }
-    const what = `metro :${port} (isolated, of ${who}, from ${dir.join(' ')}; ${why})`;
+    const what = `metro :${rec.port} (isolated, of ${rec.owner}, from ${rec.dir}; ${why})`;
     if (o.dry) {
       // A record whose Metro is no longer running is only a file: it goes without a line of its own.
       if (running) o.print(`would stop: ${what}`);
-      else if (o.verbose) say(`would drop: the record of metro :${port} of ${who} (not running, its owner is gone)`);
+      else if (o.verbose) say(`would drop: the record of metro :${rec.port} of ${rec.owner} (not running, its owner is gone)`);
       continue;
     }
-    if (running) await killPort(Number(port), Number(pid));
+    if (running) await killPort(Number(rec.port), Number(rec.pid));
     if (gone) rmSync(file, { force: true });
     if (running) {
       stopped++;
       o.print(`stopped: ${what}`);
     }
   }
+  // Only a shared Metro vysu started (metro-started.<port>) is ever stopped. Its use is that of every
+  // device of the pool: a claim or a command of this project, any record of use, and agent-device's
+  // journals, which an older vysu (0.9.2 records no use) still writes on every call.
+  let poolTouched = 0;
   for (const f of list(state)) {
     if (!f.startsWith('metro-started.')) continue;
     const port = f.slice('metro-started.'.length);
@@ -305,7 +423,8 @@ async function reapMetros(o: ReapOptions, limit: number, now: number): Promise<n
     if (!metroPidListening(port, pid)) continue;
     if (claims.some((c) => /^(ios|android)-/.test(c.r))) continue;
     if (list(config().locks).some((r) => /^(ios|android)-/.test(r) && deviceLocked(r))) continue;
-    const last = Math.max(mtime(file), mtime(metroLog(port)), lastUseBy());
+    poolTouched ||= poolLastTouched();
+    const last = Math.max(mtime(file), mtime(metroLog(port)), lastUseBy(), poolTouched);
     if (now - last < limit) continue;
     const what = `metro :${port} (shared, started by ${who}; no device claimed or used for ${minutes(now - last)})`;
     if (o.dry) {
@@ -319,6 +438,28 @@ async function reapMetros(o: ReapOptions, limit: number, now: number): Promise<n
   }
   return stopped;
 }
+
+// The last trace of use on any device of the pool, in any state folder and any agent-device journal.
+function poolLastTouched(): number {
+  let at = 0;
+  const names: Array<[Platform, string]> = [...iosNames().map((n): [Platform, string] => ['ios', n]), ...androidNames().map((n): [Platform, string] => ['android', n])];
+  for (const [p, n] of names) for (const u of seen(p, n, 0).uses) at = Math.max(at, u.at);
+  return at;
+}
+
+// A claim alive right now in this project, on anything.
+function liveClaims(): Array<{ r: string; who: string }> {
+  const dir = config().claims;
+  const out: Array<{ r: string; who: string }> = [];
+  for (const r of list(dir)) {
+    if (r.startsWith('.')) continue;
+    const f = join(dir, r);
+    if (!(nowSeconds() < Number(claimField(f, 'until') || 0))) continue;
+    out.push({ r, who: claimField(f, 'owner') });
+  }
+  return out;
+}
+const deviceLocked = (r: string): boolean => lockIn(config().state, r);
 
 // The opportunistic pass, from the commands that need room anyway: at most once a minute for the
 // whole machine, and never the reason a command fails.
@@ -435,7 +576,7 @@ export async function admit(p: Platform, name: string): Promise<void> {
     if (!why) return;
     if (Date.now() - reapedAt >= 30000) {
       reapedAt = Date.now();
-      if (await reapIdle({ pressure: true, print: (l) => tell(`vysu: ${l}`) })) continue;
+      if (await reapIdle({ pressure: p, room: async () => !(await blocked(p, name)), print: (l) => tell(`vysu: ${l}`) })) continue;
     }
     const waited = Math.floor((Date.now() - t0) / 1000);
     if (waited >= wait) {

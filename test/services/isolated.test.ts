@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Config } from '../../src/core/config.ts';
-import { formatRecord, myPorts, parsePorts, parseRecord, pointAtIsolated, resolverRule, withPort, worktreeOf } from '../../src/services/isolated.ts';
+import { followLine, formatRecord, myPorts, parsePorts, parseRecord, pointAtIsolated, resolverRule, withPort, worktreeOf } from '../../src/services/isolated.ts';
 
 process.env.VYSU_OWNER = 'test:1';
 
@@ -65,4 +65,13 @@ test('the service folder is found again in the worktree the command runs from', 
   assert.equal(worktreeOf(repo, join(root, 'wt')), join(root, 'wt'));
   assert.equal(worktreeOf(join(repo, 'apps', 'web'), repo), join(repo, 'apps', 'web'));
   assert.equal(worktreeOf(repo, root), null);
+});
+
+test('a persona browser closed for another owner\'s view says whose it was, the page it lost, and where it reopens', () => {
+  const rule = resolverRule('8100', '8102');
+  assert.equal(
+    followLine('nidz-alice', rule, 'claude:41', 'http://localhost:8100/community/news', ''),
+    'vysu: nidz-alice was open on localhost:8100 served from :8102 for claude:41, showing http://localhost:8100/community/news: closed, the next call reopens it on the shared server, its login kept but not that page (open it again)',
+  );
+  assert.equal(followLine('nidz-alice', '', '', 'about:blank', rule), 'vysu: nidz-alice was open on the shared server: closed, the next call reopens it on localhost:8100 served from :8102 (login kept)');
 });

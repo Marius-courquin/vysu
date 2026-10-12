@@ -14,3 +14,11 @@ test('a baseline that lands elsewhere than the page asked for is told apart from
   assert.equal(baselineAstray(base, 'https://app.prep.nidz.fr/community/news', 'http://localhost:8100/community/news'), '');
   assert.equal(baselineAstray(base, 'about:blank'), 'lands on about:blank');
 });
+
+test('signed in, and the baseline origin still sends the page elsewhere on itself: the page is missing there', async () => {
+  const { baselineMissing } = await import('../../src/web/shots.ts');
+  assert.equal(baselineMissing('lands on / instead of /community/new-screen', 'https://app.prep.nidz.fr'), 'baseline: app.prep.nidz.fr has no such page (landed on /)');
+  // Another origin is a login that did not take: no such line, the baseline is refused.
+  assert.equal(baselineMissing('lands on https://auth.prep.nidz.fr/u/login', 'https://app.prep.nidz.fr'), '');
+  assert.equal(baselineMissing('answers no address', 'https://app.prep.nidz.fr'), '');
+});

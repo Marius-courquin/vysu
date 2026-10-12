@@ -2,17 +2,22 @@
 // against a fake adb, what `vysu down idle` stops and what it leaves alone.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  bootedByVysu,
   budgetBlock,
   deviceStarts,
+  deviceVerdict,
   etimeSeconds,
+  journalsOf,
+  stopInOrder,
   linuxMemory,
   macMemory,
   memoryBlock,
-  slugOwnerGone,
+  type DeviceSeen,
 } from '../../src/mobile/reap.ts';
+import { metroRecordText, parseMetroRecord } from '../../src/mobile/metro.ts';
 import { emulatorArgs } from '../../src/mobile/pool.ts';
 import { fakeAndroid } from './fake-adb.ts';
 
@@ -37,14 +42,60 @@ test('when each device started: an emulator by its AVD, a simulator by its UDID'
   assert.equal(s.size, 2);
 });
 
-test('an owner by its slug: gone with its pid, or when the pid runs something else; one named by hand never', () => {
-  const names: Record<number, string> = { 41234: 'claude', 5120: 'node', 77: 'zsh' };
-  const nameOf = (pid: number): string => names[pid] ?? '';
-  assert.equal(slugOwnerGone('claude-41234', nameOf), false);
-  assert.equal(slugOwnerGone('claude-999', nameOf), true);
-  assert.equal(slugOwnerGone('codex-5120', nameOf), true);
-  assert.equal(slugOwnerGone('shell-77', nameOf), false);
-  assert.equal(slugOwnerGone('marius', nameOf), false);
+test('a Metro record keeps its owner whole on a line of its own; one an older vysu wrote has none', () => {
+  const t = metroRecordText('8083', '4242', '/a b/apps/mobile', 'Code Helper (Plugin):123');
+  assert.equal(t, '8083 4242 /a b/apps/mobile\nowner=Code Helper (Plugin):123\n');
+  assert.deepEqual(parseMetroRecord(t), { port: '8083', pid: '4242', dir: '/a b/apps/mobile', owner: 'Code Helper (Plugin):123' });
+  assert.deepEqual(parseMetroRecord('8082 0 /x/y\n'), { port: '8082', pid: '0', dir: '/x/y', owner: '' });
+  assert.equal(parseMetroRecord(metroRecordText('8084', '1', '/d', 'checker-2')).owner, 'checker-2');
+});
+
+test("a boot marker matches only the boot it was written for", () => {
+  assert.equal(bootedByVysu([1000], 1003), true);
+  assert.equal(bootedByVysu([1000], 995), true);
+  assert.equal(bootedByVysu([1000], 1000 + 241), false);
+  assert.equal(bootedByVysu([1000], 900), false);
+  assert.equal(bootedByVysu([], 1000), false);
+  assert.equal(bootedByVysu([1000], 0), false);
+  assert.equal(bootedByVysu([500, 1000], 1010), true);
+});
+
+test("agent-device's journals of a device, whatever project opened them", () => {
+  const all = ['nidz-ios-iphone-17-pro', 'veilleuse-ios-iphone-17-pro', 'nidz-ios-nidz-iphone-17-pro-b', 'nidz-ios', 'nidz-android-iphone-17-pro'];
+  assert.deepEqual(journalsOf(all, 'ios', 'iPhone 17 Pro'), ['nidz-ios-iphone-17-pro', 'veilleuse-ios-iphone-17-pro']);
+});
+
+test('a device is stopped only when vysu booted it this boot and nothing anywhere used it for the idle time', () => {
+  const now = 100000;
+  const base: DeviceSeen = { claimedBy: '', locked: false, bootAt: now - 7200, marks: [now - 7201], uses: [{ at: now - 3600, by: 'claude:1' }] };
+  const v = deviceVerdict(base, now, 900);
+  assert.equal(v.stop, true);
+  assert.match(v.why, /^idle 60 min, last used by claude:1 at \d\d:\d\d$/);
+  assert.equal(deviceVerdict({ ...base, claimedBy: 'codex:9' }, now, 900).why, 'claimed by codex:9');
+  assert.equal(deviceVerdict({ ...base, locked: true }, now, 900).stop, false);
+  // No marker, or one of an earlier boot: somebody else's boot, however quiet.
+  assert.match(deviceVerdict({ ...base, marks: [] }, now, 900).why, /not by vysu/);
+  assert.equal(deviceVerdict({ ...base, marks: [now - 20000] }, now, 900).stop, false);
+  assert.match(deviceVerdict({ ...base, bootAt: 0 }, now, 900).why, /cannot be read/);
+  // Any use, a journal of another project's session included, keeps it.
+  assert.equal(deviceVerdict({ ...base, uses: [...base.uses, { at: now - 60, by: '' }] }, now, 900).stop, false);
+  assert.match(deviceVerdict({ ...base, uses: [] }, now, 900).why, /booted at \d\d:\d\d, unused since/);
+});
+
+test('under pressure: the longest idle first, and nothing more once there is room', async () => {
+  const done: string[] = [];
+  const due = [
+    { name: 'b', last: 300 },
+    { name: 'a', last: 100 },
+    { name: 'c', last: 200 },
+  ];
+  const stop = async (x: { name: string }): Promise<boolean> => (done.push(x.name), x.name !== 'a');
+  // « a » would not stop (a claim came meanwhile): « c » next, then there is room.
+  assert.equal(await stopInOrder(due, stop, async () => done.length >= 2), 1);
+  assert.deepEqual(done, ['a', 'c']);
+  done.length = 0;
+  assert.equal(await stopInOrder(due, stop), 2);
+  assert.deepEqual(done, ['a', 'c', 'b']);
 });
 
 test('memory: the kernel level and pressure on macOS, MemAvailable on Linux, and the floor', () => {
@@ -96,8 +147,16 @@ exec "$D/bin/adb.real" "$@"
   );
   chmodSync(join(f.bin, 'adb'), 0o755);
   writeFileSync(join(f.bin, 'xcrun'), '#!/bin/sh\necho \'{"devices":{}}\'\n', { mode: 0o755 });
+  // The emulator's qemu, started 70 minutes ago; every other `ps` is the real one.
+  writeFileSync(
+    join(f.bin, 'ps'),
+    `#!/bin/sh\nif [ "$*" = "-A -o etime=,args=" ]; then echo '01:10:00 /sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd fake_avd -gpu host'; exit 0; fi\nexec /bin/ps "$@"\n`,
+    { mode: 0o755 },
+  );
   Object.assign(f.env, { VYSU_ANDROID_AVDS: 'fake_avd:36:pixel_8:', VYSU_IOS_DEVICES: 'No Such Phone', VYSU_IDLE_MINUTES: '15' });
   mkdirSync(join(f.state, 'used'), { recursive: true });
+  // vysu booted it: its marker, written the moment it asked.
+  writeFileSync(join(f.state, 'booted-android-fake-avd'), `${Math.floor(Date.now() / 1000) - 4201} test-owner\n`);
   return f;
 }
 const kills = (f: ReturnType<typeof fakeAndroid>): string[] => f.calls().filter((l) => l.includes('emu kill'));
@@ -130,6 +189,53 @@ test('down idle: a device claimed, or used a minute ago, is left alone', posix, 
   assert.equal(recent.code, 0, recent.stderr);
   assert.match(recent.stdout, /^idle: nothing unused for 15 min/m);
   assert.deepEqual(kills(f), []);
+});
+
+test('down idle: a device vysu did not boot, or that another project or agent-device used lately, is kept', posix, async () => {
+  const f = machine();
+  const now = Math.floor(Date.now() / 1000);
+  writeFileSync(join(f.state, 'used', 'android-fake-avd'), `claude:41234 ${now - 3600}\n`);
+  // Booted by somebody else: no marker of this boot.
+  writeFileSync(join(f.state, 'booted-android-fake-avd'), `${now - 90000} test-owner\n`);
+  const other = await f.vysu(['down', 'idle', '--dry-run']);
+  assert.match(other.stdout, /^kept: android « fake_avd » \(booted at \d\d:\d\d, not by vysu: left to whoever started it\)$/m);
+  writeFileSync(join(f.state, 'booted-android-fake-avd'), `${now - 4201} test-owner\n`);
+  // A claim in another project's state folder.
+  const home = f.env.HOME!;
+  mkdirSync(join(home, '.vysu', 'veilleuse', 'claims'), { recursive: true });
+  writeFileSync(join(home, '.vysu', 'veilleuse', 'claims', 'android-fake-avd'), `owner=codex:5120\nuntil=${now + 600}\nminutes=20\nnote=\n`);
+  const claimed = await f.vysu(['down', 'idle', '--dry-run']);
+  assert.match(claimed.stdout, /^kept: android « fake_avd » claimed by codex:5120$/m);
+  writeFileSync(join(home, '.vysu', 'veilleuse', 'claims', 'android-fake-avd'), `owner=codex:5120\nuntil=${now - 60}\nminutes=20\nnote=\n`);
+  // An agent-device journal of another project, written a minute ago (an older vysu records no use).
+  const journal = join(home, '.agent-device', 'sessions', 'veilleuse-android-fake-avd');
+  mkdirSync(journal, { recursive: true });
+  writeFileSync(join(journal, 'events.ndjson'), '{}\n');
+  utimesSync(join(journal, 'events.ndjson'), now - 60, now - 60);
+  const touched = await f.vysu(['down', 'idle']);
+  assert.equal(touched.code, 0, touched.stderr);
+  assert.match(touched.stdout, /^idle: nothing unused for 15 min/m);
+  assert.deepEqual(kills(f), []);
+});
+
+test('down idle: an isolated Metro record is judged by the owner it holds, never by its file name', posix, async () => {
+  const f = machine();
+  const old = Math.floor(Date.now() / 1000) - 3600;
+  const put = (name: string, text: string): string => {
+    const p = join(f.state, `metro-port.${name}`);
+    writeFileSync(p, text);
+    utimesSync(p, old, old);
+    return p;
+  };
+  // Not running: a live owner named by hand keeps it; a gone one, and an older vysu's record, lose it.
+  const named = put('checker-2', metroRecordText('8097', '999999', '/w', 'checker-2'));
+  const gone = put('ghost-999999', metroRecordText('8098', '999999', '/w', 'ghost:999999'));
+  const older = put('claude-2', '8099 999999 /w\n');
+  const r = await f.vysu(['down', 'idle']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(existsSync(named), true);
+  assert.equal(existsSync(gone), false);
+  assert.equal(existsSync(older), false);
 });
 
 test('down idle: off at VYSU_IDLE_MINUTES=0 unless --minutes says otherwise', posix, async () => {
