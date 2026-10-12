@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.1 — 2026-10-12
+
+From a real acceptance pass of 0.10.0 on an iPhone 17 Pro simulator, a Pixel 10 Pro emulator and
+the Nidz web app.
+
+- `--baseline-url` on a persona signed out of the page under test logs it in there first: the page
+  compared with the baseline was the app's door, read as a page the baseline « does not have ».
+- A baseline is no longer taken as fine because the page under test lands on the same door.
+- `up <service> --isolated`: the browser switched to the worktree's server is closed from the app's
+  own origin, so the app's login is what its saved state holds.
+- `doctor --brief` keeps the `isolated:` lines (who serves what).
+- A ceiling stop names what the command waited on, not the `ps` that looked.
+- `report`: a baseline picture of a size that changed is not listed as « identical, do not read ».
+
 ## 0.10.0 — 2026-10-12
 
 An audit of the 16 403 vysu calls agents made from 25/09 to 12/10 (355 transcripts, 316 checker
