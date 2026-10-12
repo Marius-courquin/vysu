@@ -16,7 +16,8 @@ import { adb, adbShell, androidSerial, forgetSerial, iosFreezeStatusBar, iosUdid
 import { say } from './io.ts';
 import { appUp, mobileApp, mobileKind, mrelaunch, quietDevMenu, relaunch } from './launch.ts';
 import { metroDown, metroIsIsolated, metroIsolatedUp, metroNeed, metroPort, metroSharedUp, worktreeMobileDir } from './metro.ts';
-import { simulatorWindow, startEmulator } from './pool.ts';
+import { poolPower, simulatorWindow, startEmulator } from './pool.ts';
+import { admit, reapSoon } from './reap.ts';
 import { mstateGet } from './state.ts';
 import { crlf, xcrun } from './tools.ts';
 
@@ -165,9 +166,12 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
   if (p === 'android') {
     await androidLock();
     const avd = devices.android;
-    // Emulators run side by side, each addressed by its serial (4 GB of RAM each, so two at most in
-    // practice): the one asked for is started when it is not attached, the others are left alone.
+    await reapSoon();
+    // Emulators run side by side, each addressed by its serial (3 GB of RAM each, VYSU_ANDROID_MAX_RUNNING
+    // of them): the one asked for is started when it is not attached and there is room, the others are
+    // left alone.
     if (!(await androidSerial())) {
+      await admit('android', avd);
       startEmulator(avd);
       await waitAndroidSerial();
     }
@@ -207,6 +211,8 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
     // Start of a mobile session: the one place where looking the UDID up again is worth it.
     const udid = await iosUdid(true);
     if (udid === 'booted') die(`ios: no simulator named « ${dev} » (xcrun simctl list devices)`);
+    await reapSoon();
+    if ((await poolPower('ios', dev)) !== 'booted') await admit('ios', dev);
     await xcrun(['simctl', 'boot', udid]);
     await simulatorWindow();
     await iosFreezeStatusBar();

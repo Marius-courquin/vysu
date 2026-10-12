@@ -12,6 +12,10 @@
 #   vysu up all | down <service> | down all | down metro | down applog [ios|android]
 #                                           down metro: this owner's isolated Metro (else the shared one, only
 #                                           when this owner started it); down applog: the log tails, JS ones included
+#   vysu down idle [--minutes N] [--dry-run]   stop the pool's simulators / emulators and the Metros nobody has
+#                                           claimed, locked or used for VYSU_IDLE_MINUTES (15; an isolated Metro whose
+#                                           owner is gone at once), one line each; never Simulator.app, never a device
+#                                           claimed or in use. claim, up and devices do it on the way (once a minute)
 #   vysu up ios|android [--build] [--reinstall] [--avd <name>] [--device <name>]   the device, and what runs in
 #                                           front of the app: Metro in expo mode, then the app started straight onto
 #                                           it (left as it is when it already runs there), nothing in native mode
@@ -22,6 +26,10 @@
 #                                           AVDs: the specs of VYSU_ANDROID_AVDS, created by `vysu setup`
 #                                           VYSU_MOBILE_HEADLESS=1: no window — Simulator.app is not opened, the emulator
 #                                           runs with -no-window; captures, taps, logs and mrec work the same
+#                                           A boot waits for room: VYSU_IOS_MAX_BOOTED / VYSU_ANDROID_MAX_RUNNING (2 each)
+#                                           and VYSU_MEMORY_MIN_FREE (20 %), idle devices stopped first, then
+#                                           VYSU_LOCK_WAIT, then exit 1 naming what runs. Emulators: VYSU_ANDROID_MEMORY
+#                                           (3072), VYSU_ANDROID_CORES (2), cold boot unless VYSU_ANDROID_QUICKBOOT=1
 #   vysu up ios|android --isolated [--port <n>] [--dir <mobile dir>]   a Metro for this owner alone, from its own
 #                                           checkout (default: the worktree the command runs in), on the next free
 #                                           port from 8082; the device is relaunched onto it. ~1-1.5 GB of RAM:
@@ -176,12 +184,14 @@
 #                                           (vysu walk <persona>@2 …). None free: waits VYSU_LOCK_WAIT (--no-wait: exit 1)
 #   vysu devices [--prune-clones [--dry-run]]   one line per simulator / emulator: booted, running or shut down,
 #                                           free or claimed (by whom, until when), the command running on it, the
-#                                           state applied; --prune-clones deletes the vysu clones nobody claims
+#                                           state applied, then one `budget:` line (devices up against the budget,
+#                                           memory free, the idle stop); --prune-clones deletes the vysu clones nobody claims
 #   vysu adb <args…>                        adb on this owner's emulator (-s <its serial>), under its lock
 #   vysu simctl <verb> [args…]              xcrun simctl on this owner's simulator (its UDID after the verb), under
 #                                           its lock; list / create / clone / runtime / help / pair run as they are
 #   vysu release ios|android|<persona> [--force] [--reset] [--delete-clone]   hand it back (--force: someone else's claim;
-#                                           --reset: defaults first — normal text, light, the default language)
+#                                           --reset: defaults first — normal text, light, the default language);
+#                                           a claim that ran out meanwhile is said to have expired
 #   vysu prune [--days 30] [--match "<glob>"…] [--dry-run]   drop the shots folders older than N days,
 #                                           or the ones a glob names, whatever their age (--dry-run: just say which)
 #   vysu cache clear                        forget what is remembered per device: simulator UDIDs, emulator
@@ -216,6 +226,9 @@
 # session's browser is stopped too and the next command reopens it with the login it had saved.
 # Several agents share this Mac: every command locks the device or the persona session it drives,
 # for its duration (another one waits VYSU_LOCK_WAIT seconds, 90 by default, then gives up). A claim
-# holds one across several commands. The holder is $VYSU_OWNER, else the agent or terminal above.
+# holds one across several commands, renewed every minute while a command holds the device. The holder is
+# $VYSU_OWNER, else the agent or terminal above. A mobile command holding a device gets VYSU_MOBILE_TIMEOUT
+# seconds (300; up, claim, release, mlogin, mrelaunch, mdo, mflow and mrec twice that): past it, what it waits
+# on is killed (never the device), the lock is given back, and it exits 124 saying what it was doing.
 # State: $VYSU_STATE (default ~/.vysu/<project>): personas.env (credentials, chmod 600), shots/, logs/.
 # Browser state lives in ~/.agent-browser/sessions/ (managed by --restore).
