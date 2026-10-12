@@ -6,6 +6,7 @@
 // Options (defaults in brackets):
 //   VYSU_AUTH0_DOMAIN             [auth0.com]                     what an Auth0 url looks like
 //   VYSU_AUTH0_SIGNIN_LABELS      [Se connecter,Sign in]          the door's button, web and mobile
+//   VYSU_AUTH0_SIGNIN_WAIT        [15]                            web: seconds the door's button is waited for
 //   VYSU_AUTH0_CONTINUE_LABELS    [Continuer,Continue]            Universal Login's submit
 //   VYSU_AUTH0_DOOR_TEXT          [Se connecter]                  the mobile door screen's text
 //   VYSU_AUTH0_HOME_TEXT          [Bienvenue]                     the text that proves the login
@@ -24,6 +25,38 @@ const domain = (v: AuthContext): string => opt(v, 'DOMAIN', 'auth0.com');
 // auth0-spa-js keeps its cache in localStorage (cacheLocation="localstorage" in the app).
 const TOKEN_JS =
   "(() => { for (const k of Object.keys(localStorage)) { if (!k.startsWith('@@auth0spajs@@') || k.endsWith('@@user@@')) continue; const t = JSON.parse(localStorage.getItem(k) || '{}'); if (t.body && t.body.access_token) return t.body.access_token; } return ''; })()";
+
+// Who the session is signed in as: the e-mail of the id token auth0-spa-js caches, '' when it holds none.
+const USER_JS =
+  "(() => { for (const k of Object.keys(localStorage)) { if (!k.startsWith('@@auth0spajs@@')) continue; try { const t = JSON.parse(localStorage.getItem(k) || '{}'); const u = (t.decodedToken || (t.body && t.body.decodedToken) || {}).user; if (u && u.email) return u.email; } catch (e) {} } return ''; })()";
+
+// What the page shows, for a login that found no way in: where it is, and the names of what can be
+// clicked on it.
+const PAGE_JS =
+  "JSON.stringify({ url: location.href, names: [...document.querySelectorAll('button, [role=button], a[href], input[type=submit]')].filter(e => e.getClientRects().length).map(e => (e.getAttribute('aria-label') || e.textContent || e.value || '').replace(/\\s+/g, ' ').trim()).filter(Boolean) })";
+
+// Whether that page is a door: one of its buttons carries a sign-in label.
+export function showsDoor(json: string, signin: string[]): boolean {
+  try {
+    const want = signin.map((l) => l.toLocaleLowerCase());
+    return ((JSON.parse(json) as { names?: string[] }).names ?? []).some((n) => want.includes(n.toLocaleLowerCase()));
+  } catch {
+    return false;
+  }
+}
+
+export function pageSays(json: string): string {
+  let p: { url?: string; names?: string[] } = {};
+  try {
+    p = JSON.parse(json) as typeof p;
+  } catch {
+    return 'the page could not be read';
+  }
+  const names = [...new Set(p.names ?? [])];
+  const shown = names.slice(0, 8).map((n) => `« ${n.length > 40 ? `${n.slice(0, 39)}…` : n} »`);
+  const more = names.length > shown.length ? ` and ${names.length - shown.length} more` : '';
+  return `the page is ${p.url || '(unknown)'}, ${shown.length ? `its buttons and links: ${shown.join(', ')}${more}` : 'with no button nor link (still loading?)'}`;
+}
 
 // The centre of the first text field on screen, in points, for the surfaces the platform's
 // accessibility cannot read: the picture is all there is to go by there.
@@ -96,6 +129,80 @@ async function continueTo(v: AuthContext, persona: string, cont: string[], field
   await v.web(persona, 'wait', field);
 }
 
+// What gives a session a clean start: its browser closed and its saved state dropped. Clearing its
+// cookies and storage by hand once sent the next login back to the door.
+const fresh = (persona: string): string =>
+  `vysu ${persona} close, delete its file in ~/.agent-browser/sessions/ (the session's name twice), then vysu login ${persona}`;
+
+async function onAuth0(v: AuthContext, persona: string): Promise<boolean> {
+  const here = await v.webTry(persona, 'get', 'url');
+  return here.code === 0 && here.stdout.includes(domain(v));
+}
+
+// Up to `seconds` for the Auth0 page, which a click on the door's button starts loading.
+async function reachAuth0(v: AuthContext, persona: string, seconds: number): Promise<boolean> {
+  for (let t = 0; t < seconds * 2; t++) {
+    if (await onAuth0(v, persona)) return true;
+    await v.sleep(0.5);
+  }
+  return onAuth0(v, persona);
+}
+
+// Up to `seconds` for a door's button or for the Auth0 page, whichever shows first; true once a button
+// was clicked.
+async function nextDoor(v: AuthContext, persona: string, signin: string[], seconds: number): Promise<boolean> {
+  for (let t = 0; t <= seconds * 2; t++) {
+    if (await onAuth0(v, persona)) return false;
+    if (await v.webClickAny(persona, ...signin)) return true;
+    await v.sleep(0.5);
+  }
+  return false;
+}
+
+// From the app to Auth0. A door's button starts the redirect, and a door may lead to another: Nidz V2's
+// / says « Commencer », which leads to /auth/login, whose « Se connecter » leads to Auth0. Both pages
+// draw a loader first, and a dev build mounts its devtools buttons before them: `wait button` answered
+// on those, the one look for the label that followed found nothing, and 237 logins of the audit died on
+// « no sign-in button » (2026-09-25 → 10-12, 143 of them on localhost:8100/auth/login). So the label
+// is looked for until it shows (VYSU_AUTH0_SIGNIN_WAIT), and a click that lands on another door rather
+// than on Auth0 is followed, three doors at most. A session that already holds this persona's login
+// is no failure: the app shows its home instead of a door, and there is nothing to do. True then.
+async function door(v: AuthContext, persona: string, url: string, signin: string[], email: string): Promise<boolean> {
+  const wait = Math.max(0, Number(opt(v, 'SIGNIN_WAIT', '15')) || 0);
+  const holder = v.value((await v.webTry(persona, 'eval', USER_JS)).stdout);
+  // A session that holds a login is expected on the app's home: the door is given a short look, then
+  // the rest of the wait only if the page is still the one that was opened (a session whose login has
+  // expired shows the door, after the same loader).
+  const first = holder ? Math.min(wait, 4) : wait;
+  let clicked = await v.webClickAny(persona, ...signin, { wait: first });
+  if (!clicked && holder) {
+    const at = v.lastLine((await v.webTry(persona, 'get', 'url')).stdout);
+    if (at.replace(/\/$/, '') !== url.replace(/\/$/, '')) {
+      if (holder.toLowerCase() !== email.toLowerCase()) {
+        v.die(
+          `login: this session is signed in as ${holder}, not ${email} (${pageSays(v.value((await v.webTry(persona, 'eval', PAGE_JS)).stdout))})`,
+          fresh(persona),
+        );
+      }
+      console.log(`logged in: ${persona} (${email}) → ${at} (already signed in: nothing done)`);
+      return true;
+    }
+    clicked = await v.webClickAny(persona, ...signin, { wait: wait - first });
+  }
+  if (!clicked) {
+    v.die(`login: no sign-in button on ${url} after ${wait}s: ${pageSays(v.value((await v.webTry(persona, 'eval', PAGE_JS)).stdout))} (VYSU_AUTH0_SIGNIN_LABELS, VYSU_AUTH0_SIGNIN_WAIT)`);
+  }
+  v.step('click the sign-in button');
+  // A redirect slower than this is clicked again only if the page still shows a door's button by
+  // then; a click the page dropped (it was still setting itself up) is clicked again the same way.
+  for (let hop = 1; hop < 3; hop++) {
+    if (await reachAuth0(v, persona, 8)) return false;
+    if (!(await nextDoor(v, persona, signin, wait))) return false;
+    v.step('click the next sign-in button');
+  }
+  return false;
+}
+
 export const connector: AuthConnector = {
   describe: (v) => `Auth0 Universal Login on *${domain(v)}*, identifier-first (sign-in: ${opt(v, 'SIGNIN_LABELS', 'Se connecter,Sign in')})`,
 
@@ -107,11 +214,7 @@ export const connector: AuthConnector = {
     await v.web(persona, 'open', url);
     v.step(`open ${url}`);
     // A door carries no form: its button starts the redirect. Other apps land on Auth0 directly.
-    const here = await v.webTry(persona, 'get', 'url');
-    if (here.code !== 0 || !here.stdout.includes(domain(v))) {
-      await v.web(persona, 'wait', 'button');
-      if (!(await v.webClickAny(persona, ...signin))) v.die(`login: no sign-in button on ${url} (VYSU_AUTH0_SIGNIN_LABELS)`);
-    }
+    if (!(await onAuth0(v, persona)) && (await door(v, persona, url, signin, email))) return;
     await v.web(persona, 'wait', '--url', `**${domain(v)}**`);
     v.step(`reach ${domain(v)}`);
     // Identifier-first Universal Login: e-mail, then password on a second page.
@@ -125,6 +228,13 @@ export const connector: AuthConnector = {
     const origin = url.replace(/^(https?:\/\/[^/]+).*$/s, '$1');
     await v.web(persona, 'wait', '--url', `${origin}/**`);
     await v.web(persona, 'wait', '2500');
+    // Auth0 let the persona through and the app came back to its door, with no login in the session:
+    // the app never took the code. Seen on a session whose cookies and storage had been cleared by
+    // hand, where the login still said « logged in » (2026-10-12).
+    if (!v.value((await v.webTry(persona, 'eval', USER_JS)).stdout)) {
+      const page = v.value((await v.webTry(persona, 'eval', PAGE_JS)).stdout);
+      if (showsDoor(page, signin)) v.die(`login: Auth0 took the password, but the app is back on its door with no login: ${pageSays(page)}`, fresh(persona));
+    }
     v.step(`land back on ${origin}`);
     console.log(`logged in: ${persona} (${email}) → ${v.lastLine((await v.webTry(persona, 'get', 'url')).stdout)}`);
   },

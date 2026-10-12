@@ -3,7 +3,8 @@
 // `<project>-<persona>--2`), its cookies and storage restored on every call, the persona's
 // `web-<persona>` lock taken on the first.
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, join, posix, win32 } from 'node:path';
@@ -13,6 +14,7 @@ import { descendants, isExecutable, isWindows, nativeTarget, processName, toolAr
 import { lockTake } from '../core/hold.ts';
 import type { RunResult } from '../core/proc.ts';
 import { personaBase, personaSessionSuffix, webResource } from '../core/personas.ts';
+import { hideJs } from './js.ts';
 
 // agent-browser's npm package ships one native binary per platform next to a node wrapper that
 // only picks one and spawns it: ~70 ms of node start-up before every call, a dozen calls per
@@ -86,7 +88,28 @@ export function browserOpts(): string[] {
     out.push('--executable-path', exe);
   }
   if (args) out.push('--args', args);
+  const hide = hideScript();
+  if (hide) out.push('--init-script', hide);
   return out;
+}
+
+// VYSU_WEB_HIDE: the overlays a dev build floats over the UI (a devtools button in a corner) hidden on
+// every page of every session, so a click is not taken by them and a capture does not show them
+// (17 checker reports, 2026-09/10). An init script rather than a hide after each command: it holds
+// across navigations, reloads and new tabs without a call of its own. agent-browser counts its init
+// scripts among the launch options: a session already running reopens its browser once on the first
+// command that brings a new list (the login and storage restored, the page back on about:blank), and
+// the file is named after its content so that a change is a new list, not an edit it never rereads.
+export function hideScript(): string {
+  const list = config().get('WEB_HIDE').trim();
+  if (!list) return '';
+  const js = hideJs(list);
+  const file = join(config().state, `web-hide-${createHash('sha1').update(js).digest('hex').slice(0, 12)}.js`);
+  if (!existsSync(file)) {
+    mkdirSync(config().state, { recursive: true });
+    writeFileSync(file, js);
+  }
+  return file;
 }
 // What to call the browser in a report.
 export function browserName(): string {

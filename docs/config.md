@@ -44,6 +44,7 @@ empty; the command that needs one says which key is missing.
 | `VYSU_API_HOSTS` | `host=label` pairs: what a report calls that API instead of its host | empty | `localhost:8080=local api.example.com=prod` |
 | `VYSU_BROWSER_PATH` | the Chromium-based browser every web session runs in. Empty is the Chrome for Testing agent-browser downloads, headless — the same rendering on every machine, no personal profile, no extension. Also read from `~/.vysu/machine.env`, where `vysu setup --browser` writes it | empty | `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser` |
 | `VYSU_BROWSER_ARGS` | launch flags handed to that browser, comma-separated. Headless is not software rendering: on macOS, Chrome for Testing and Brave headless draw canvas, compositing, rasterization and WebGL on the GPU (Metal); the `--enable-unsafe-swiftshader` agent-browser adds only allows SwiftShader as a fallback. What a machine does: `vysu - open chrome://gpu && vysu - snapshot \| grep -i accelerated` | empty | `--disable-blink-features=AutomationControlled` |
+| `VYSU_WEB_HIDE` | CSS selectors hidden (`display: none !important`) on every page of every web session: the overlays a dev build floats over the UI (a devtools button in a corner) that take clicks and show up in captures. A stylesheet registered as an agent-browser init script, so it holds across navigations, reloads and new tabs, and a selector that matches nothing changes nothing; each selector is a rule of its own, so one typo does not void the others. A session already running reopens its browser once on the first command that brings a new list (login and storage restored, the page back on `about:blank`); one started with a list keeps it until `vysu <persona> close` | empty | `.tsqd-parent-container, .TanStackRouterDevtools` |
 
 ## Auth
 
@@ -59,6 +60,7 @@ Options of the `auth0` connector, all optional; the defaults live in
 |---|---|---|
 | `VYSU_AUTH0_DOMAIN` | the tenant domain (default: any `*.auth0.com`) | `my-tenant.eu.auth0.com` |
 | `VYSU_AUTH0_SIGNIN_LABELS` | names of the sign-in button, comma-separated | `Se connecter,Sign in` |
+| `VYSU_AUTH0_SIGNIN_WAIT` | web: seconds the door's sign-in button is waited for, looked for every half second (a page drawn behind a loader shows it late). A click that lands on another door rather than on Auth0 is followed, three doors at most (`Commencer` → `/auth/login` → `Se connecter`); a session already signed in as the persona is left as it is | `15` |
 | `VYSU_AUTH0_CONTINUE_LABELS` | names of the continue button of the identifier-first step | `Continuer,Continue` |
 | `VYSU_AUTH0_DOOR_TEXT` | the text of the mobile door screen | `Sign in` |
 | `VYSU_AUTH0_HOME_TEXT` | the mobile text that proves the login went through | `Welcome` |

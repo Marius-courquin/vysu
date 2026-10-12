@@ -5,6 +5,40 @@ import { config } from '../core/ctx.ts';
 
 // Dev-only devtools badges sit over a corner of the page; they are not the UI under review.
 export const NO_DEVTOOLS = `document.querySelectorAll('.tsqd-parent-container, button[aria-label*="Devtools"]').forEach(e => { e.style.display = 'none' })`;
+// VYSU_WEB_HIDE, one selector at a time: a selector list the browser cannot parse is dropped whole,
+// so one typo would bring every overlay back. Cut at the commas outside parentheses, brackets and
+// quotes (`:is(a, b)` and `[aria-label="a,b"]` are one selector each).
+export function hideSelectors(list: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let depth = 0;
+  let quote = '';
+  for (const c of list) {
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if ((c === ')' || c === ']') && depth > 0) depth--;
+    else if (c === ',' && depth === 0) {
+      out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += c;
+  }
+  out.push(cur.trim());
+  return out.filter(Boolean);
+}
+// The page script that hides them: a stylesheet, so whatever the app renders later under those
+// selectors is hidden too, and a selector that matches nothing changes nothing. Registered as an
+// init script, it runs before the page's own on every document of the session (a navigation, a
+// reload, a new tab); the document element may not exist yet at that point, hence the second try.
+export function hideJs(list: string): string {
+  const css = hideSelectors(list)
+    .map((sel) => `${sel}{display:none!important}`)
+    .join('\n');
+  return `(() => { const add = () => { if (document.getElementById("vysu-hide")) return; const root = document.head || document.documentElement; if (!root) return; const s = document.createElement("style"); s.id = "vysu-hide"; s.textContent = ${JSON.stringify(css)}; root.appendChild(s) }; add(); document.addEventListener("DOMContentLoaded", add) })();\n`;
+}
 // --freeze: a blinking caret or a spinner mid-turn is the whole difference between « identical » and
 // « 0.2 % changed » on a page nothing touched.
 export const FREEZE_CSS = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}';

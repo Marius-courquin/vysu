@@ -11,14 +11,20 @@ export interface Box {
   h: number;
 }
 
+export interface ClickOptions {
+  // Seconds the names are looked for, every half second, before the answer is false. 0: one look.
+  wait?: number;
+}
+
 export interface AuthContext {
   // agent-browser in the persona's session, locked and restored. `web` hands back stdout and ends
   // vysu with the call's own exit code when it fails (a bash connector runs under `set -e`);
   // `webTry` never fails and says nothing: the caller reads the code.
   web(persona: string, ...args: string[]): Promise<string>;
   webTry(persona: string, ...args: string[]): Promise<RunResult>;
-  // The first visible button among several names: a label differs by language and by version.
-  webClickAny(persona: string, ...names: string[]): Promise<boolean>;
+  // The first visible button among several names: a label differs by language and by version. A last
+  // `{ wait: <seconds> }` looks again until one shows, for a page that draws a loader first.
+  webClickAny(persona: string, ...names: [...names: string[], options: ClickOptions] | string[]): Promise<boolean>;
   // agent-device on the chosen simulator / emulator, locked; the same two forms.
   mob(platform: Platform, ...args: string[]): Promise<string>;
   mobTry(platform: Platform, ...args: string[]): Promise<RunResult>;

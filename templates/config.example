@@ -47,6 +47,9 @@ VYSU_LOGIN_PATH='/login'
 # VYSU_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 # Launch flags handed to the browser, comma-separated.
 # VYSU_BROWSER_ARGS='--disable-blink-features=AutomationControlled'
+# CSS selectors hidden on every page of every web session: the overlays a dev build floats over the UI
+# (devtools buttons), which take clicks and show up in captures.
+# VYSU_WEB_HIDE='.tsqd-parent-container, .TanStackRouterDevtools'
 
 # --- auth ---------------------------------------------------------------------------------------
 
@@ -59,6 +62,7 @@ VYSU_AUTH='none'
 # Options of the auth0 connector, all optional (defaults in src/connectors/auth/auth0.ts):
 # VYSU_AUTH0_DOMAIN='my-tenant.eu.auth0.com'
 # VYSU_AUTH0_SIGNIN_LABELS='Se connecter,Sign in'
+# VYSU_AUTH0_SIGNIN_WAIT=15
 # VYSU_AUTH0_CONTINUE_LABELS='Continuer,Continue'
 # VYSU_AUTH0_DOOR_TEXT='Se connecter'
 # VYSU_AUTH0_HOME_TEXT='Bienvenue'

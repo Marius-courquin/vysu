@@ -21,8 +21,10 @@ export async function run(args: string[]): Promise<number> {
   switch (name) {
     case 'web':
       return passthrough(a, rest);
-    case 'web_click_any':
-      return status(await webClickAny(a, rest));
+    case 'web_click_any': {
+      const wait = rest[0] === '--wait' ? Number(rest[1]) || 0 : 0;
+      return status(await webClickAny(a, rest[0] === '--wait' ? rest.slice(2) : rest, wait));
+    }
     case 'mob': {
       const r = await mobile.mob(platform(a), rest);
       out(r.stdout);

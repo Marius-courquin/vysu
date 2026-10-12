@@ -13,6 +13,7 @@ import { js as paceJs } from '../img/pace.ts';
 import { tool } from '../img/tools.ts';
 import { ab, bboxes, bcmd, brun, evalValue, lastLine, sessionOf } from './ab.ts';
 import { boxOfJs, chromeJs, EXPAND_JS, idleJs, langReadJs, RESTORE_JS, WARM_JS } from './js.ts';
+import { CLICK_MARK, clickWords, exactRef, markTextJs, nearNames, refsOf } from './match.ts';
 import { shellWords, StepSyntax } from './words.ts';
 
 // Which API the page actually talked to. The state file only knows about a dev server vysu started
@@ -120,12 +121,12 @@ export async function webBoxOf(persona: string, label: string, field: boolean): 
 }
 
 // By button name, then by link name, then by the name of any other control — a switch, a checkbox,
-// a radio, a tab, a menu item, an option — then by visible text: the same label is a button on one
+// a radio, a tab, a menu item, an option — then by visible text, each matched whole (web/match.ts): the same label is a button on one
 // screen and a link on the next, and a flow names what it sees rather than how it is marked up. The
 // controls come before the text because a toggle's text is often a sibling of it (Vuestic, Vuetify,
 // most design systems): clicking the words toggles nothing, while the control found by the name
 // the words give it does, even when the input itself is drawn invisible under a styled track.
-// A miss costs ~30 ms. A step that finds nothing says why and hands its failure back, rather than
+// A lookup is one snapshot of the page's controls (and one eval for the text tier). A step that finds nothing says why and hands its failure back, rather than
 // ending the command itself: the runner is then the one that names the step number, and a recording
 // is stopped instead of left running.
 export const CLICK_ROLES = ['button', 'link', 'switch', 'checkbox', 'radio', 'tab', 'menuitem', 'option'];
@@ -137,7 +138,7 @@ export function clickTarget(label: string): string {
   return /^@e[0-9]+$/.test(label) ? label : '';
 }
 
-export async function webClick(persona: string, label: string): Promise<boolean> {
+export async function webClick(persona: string, label: string, partial = false): Promise<boolean> {
   const direct = clickTarget(label);
   if (direct) {
     evTouch();
@@ -148,6 +149,45 @@ export async function webClick(persona: string, label: string): Promise<boolean>
     }
     return (await ab(persona, ['wait', '300'])).code === 0;
   }
+  if (partial) return webClickPartial(persona, label);
+  // The page's own accessible names, read once: a control is then clicked by its ref, and a miss can
+  // say what the page does call its controls.
+  const refs = refsOf((await ab(persona, ['snapshot', '-i', '--json'], { stderr: 'drop' })).stdout);
+  const hit = exactRef(refs, label, CLICK_ROLES);
+  let target = hit ? `@${hit.ref}` : '';
+  if (!target && Number(evalValue((await ab(persona, ['eval', markTextJs(label)], { stderr: 'drop' })).stdout)) > 0) target = `[${CLICK_MARK}]`;
+  if (!target) {
+    const near = nearNames(refs, label, CLICK_ROLES);
+    const hint = near.length ? `did you mean ${near.map((n) => `« ${n} »`).join(', ')}? ` : '';
+    process.stderr.write(
+      `vysu: nothing named exactly « ${label} » in ${sessionOf(persona)}, nothing clicked (${hint}vysu ${persona} snapshot -i -c; a part of a name: click "${label}" --partial; a control named otherwise: click "css:<selector>" or click @e<N>)\n`,
+    );
+    return false;
+  }
+  if (ev.rows) ev.target = await boxOf(persona, target);
+  evTouch();
+  const r = await ab(persona, ['click', target], { stderr: 'capture' });
+  if (r.code !== 0) {
+    process.stderr.write(`vysu: « ${label} » found but not clicked in ${sessionOf(persona)}${r.stderr ? `: ${lastLine(r.stderr)}` : ''}\n`);
+    return false;
+  }
+  return (await ab(persona, ['wait', '300'])).code === 0;
+}
+
+// Where a click is about to land, « x y w h » in CSS pixels, or '' (a ripple lost, not a step).
+async function boxOf(persona: string, target: string): Promise<string> {
+  try {
+    const d = (JSON.parse(lastLine((await ab(persona, ['get', 'box', target, '--json'], { stderr: 'drop' })).stdout)) as { data?: Record<string, number> }).data ?? {};
+    const b = [d.x, d.y, d.width, d.height];
+    return b.every((n) => typeof n === 'number') ? b.map((n) => Math.round(n!)).join(' ') : '';
+  } catch {
+    return '';
+  }
+}
+
+// `--partial`: the first control whose name holds the label, by role, then the first text that does —
+// agent-browser's own reading (a case-insensitive substring), and what every click was until 0.9.3.
+async function webClickPartial(persona: string, label: string): Promise<boolean> {
   if (ev.rows) ev.target = await webBoxOf(persona, label, false);
   evTouch();
   const tries = [...CLICK_ROLES.map((role) => ['find', 'role', role, 'click', '--name', label]), ['find', 'text', label, 'click']];
@@ -288,7 +328,7 @@ function words(step: string): string[] | null {
 }
 
 // One line of a web flow / a recording: vysu's own verbs, then anything agent-browser accepts.
-//   go <url> [--reload] · click "<label>" · click t:<i18n.key> · click "css:<selector>" · click @e<N>
+//   go <url> [--reload] · click "<label>" [--partial] · click t:<i18n.key> · click "css:<selector>" · click @e<N>
 //   · fill "<label>" "<value>" · press <key> · wait idle [<s>] · sleep <s> · shot <label> [--full]
 //   · check · viewport WxH   (`tap` reads as `click`, as on mobile)
 // True when the step held; what failed has been said on stderr.
@@ -325,14 +365,17 @@ export async function webStep(persona: string, shots: string, step: string, prin
   // By i18n key: the flow survives a wording change, and reads the same in every language.
   if (/^(click|tap) ["']?t:/.test(step)) {
     let key = step.slice(step.indexOf(' ') + 1);
-    key = key.replace(/^["']/, '').replace(/["']$/, '').replace(/^t:/, '');
+    const partial = / --partial$/.test(key);
+    key = key.replace(/ --partial$/, '').replace(/^["']/, '').replace(/["']$/, '').replace(/^t:/, '');
     await webLangInit(persona);
     ev.label = i18nLabel(webLang, key);
-    return webClick(persona, ev.label);
+    return webClick(persona, ev.label, partial);
   }
   if (step.startsWith('click ') || step.startsWith('tap ')) {
     const w = words(step.slice(step.indexOf(' ') + 1));
-    return w !== null && webClick(persona, w[0] ?? '');
+    if (w === null) return false;
+    const { label, partial } = clickWords(w);
+    return webClick(persona, label, partial);
   }
   if (step.startsWith('fill ')) {
     const w = words(after('fill '));
