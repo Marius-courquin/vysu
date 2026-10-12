@@ -49,7 +49,7 @@ test('this owner\'s browser maps the shared origin onto its isolated port, other
 });
 
 test('the service folder is found again in the worktree the command runs from', () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vysu-wt-')));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'vysu-wt-')));
   const repo = join(root, 'app');
   mkdirSync(join(repo, 'apps', 'web'), { recursive: true });
   const git = (cwd: string, ...a: string[]): void => {

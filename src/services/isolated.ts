@@ -10,7 +10,7 @@
 // Kept apart from services.ts on purpose: the entry point reads the record on every command, and
 // services.ts brings the mobile code with it.
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { Config } from '../core/config.ts';
 import { lockDrop, lockTake, owner, ownerGone } from '../core/hold.ts';
@@ -100,13 +100,16 @@ function git(dir: string, args: string[]): string | null {
   const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
   return r.status === 0 ? r.stdout.trim() : null;
 }
+// The native resolution, and on Windows one spelling: git answers `C:/Users/RUNNER~1/…` with forward
+// slashes and the short 8.3 name where the shell gave one, node's own realpath keeps what it is given.
 const physical = (p: string): string => {
   try {
-    return realpathSync(p);
+    return realpathSync.native(resolve(p));
   } catch {
-    return p;
+    return resolve(p);
   }
 };
+const samePath = (a: string, b: string): boolean => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
 function commonDir(dir: string): string | null {
   const d = git(dir, ['rev-parse', '--git-common-dir']);
   return d === null ? null : physical(isAbsolute(d) ? d : join(dir, d));
@@ -121,7 +124,7 @@ export function worktreeOf(serviceDir: string, here = process.cwd()): string | n
   const main = physical(serviceDir);
   const mainCommon = commonDir(main);
   const hereCommon = commonDir(here);
-  if (!mainCommon || !hereCommon || mainCommon !== hereCommon) return null;
+  if (!mainCommon || !hereCommon || !samePath(mainCommon, hereCommon)) return null;
   const mainTop = git(main, ['rev-parse', '--show-toplevel']);
   const hereTop = git(here, ['rev-parse', '--show-toplevel']);
   if (!mainTop || !hereTop) return null;
