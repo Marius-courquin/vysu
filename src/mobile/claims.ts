@@ -15,6 +15,7 @@ import {
   deviceGuard,
   deviceRemember,
   devices,
+  expiredFile,
   iosLock,
   lockDrop,
   lockTake,
@@ -24,15 +25,16 @@ import {
   type Platform,
 } from '../core/hold.ts';
 import { listening } from '../core/net.ts';
-import { hhmm } from '../core/text.ts';
+import { hhmm, nowSeconds } from '../core/text.ts';
 import { webClaimState, webReset } from '../web/api.ts';
 import { claimAnyWeb } from '../web/slots.ts';
 import { forgetSerial } from './device.ts';
 import { quiet, say } from './io.ts';
 import { mobileKind, mrelaunch } from './launch.ts';
 import { mnet } from './mctl.ts';
-import { metroPort } from './metro.ts';
+import { isolatedPort, metroPort } from './metro.ts';
 import { claimAny, deleteClone, isClone, poolIsUp, poolPower } from './pool.ts';
+import { reapSoon } from './reap.ts';
 import { mscreenLine } from './screen.ts';
 import { mresetArgs, mstateFile, mstateGet, mstateLine } from './state.ts';
 
@@ -100,6 +102,7 @@ export async function claim(args: string[]): Promise<void> {
   await claimSeal(r, Number(minutes), note, dev);
   if (device) deviceRemember(what === 'ios' ? 'ios-device' : 'android-avd', device);
   await claimReport(what, r, '');
+  if (dev) await reapSoon();
 }
 
 // The check and the write under the pool lock `--any` takes: two owners claiming the same device at
@@ -140,6 +143,11 @@ export async function claimReport(what: string, r: string, done: string): Promis
     if (done) say(`device: ${done}`);
     else if (!poolIsUp(power)) say(`device: ${power} (${p === 'ios' ? 'vysu up ios boots it' : 'vysu up android starts it'})`);
     say(await mstateLine(mstateFile(p), '', mobileKind() === 'expo'));
+    // The sub-agents of one session are one owner, and so share its isolated Metro: on 09/10 a
+    // checker's claims landed on the Metro a sibling had started from another worktree, and ran that
+    // branch's code. Said at the claim, where a sibling still can tell it is not its own.
+    const iso = mobileKind() === 'expo' ? isolatedPort() : '';
+    if (iso) say(`metro: ${who} has an isolated Metro on :${iso}, which every command of this owner uses (VYSU_OWNER=<own name> for a sub-agent that needs another)`);
     // No snapshot of a device that is not up: agent-device would boot it to answer.
     say(poolIsUp(power) ? await mscreenLine(p) : `screen: (${power})`);
     const args = mresetArgs(p);
@@ -180,10 +188,20 @@ export async function release(args: string[]): Promise<void> {
     }
   }
   if (!existsSync(f)) {
+    // One that ran out was set aside by the next command that met it: its owner is told it expired,
+    // which is not the same answer as never having held it.
+    const gone = expiredFile(r);
+    if (existsSync(gone) && claimField(gone, 'owner') === owner()) {
+      say(`release: the claim of ${owner()} on ${r} had already expired at ${hhmm(Number(claimField(gone, 'until') || 0))}, nothing to release`);
+      rmSync(gone, { force: true });
+      return;
+    }
     say(`release: no claim on ${r}`);
     return;
   }
   const who = claimField(f, 'owner');
+  const until = Number(claimField(f, 'until') || 0);
+  const expired = !(nowSeconds() < until) ? ` (it had expired at ${hhmm(until)})` : '';
   if (who !== owner() && !force) die(`${r} is claimed by ${who} (vysu release ${what} --force to take it over)`);
   // Handing a device back the way it was found: the next agent's `vysu claim` then reads a device in
   // its defaults instead of a large-text dark one it has to notice before believing a capture. A clone
@@ -199,7 +217,7 @@ export async function release(args: string[]): Promise<void> {
     await resetResource(r, what);
   }
   rmSync(f, { force: true });
-  say(`released: ${r} (was ${who})`);
+  say(`released: ${r} (was ${who})${expired}`);
 }
 
 // Back to the defaults, only what differs from them. A persona goes by the name it was typed with: the

@@ -1,0 +1,118 @@
+// How long a mobile command may hold a device. A command waits on a device that never answers as
+// long as the device takes: an `mshot` held the Android lock for 45 minutes, an `up android
+// --isolated` for 21, a checker's `mwait` for seven hours (audit of 25/09-12/10), and every other
+// agent queued behind the lock. Agents reached for `timeout 300 vysu …` 83 times, on a Mac that has no
+// `timeout`. The ceiling is the same for every command that takes a device: armed when it takes the
+// first one, and past it the command stops what it started, gives its locks back and exits 124, the
+// status `timeout` itself uses.
+import { spawnSync } from 'node:child_process';
+import { commandLine, config } from './ctx.ts';
+import { runCleanups } from './errors.ts';
+import { descendants, isWindows } from './host.ts';
+import { killTree } from './proc.ts';
+import { sleep } from './text.ts';
+
+// What boots a device, logs a persona in or runs a script of steps gets twice the base: their p99 in
+// the audit was 200-460 s on a loaded machine, against under 100 s for a capture or a tap.
+const LONG = new Set(['up', 'claim', 'mlogin', 'mrelaunch', 'mdo', 'mflow', 'mrec', 'release']);
+export const MOBILE_TIMEOUT_DEFAULT = 300;
+
+export function mobileTimeoutBase(raw: string): number {
+  const n = Number(raw);
+  return raw.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : MOBILE_TIMEOUT_DEFAULT;
+}
+
+// Seconds this command may run once it holds a device; 0: no ceiling.
+export function ceilingSeconds(cmd: string, base: number): number {
+  if (!(base > 0)) return 0;
+  return LONG.has(cmd) ? base * 2 : base;
+}
+
+export interface ProcRow {
+  pid: number;
+  ppid: number;
+  pgid: number;
+  args: string;
+}
+
+export function parsePs(text: string): ProcRow[] {
+  const out: ProcRow[] = [];
+  for (const line of text.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s?(.*)$/.exec(line);
+    if (m) out.push({ pid: Number(m[1]), ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] ?? '' });
+  }
+  return out;
+}
+
+// What the command started and still waits on: the processes below it in its own process group. What
+// it started detached (an emulator, Metro, a log tail) leads a group of its own, and so does all that
+// runs under it: those outlive the command on purpose and are left alone. The shell a command runs in
+// shares its group but sits above it, and a pipe's other end beside it: neither is below.
+export function strayChildren(rows: ProcRow[], self: number): ProcRow[] {
+  const me = rows.find((r) => r.pid === self);
+  if (!me) return [];
+  const out: ProcRow[] = [];
+  const walk = (parent: number): void => {
+    for (const r of rows) {
+      if (r.ppid !== parent || r.pgid !== me.pgid || out.includes(r)) continue;
+      out.push(r);
+      walk(r.pid);
+    }
+  };
+  walk(self);
+  return out;
+}
+
+// What the command was doing, for the line that says it was stopped: the phase it announced, else the
+// first thing it was waiting on.
+let doing = '';
+export function ceilingDoing(what: string): void {
+  doing = what;
+}
+export function doingLine(phase: string, waiting: ProcRow[]): string {
+  if (phase) return phase;
+  const first = waiting[0];
+  if (!first) return 'waiting on the device';
+  const words = first.args.trim().split(/\s+/);
+  // A script is named after itself, not after the interpreter that runs it (node, sh).
+  if (/(^|\/)(node|bun|sh|bash|zsh|python3?)$/.test(words[0] ?? '') && (words[1] ?? '').includes('/')) words.shift();
+  words[0] = (words[0] ?? '').replace(/.*\//, '');
+  let cmd = words.join(' ');
+  if (cmd.length > 80) cmd = `${cmd.slice(0, 77)}...`;
+  return `running « ${cmd} »`;
+}
+
+function children(): ProcRow[] {
+  if (isWindows) return descendants(process.pid).map((pid) => ({ pid, ppid: 0, pgid: 0, args: '' }));
+  const r = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,pgid=,args='], { encoding: 'utf8' });
+  return strayChildren(parsePs(r.stdout ?? ''), process.pid);
+}
+
+let armed: ReturnType<typeof setTimeout> | undefined;
+
+export function armCeiling(): void {
+  if (armed) return;
+  const name = commandLine().split(' ')[1] ?? '';
+  const seconds = ceilingSeconds(name, mobileTimeoutBase(config().get('MOBILE_TIMEOUT')));
+  if (!seconds) return;
+  armed = setTimeout(() => void stop(seconds), seconds * 1000);
+  armed.unref();
+}
+
+async function stop(seconds: number): Promise<void> {
+  const waiting = children();
+  let cmd = commandLine().replace(/^vysu /, '');
+  if (cmd.length > 60) cmd = `${cmd.slice(0, 57)}...`;
+  process.stderr.write(`vysu: ${cmd} stopped after ${seconds}s (VYSU_MOBILE_TIMEOUT) while ${doingLine(doing, waiting)}\n`);
+  // The command's own code resumes as soon as what it waited on is killed, and ends with its own
+  // status: the exit is 124 whichever way it gets there.
+  const exit = process.exit.bind(process);
+  process.exit = ((_code?: number) => exit(124)) as typeof process.exit;
+  for (const c of waiting) killTree(c.pid, 'SIGTERM');
+  await sleep(1500);
+  for (const c of children()) killTree(c.pid, 'SIGKILL');
+  // The locks are a sync cleanup the exit hook runs anyway: a recorder's stop that hangs in turn must
+  // not keep the device held past the ceiling that was meant to free it.
+  await Promise.race([runCleanups(), sleep(15000)]);
+  exit(124);
+}

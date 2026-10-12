@@ -7,7 +7,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { IOS_DEFAULT_DEVICE } from '../core/config.ts';
-import { die, exit } from '../core/errors.ts';
+import { ceilingDoing } from '../core/ceiling.ts';
+import { die, exit, onCleanup } from '../core/errors.ts';
 import {
   androidLock,
   claimField,
@@ -32,6 +33,7 @@ import { adb, adbShell, androidAvdOf, androidSelect, androidSerial, emulatorSeri
 import { say, tell } from './io.ts';
 import { mobileKind } from './launch.ts';
 import { metroPort } from './metro.ts';
+import { admit, androidMaxRunning, budgetLine, iosMaxBooted, reapIdle, reapSoon } from './reap.ts';
 import { mstateFile, mstateLine } from './state.ts';
 import { adbPath, emulatorPath, needMac, xcrun } from './tools.ts';
 
@@ -42,7 +44,7 @@ interface Sim {
   udid: string;
   state: string;
 }
-const pool = { sims: null as Sim[] | null, emus: null as Array<{ serial: string; avd: string }> | null, avds: null as string[] | null };
+export const pool = { sims: null as Sim[] | null, emus: null as Array<{ serial: string; avd: string }> | null, avds: null as string[] | null };
 
 async function poolSims(): Promise<Sim[]> {
   if (!isMac) return [];
@@ -69,7 +71,7 @@ async function poolEmulators(): Promise<Array<{ serial: string; avd: string }>> 
   for (const s of await emulatorSerials()) out.push({ serial: s, avd: await androidAvdOf(s) });
   return out;
 }
-async function poolLoad(p: Platform): Promise<void> {
+export async function poolLoad(p: Platform): Promise<void> {
   if (p === 'ios') pool.sims = await poolSims();
   else {
     pool.emus = await poolEmulators();
@@ -77,8 +79,14 @@ async function poolLoad(p: Platform): Promise<void> {
     pool.avds = r.stdout.split(/\r?\n/).filter(Boolean);
   }
 }
-const poolSim = (name: string): Sim | undefined => pool.sims?.find((s) => s.name === name);
-const poolSerial = (avd: string): string => pool.emus?.find((e) => e.avd === avd)?.serial ?? '';
+export const poolSim = (name: string): Sim | undefined => pool.sims?.find((s) => s.name === name);
+export const poolSerial = (avd: string): string => pool.emus?.find((e) => e.avd === avd)?.serial ?? '';
+// What was just booted or stopped is read again by whoever asks next.
+export function poolForget(): void {
+  pool.sims = null;
+  pool.emus = null;
+  pool.avds = null;
+}
 
 // A clone vysu made is named after its source, « <name> (vysu N) »: that suffix is how the pool,
 // `release --delete-clone` and `--prune-clones` tell it from a simulator somebody made by hand.
@@ -93,8 +101,8 @@ function iosConfigNames(): string[] {
   if (!list) list = `${config().get('IOS_DEVICE', IOS_DEFAULT_DEVICE)},${config().get('IOS_OLD_DEVICE')}`;
   return uniq(list.split(',').map((x) => x.trim()));
 }
-const iosNames = (): string[] => uniq([...iosConfigNames(), ...clones()]);
-const androidNames = (): string[] => uniq(config().get('ANDROID_AVDS').split(';').map((s) => s.split(':')[0] ?? ''));
+export const iosNames = (): string[] => uniq([...iosConfigNames(), ...clones()]);
+export const androidNames = (): string[] => uniq(config().get('ANDROID_AVDS').split(';').map((s) => s.split(':')[0] ?? ''));
 
 // Where a device is at: booted · running on emulator-NNNN · shut down · not on this machine.
 export async function poolPower(p: Platform, name = devices.of(p)): Promise<string> {
@@ -116,13 +124,13 @@ export const poolIsUp = (power: string): boolean => power === 'booted' || power.
 
 // Taken by nobody but this owner: « mine », « theirs » or ''. claimWhy drops an expired or an
 // orphaned claim on the way, so what is left is a claim somebody alive still holds.
-function claimState(r: string): string {
+export function claimState(r: string): string {
   if (claimWhy(r)) return 'theirs';
   return existsSync(claimFile(r)) ? 'mine' : '';
 }
 // A command of somebody else running on it right now: a device with no claim is not free while an
 // agent is halfway through an `mrelaunch` on it, and it would only wait for it anyway.
-function locked(r: string): boolean {
+export function locked(r: string): boolean {
   const d = join(config().locks, r);
   try {
     if (!statSync(d).isDirectory()) return false;
@@ -189,6 +197,8 @@ function sweepChoices(): void {
 export async function devicesCommand(args: string[]): Promise<void> {
   if (args[0] === '--prune-clones') return pruneClones(args.slice(1));
   if (args.length) die('usage: vysu devices [--prune-clones [--dry-run]]');
+  await reapSoon();
+  poolForget();
   await poolLoad('ios');
   await poolLoad('android');
   const simNames = (pool.sims ?? []).map((s) => s.name);
@@ -196,6 +206,7 @@ export async function devicesCommand(args: string[]): Promise<void> {
   for (const n of iosList) say(await poolLine('ios', n, await poolPower('ios', n)));
   const androidList = uniq([...androidNames(), ...(pool.emus ?? []).map((e) => e.avd), ...claimed('android', pool.avds ?? []), devices.android]);
   for (const n of androidList) say(await poolLine('android', n, await poolPower('android', n)));
+  say(await budgetLine());
   sweepChoices();
 }
 
@@ -203,8 +214,8 @@ export async function devicesCommand(args: string[]): Promise<void> {
 
 // The device a `claim --any` takes, in this order: one this owner already claims (a second `--any` in
 // the same task must not collect a second device), a free booted one, a free shut-down one it boots
-// (Android: while fewer than VYSU_ANDROID_MAX_RUNNING emulators run, 4 GB of RAM each), and on iOS a
-// clone of a shut-down pool member, up to VYSU_IOS_MAX_CLONES. Within each rank the owner's current
+// (while fewer than VYSU_ANDROID_MAX_RUNNING emulators run, or VYSU_IOS_MAX_BOOTED simulators of the
+// pool are booted), and on iOS a clone of a shut-down pool member, up to VYSU_IOS_MAX_CLONES. Within each rank the owner's current
 // device first: the app, its login and its state are already there.
 interface Pick {
   action: '' | 'own' | 'booted' | 'boot' | 'start' | 'clone';
@@ -241,12 +252,20 @@ async function poolPick(p: Platform): Promise<Pick> {
   const pick: Pick = { action: '', name: '', src: '', why: '' };
   if (own) return { ...pick, action: 'own', name: own };
   const running = (pool.emus ?? []).length;
-  const maxRunning = Number(config().get('ANDROID_MAX_RUNNING', '2'));
+  const maxRunning = androidMaxRunning();
+  const booted = names.filter((n) => poolSim(n)?.state === 'Booted').length;
+  const maxBooted = iosMaxBooted();
   if (ownDown) {
     // Held but stopped, and no room to start it: said on the device line.
-    return { ...pick, name: ownDown, action: p === 'ios' ? 'boot' : running < maxRunning ? 'start' : 'own' };
+    const room = p === 'ios' ? booted < maxBooted : running < maxRunning;
+    return { ...pick, name: ownDown, action: room ? (p === 'ios' ? 'boot' : 'start') : 'own' };
   }
   if (up) return { ...pick, action: 'booted', name: up };
+  // Every simulator booted is 2-4 GB: past the budget, a free one is waited for rather than another
+  // booted or cloned.
+  if (p === 'ios' && booted >= maxBooted) {
+    return { ...pick, why: `boot: ${booted} simulators of the pool already booted (VYSU_IOS_MAX_BOOTED=${maxBooted})` };
+  }
   if (p === 'android') {
     if (down && running < maxRunning) return { ...pick, action: 'start', name: down };
     if (down) return { ...pick, why: `start: « ${down} » is free but ${running} emulators already run (VYSU_ANDROID_MAX_RUNNING=${maxRunning})` };
@@ -283,6 +302,7 @@ export async function claimAny(p: Platform, minutes: number, note: string, nowai
   const start = Date.now();
   const wait = config().lockWait;
   let said = false;
+  let reapedAt = 0;
   let pick: Pick;
   for (;;) {
     // Two `--any` at the same moment would pick the same free device: the choice and the claim that
@@ -292,6 +312,14 @@ export async function claimAny(p: Platform, minutes: number, note: string, nowai
     pick = await poolPick(p);
     if (pick.action) break;
     lockDrop(`pool-${p}`);
+    // No room: what nobody uses is stopped, at most every 30 s, and the pick made again.
+    if (Date.now() - reapedAt >= 30000) {
+      reapedAt = Date.now();
+      if (await reapIdle({ pressure: true, print: (l) => tell(`vysu: ${l}`) })) {
+        poolForget();
+        continue;
+      }
+    }
     const waited = Math.floor((Date.now() - start) / 1000);
     if (nowait || waited >= wait) {
       tell(`vysu: no free ${p} device in the pool${said ? ` after ${waited}s` : ''}:`);
@@ -308,6 +336,9 @@ export async function claimAny(p: Platform, minutes: number, note: string, nowai
   const name = pick.name;
   const r = `${p}-${slug(name)}`;
   claimWrite(r, minutes, note, name);
+  // A claim on a device that never came up is no claim: whichever way the boot ends (a die, the
+  // command's ceiling, a signal), it goes with it.
+  const keep = onCleanup(() => rmSync(claimFile(r), { force: true }), true);
   let done = '';
   if (pick.action === 'clone') {
     const srcUdid = poolSim(pick.src)?.udid ?? '';
@@ -343,11 +374,11 @@ export async function claimAny(p: Platform, minutes: number, note: string, nowai
     }
     done = `started on ${serial.value}`;
   }
+  keep();
   // What was just booted is read again by the report.
-  pool.sims = null;
-  pool.emus = null;
-  pool.avds = null;
+  poolForget();
   await report(p, r, done);
+  await reapSoon();
 }
 
 // A machine with no screen, or a person who does not want windows opening under their work: the
@@ -371,6 +402,8 @@ async function iosBoot(): Promise<boolean> {
   await iosLock();
   const udid = await iosUdid(true);
   if (udid === 'booted') return false;
+  await admit('ios', devices.ios);
+  ceilingDoing(`booting « ${devices.ios} »`);
   await xcrun(['simctl', 'boot', udid]);
   await simulatorWindow();
   await xcrun(['simctl', 'bootstatus', udid], { timeoutMs: 180000 });
@@ -380,19 +413,56 @@ async function iosBoot(): Promise<boolean> {
   return true;
 }
 
-// A stopped AVD, started with the flags `vysu up android` starts one with (host GPU, 4 GB, no
-// snapshot), and waited for until it has booted.
+// The flags an AVD is started with. It ships with the GPU off and 1.5 GB: software rendering, ANRs at
+// boot. Host GPU and explicit DNS servers, so the guest does not inherit a VPN resolver it cannot
+// reach. Memory and cores were 4096 MB and 4 until 0.9.2: two emulators then asked for 8 GB and 8
+// cores of an 18 GB, 11-core Mac that also ran two simulators and nine agent sessions, which is where
+// the ANRs came from; 3 GB and 2 cores run the app as well. No audio: nothing listens, and the host's
+// audio stack costs a thread per emulator. A cold boot by default (`-no-snapshot` loads none and saves
+// none, where `-no-snapshot-load` still wrote a 2-4 GB RAM image at every shutdown that nothing ever
+// read back); VYSU_ANDROID_QUICKBOOT=1 loads the AVD's quickboot snapshot and saves it again on exit.
+export function emulatorArgs(avd: string, o: { memory: string; cores: string; headless: boolean; quickboot: boolean }): string[] {
+  return [
+    '-avd',
+    avd,
+    '-gpu',
+    'host',
+    '-memory',
+    o.memory,
+    '-cores',
+    o.cores,
+    '-dns-server',
+    '1.1.1.1,8.8.8.8',
+    ...(o.quickboot ? [] : ['-no-snapshot']),
+    '-no-boot-anim',
+    '-no-audio',
+    ...(o.headless ? ['-no-window'] : []),
+  ];
+}
+
+const positive = (key: string, fallback: string): string => {
+  const v = config().get(key, fallback);
+  if (!/^[1-9][0-9]*$/.test(v)) die(`VYSU_${key} is a whole number (got « ${v} »)`);
+  return v;
+};
+
+// A stopped AVD, started with those flags, and waited for until it has booted.
 export function startEmulator(avd: string): void {
   mkdirSync(config().logs, { recursive: true });
-  // An AVD ships with the GPU off and 1.5 GB: software rendering, ANRs at boot. Host GPU + RAM, and
-  // explicit DNS servers, so the guest does not inherit a VPN resolver it cannot reach.
-  const window = mobileHeadless() ? ['-no-window'] : [];
-  spawnDetached(emulatorPath(), ['-avd', avd, '-gpu', 'host', '-memory', '4096', '-cores', '4', '-dns-server', '1.1.1.1,8.8.8.8', '-no-snapshot-load', '-no-boot-anim', ...window], {
-    log: join(config().logs, 'android-emulator.log'),
+  const quick = config().get('ANDROID_QUICKBOOT', '0');
+  if (!['0', '1'].includes(quick)) die(`VYSU_ANDROID_QUICKBOOT is 0 or 1 (got « ${quick} »)`);
+  const args = emulatorArgs(avd, {
+    memory: positive('ANDROID_MEMORY', '3072'),
+    cores: positive('ANDROID_CORES', '2'),
+    headless: mobileHeadless(),
+    quickboot: quick === '1',
   });
+  ceilingDoing(`starting the emulator « ${avd} »`);
+  spawnDetached(emulatorPath(), args, { log: join(config().logs, 'android-emulator.log') });
 }
 async function androidStart(): Promise<boolean> {
   await androidLock();
+  await admit('android', devices.android);
   startEmulator(devices.android);
   let s = '';
   for (let i = 0; i < 60 && !s; i++) {

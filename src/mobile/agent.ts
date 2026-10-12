@@ -19,6 +19,7 @@ import { devices, iosLock, type Platform } from '../core/hold.ts';
 import { isWindows, toolArgv, which } from '../core/host.ts';
 import { run, type RunResult } from '../core/proc.ts';
 import { slug } from '../core/text.ts';
+import { iosNeedBooted } from './booted.ts';
 import { androidSelect, serial } from './device.ts';
 import { needMac } from './tools.ts';
 
@@ -82,6 +83,7 @@ async function select(p: Platform): Promise<void> {
   if (p === 'ios') {
     needMac('ios');
     await iosLock();
+    await iosNeedBooted();
   } else if (p === 'android') {
     await androidSelect();
     await dropLeftovers();

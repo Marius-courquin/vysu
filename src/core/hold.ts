@@ -14,6 +14,7 @@ import { isWindows, pidAlive, processEntry, processName } from './host.ts';
 import { ANDROID_DEFAULT_AVD, IOS_DEFAULT_DEVICE } from './config.ts';
 import { webResource } from './personas.ts';
 import { hhmm, nowSeconds, sleep, slug } from './text.ts';
+import { armCeiling } from './ceiling.ts';
 
 export type Platform = 'ios' | 'android';
 
@@ -277,7 +278,9 @@ function releaseAll(): void {
   const dir = config().locks;
   for (const r of listDir(dir)) {
     const d = join(dir, r);
-    if (lockPid(d) === process.pid) rmSync(d, { recursive: true, force: true });
+    if (lockPid(d) !== process.pid) continue;
+    rmSync(d, { recursive: true, force: true });
+    if (isDevice(r)) usedMark(r);
   }
 }
 // For a process whose children take locks in its name: it may take none itself and still has theirs
@@ -323,6 +326,11 @@ export async function lockTake(r: string): Promise<void> {
         writeFileSync(join(dir, 'cmd'), cmd);
         held.add(r);
         claimRenew(r);
+        if (isDevice(r)) {
+          usedMark(r);
+          claimsKeep();
+          armCeiling();
+        }
         if (i > 0) process.stderr.write(`vysu: ${r} taken after ${Math.floor(i / 2)}s\n`);
         return;
       }
@@ -333,6 +341,28 @@ export async function lockTake(r: string): Promise<void> {
     i++;
     await sleep(500);
   }
+}
+
+// The lock, taken only if nobody holds it or claims it right now: the idle reaper stops a device
+// under it, and never waits for one somebody is driving.
+export function lockTry(r: string): boolean {
+  if (held.has(r)) return true;
+  const c = config();
+  const dir = join(c.locks, r);
+  mkdirSync(c.locks, { recursive: true });
+  if (!releaseRegistered) {
+    releaseRegistered = true;
+    onCleanup(releaseAll, true, true);
+  }
+  if (claimWhy(r)) return false;
+  if (isDir(dir) && !lockAlive(dir)) rmSync(dir, { recursive: true, force: true });
+  if (!mkdirOnce(dir)) return false;
+  writeFileSync(join(dir, 'pid'), String(process.pid));
+  writeFileSync(join(dir, 'owner'), owner());
+  writeFileSync(join(dir, 'since'), `${nowSeconds()}\n`);
+  writeFileSync(join(dir, 'cmd'), commandLine());
+  held.add(r);
+  return true;
 }
 
 // One lock given back before the command ends (the pool lock of claim --any).
@@ -400,6 +430,29 @@ function isFileSync(p: string): boolean {
   }
 }
 
+// --- last use ------------------------------------------------------------------------------------
+
+export const isDevice = (r: string): boolean => /^(ios|android)-/.test(r);
+
+// When each device was last driven, and by whom: what the idle reaper (mobile/reap.ts) measures from.
+// Written when a command takes the device and again when it lets it go, so a command killed without
+// its cleanups still leaves the time it started. A file per device, « <owner> <seconds> ».
+export const usedFile = (r: string): string => join(config().state, 'used', r);
+
+export function usedMark(r: string): void {
+  try {
+    mkdirSync(join(config().state, 'used'), { recursive: true });
+    writeFileSync(usedFile(r), `${owner()} ${nowSeconds()}\n`);
+  } catch {
+    // a state folder gone read-only must not fail the command that only wanted to note the time
+  }
+}
+
+export function usedRead(r: string): { who: string; at: number } {
+  const [who = '', at = '0'] = readTrim(usedFile(r)).trim().split(' ');
+  return { who, at: Number(at) || 0 };
+}
+
 // --- claims --------------------------------------------------------------------------------------
 
 // A lock lasts one command; a mobile task lasts twenty. A claim says « this device is mine until
@@ -421,7 +474,14 @@ export function claimWhy(r: string): string {
   const until = Number(claimField(f, 'until') || 0);
   if (who === owner()) return '';
   if (!(nowSeconds() < until)) {
-    rmSync(f, { force: true });
+    // Kept aside under a dot name, so its owner's `release` says it had expired instead of « no
+    // claim »: 50 releases of the audit (25/09-12/10) answered that to a checker whose claim had run
+    // out under it, and it could not tell whether it had ever held the device.
+    try {
+      renameSync(f, expiredFile(r));
+    } catch {
+      rmSync(f, { force: true });
+    }
     return '';
   }
   if (ownerGone(who)) {
@@ -439,6 +499,8 @@ export function claimWhy(r: string): string {
   }
   return `claimed by ${who} until ${hhmm(until)} (vysu release ${r} --force to take it over)`;
 }
+
+export const expiredFile = (r: string): string => join(config().claims, `.${r}.expired`);
 
 // An owner's device choices, which nobody will read again.
 export function ownerForget(who: string): void {
@@ -463,6 +525,19 @@ export function claimRenew(r: string): void {
   const tmp = join(dir, `.${r}.renew.${process.pid}`);
   writeFileSync(tmp, `${[...lines, `until=${next}`].join('\n')}\n`);
   renameSync(tmp, f);
+}
+
+// A claim is renewed when a command takes the device, and a command can run longer than the claim has
+// left: a 25-minute `mdo` outlived its claim, and the sibling checker that claimed the device meanwhile
+// drove it under the first one's steps. While this process holds a device, its claim is renewed every
+// minute.
+let keeping: ReturnType<typeof setInterval> | undefined;
+function claimsKeep(): void {
+  if (keeping) return;
+  keeping = setInterval(() => {
+    for (const r of held) if (isDevice(r)) claimRenew(r);
+  }, 60000);
+  keeping.unref();
 }
 
 export function claimWrite(r: string, minutes: number, note: string, device = ''): void {
