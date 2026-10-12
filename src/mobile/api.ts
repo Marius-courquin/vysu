@@ -8,8 +8,10 @@ import { deviceOrigin, devices, iosLock, type Platform } from '../core/hold.ts';
 import { run, type RunResult } from '../core/proc.ts';
 import { tool } from '../img/tools.ts';
 import { ad, adCall, calls } from './agent.ts';
-import { adb, androidAvdOf, androidSelect, androidSerial, captureOptions, emulatorSerials } from './device.ts';
+import { adb, adbShell, androidAvdOf, androidSelect, androidSerial, captureOptions, emulatorSerials, mobileScale } from './device.ts';
 import * as launch from './launch.ts';
+import { why } from './io.ts';
+import { customTabPackages } from './snap.ts';
 import { metroPort as port } from './metro.ts';
 import * as state from './state.ts';
 import { emulatorPath } from './tools.ts';
@@ -30,22 +32,67 @@ export async function mobPressAny(platform: Platform, labels: string): Promise<b
 export async function mobPressAll(platform: Platform, labels: string): Promise<boolean> {
   return launch.mobPressAll(platform, labels);
 }
-// Wait for a text to show up. True when it did.
+// Wait for a text to show up. True when it did. On Android a wait that ends under an ANR dialog is
+// waited again once the dialog is answered: the text was most often there, under it.
 export async function mobWaitText(platform: Platform, text: string, ms = 8000): Promise<boolean> {
+  if ((await adCall(platform, calls.waitText(text, ms))).ok) return true;
+  if (platform !== 'android' || !(await launch.anrClear(platform))) return false;
   return (await adCall(platform, calls.waitText(text, ms))).ok;
+}
+// Whatever system dialog stands over the app and has a safe answer: Android's « <app> ne répond pas »,
+// answered « Attendre ». The package that was not responding, '' when nothing was in the way.
+export async function mobileUnblock(platform: Platform): Promise<string> {
+  return launch.anrClear(platform);
+}
+// The app's data wiped and the app started again onto its bundle: the signed-out first screen, for an
+// app whose logout cannot be reached (Android only: `pm clear`; an iOS keychain survives everything
+// short of erasing the simulator, so false there). The notification permission goes with the data and
+// is granted back on API 33+: push went silent after a bare `pm clear` (2026-09).
+export async function mobileReset(platform: Platform): Promise<boolean> {
+  if (platform !== 'android') return false;
+  await androidSelect();
+  const bundle = config().get('MOBILE_BUNDLE');
+  if (!bundle) return false;
+  const r = await adb(['shell', 'pm', 'clear', bundle]);
+  if (r.code !== 0 || !/Success/.test(r.stdout)) return false;
+  if (Number((await adbShell(['getprop', 'ro.build.version.sdk'])).trim()) >= 33) {
+    await adb(['shell', 'pm', 'grant', bundle, 'android.permission.POST_NOTIFICATIONS']);
+  }
+  why(`android: ${bundle}: data cleared (pm clear), notification permission granted back`);
+  await launch.mobileRelaunch(platform);
+  return true;
 }
 // The text fields on screen, read from a capture rather than from the tree: a login form inside a
 // system web surface (SafariViewService on iOS 18, a Chrome Custom Tab) is invisible to the platform's
 // accessibility, and a connector that cannot read it has nothing else to aim at. The fields helper's
 // JSON — boxes in points, top to bottom — or '' when it sees none, so a connector can say what it
-// expected instead of tapping at a constant. Same 1x capture as `vysu mshot`: the boxes then come back
-// in the points a press is given in.
+// expected instead of tapping at a constant. Same 1x capture as `vysu mshot`, the boxes given back in
+// what a press is given in: points on iOS, the snapshot's pixels on Android.
 export async function mobFields(platform: Platform): Promise<string> {
   mkdirSync(config().state, { recursive: true });
   const png = join(config().state, `fields-${platform}.png`);
   await adCall(platform, calls.screenshot(png, await captureOptions(platform)));
   const r = await tool('fields', [png, '--json']);
-  return r.code === 0 ? r.stdout.replace(/\n$/, '') : '';
+  if (r.code !== 0) return '';
+  const json = r.stdout.replace(/\n$/, '');
+  if (platform !== 'android') return json;
+  // Android captures in dp, and presses in the pixels its snapshots measure in.
+  return scaleBoxes(json, Number(await mobileScale('android')) || 1);
+}
+export function scaleBoxes(json: string, k: number): string {
+  try {
+    const boxes = JSON.parse(json) as Array<Record<string, unknown>>;
+    if (!Array.isArray(boxes) || k === 1) return json;
+    return JSON.stringify(
+      boxes.map((b) => {
+        const o = { ...b };
+        for (const key of ['x', 'y', 'w', 'h']) if (typeof o[key] === 'number') o[key] = Math.round((o[key] as number) * k);
+        return o;
+      }),
+    );
+  } catch {
+    return json;
+  }
 }
 // The app to open: VYSU_IOS_APP on iOS, the bundle on Android.
 export function mobileApp(platform: Platform): string {
@@ -78,6 +125,12 @@ export async function mobilePrepare(platform: Platform): Promise<void> {
   }
   await androidSelect();
   await adb(['reverse', `tcp:${port()}`, `tcp:${port()}`]);
+  // A Custom Tab left open by a login that failed halfway sits over the app, and the next login's door
+  // is under it: the browser holding it is stopped (Chrome on an emulator holds nothing else of value).
+  for (const pkg of customTabPackages(await adbShell(['dumpsys', 'activity', 'activities']))) {
+    await adb(['shell', 'am', 'force-stop', pkg]);
+    why(`android: closed a Custom Tab left open in ${pkg}`);
+  }
 }
 // What was done to the device (persona, textsize, appearance, lang, net), read back by `vysu claim`.
 export function mstateSet(platform: Platform, key: string, value: string): void {

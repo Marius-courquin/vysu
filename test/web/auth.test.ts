@@ -18,6 +18,9 @@ interface Script {
   fields?: Box[];
   cfg?: Record<string, string>;
   refuse?: boolean; // mobileRelaunch dies: the app cannot start
+  anr?: string; // mobileUnblock answers an ANR dialog of that package, once
+  reset?: boolean; // mobileReset clears the app data (Android)
+  said?: Record<string, string>; // what a failing mobTry call prints
 }
 
 function fake(s: Script = {}): { v: AuthContext; calls: string[]; out: string[] } {
@@ -36,7 +39,8 @@ function fake(s: Script = {}): { v: AuthContext; calls: string[]; out: string[] 
     async mobTry(p, ...args) {
       const call = `${p} ${args.join(' ')}`;
       calls.push(`try ${call}`);
-      return { code: (s.failing ?? []).includes(call) ? 1 : 0, stdout: '', stderr: '' };
+      const failing = (s.failing ?? []).includes(call);
+      return { code: failing ? 1 : 0, stdout: '', stderr: failing ? (s.said?.[call] ?? '') : '' };
     },
     async mobPressIf(p, label) {
       calls.push(`pressIf ${p} ${label}`);
@@ -67,6 +71,16 @@ function fake(s: Script = {}): { v: AuthContext; calls: string[]; out: string[] 
     },
     async mobilePrepare(p) {
       calls.push(`prepare ${p}`);
+    },
+    async mobileUnblock(p) {
+      calls.push(`unblock ${p}`);
+      const pkg = s.anr ?? '';
+      s.anr = '';
+      return pkg;
+    },
+    async mobileReset(p) {
+      calls.push(`reset ${p}`);
+      return !!s.reset;
     },
     mstateSet(p, k, value) {
       calls.push(`mstate ${p} ${k}=${value}`);
@@ -110,7 +124,7 @@ test('auth0 on android: the door, the Custom Tab, both fields by role', async ()
     'prepare android',
     'relaunch android',
     'pressAny android Autoriser,Allow',
-    'wait android Se connecter 8000',
+    'wait android Se connecter 4000',
     'pressIf android Se connecter',
     'pressAny android Continuer,Continue',
     'pressAny android Accepter et continuer,Accept & continue',
@@ -137,7 +151,8 @@ test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => 
     absent: ['Se connecter'],
     fields: [{ x: 20, y: 300, w: 335, h: 45 }],
   });
-  // Not on the door, and the logout never reaches it: tried here, then once more from a cold start.
+  // Not on the door, someone signed in (« Menu » shows), and the logout never reaches the door: tried
+  // here, then once more from a cold start; iOS has no data to clear after that.
   await assert.rejects(auth0.mobileLogin(v, 'ios', 'alice'), /die: ios: not on the door screen and no way to log out from here/);
   const once = [
     'pressIf ios Menu',
@@ -148,21 +163,22 @@ test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => 
     'try ios snapshot -i --json',
     'wait ios Se connecter 15000',
   ];
-  assert.deepEqual(calls.slice(calls.indexOf('wait ios Se connecter 8000')), ['wait ios Se connecter 8000', ...once, 'relaunch ios', ...once]);
+  assert.deepEqual(calls.slice(calls.indexOf('wait ios Se connecter 4000')), ['wait ios Se connecter 4000', 'wait ios Menu 1500', ...once, 'relaunch ios', ...once, 'reset ios']);
   const ok = fake({ failing: ['ios wait role="textfield" 20000', 'ios wait id="username" 8000'], fields: [{ x: 20, y: 300, w: 335, h: 45 }] });
   const out = await capture(() => auth0.mobileLogin(ok.v, 'ios', 'alice'));
   const tail = ok.calls.slice(ok.calls.indexOf('try ios wait id="username" 8000') + 1);
   assert.deepEqual(tail, [
+    'unblock ios',
     'fields ios',
     'mob ios press 187 322',
     'sleep 1',
-    'mob ios type a@b.fr',
+    'try ios type a@b.fr',
     'mob ios keyboard return',
     'sleep 4',
     'fields ios',
     'mob ios press 187 322',
     'sleep 1',
-    'mob ios type pw',
+    'try ios type pw',
     'mob ios keyboard return',
     'sleep 6',
     'pressAny ios Autoriser,Allow',
@@ -170,9 +186,9 @@ test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => 
     `pressAll ios ${AFTER}`,
     'mstate ios persona=alice',
   ]);
-  assert.deepEqual(out, ['ios: logged in as alice (a@b.fr) — fields read from the capture (iOS 18 sheet not readable)']);
+  assert.deepEqual(out, ['ios: logged in as alice (a@b.fr) — fields read from the capture (sheet not readable)']);
   const none = fake({ failing: ['ios wait role="textfield" 20000', 'ios wait id="username" 8000'] });
-  await assert.rejects(auth0.mobileLogin(none.v, 'ios', 'alice'), /die: ios: no text field found on the sheet/);
+  await assert.rejects(auth0.mobileLogin(none.v, 'ios', 'alice'), /die: ios: the login form did not show up: no text field in the tree nor on the sheet/);
   const droid = fake({ failing: ['android wait role="textfield" 20000', 'android wait id="username" 8000'] });
   await assert.rejects(auth0.mobileLogin(droid.v, 'android', 'alice'), /die: android: the login form did not show up/);
 });
@@ -182,8 +198,11 @@ test('auth0: the fallbacks, each tried when the one before fails', async () => {
     failing: ['ios fill role="textfield" a@b.fr', 'ios fill role="securetextfield" pw', 'ios fill id="password" pw'],
   });
   await capture(() => auth0.mobileLogin(v, 'ios', 'alice'));
-  assert.ok(calls.includes('mob ios fill id="username" a@b.fr'));
-  assert.ok(calls.includes('mob ios fill label="Mot de passe" pw'));
+  assert.ok(calls.includes('try ios fill id="username" a@b.fr'));
+  assert.ok(calls.includes('try ios fill label="Mot de passe" pw'));
+  // Nothing takes the text: the login ends there, saying which field.
+  const stuck = fake({ failing: ['ios fill role="textfield" a@b.fr', 'ios fill id="username" a@b.fr'], said: { 'ios fill id="username" a@b.fr': 'Error (SELECTOR_NOT_FOUND): no match' } });
+  await assert.rejects(auth0.mobileLogin(stuck.v, 'ios', 'alice'), /die: ios: the e-mail field could not be filled: Error \(SELECTOR_NOT_FOUND\): no match/);
   const door = fake({ absent: [] });
   door.v.mobPressIf = async (p, label) => (door.calls.push(`pressIf ${p} ${label}`), false);
   await capture(() => auth0.mobileLogin(door.v, 'ios', 'alice'));
@@ -311,11 +330,12 @@ test('auth0 mlogin over another persona: relaunched, logged out through the menu
   const snapshotted = f.v.mobTry;
   f.v.mobTry = async (p, ...args) => (args[0] === 'snapshot' ? snapshotted(p, ...args) : (f.calls.push(`try ${p} ${args.join(' ')}`), { code: 0, stdout: '', stderr: '' }));
   await capture(() => auth0.mobileLogin(f.v, 'android', 'alice'));
-  assert.deepEqual(f.calls.slice(0, 9), [
+  assert.deepEqual(f.calls.slice(0, 10), [
     'prepare android',
     'relaunch android',
     'pressAny android Autoriser,Allow',
-    'wait android Se connecter 8000',
+    'wait android Se connecter 4000',
+    'wait android Menu 1500',
     'pressIf android Menu',
     'wait android Se déconnecter 5000',
     'try android snapshot -i --json',

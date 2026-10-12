@@ -9,13 +9,14 @@ import { i18nLabel } from '../core/i18n.ts';
 import { ev, evTouch, now, typingHuman } from '../core/rec.ts';
 import { sleep } from '../core/text.ts';
 import { chunks, RUN_BEAT_MS } from '../img/pace.ts';
-import { nearWords, type Near } from '../img/screen.ts';
+import { nearWords, readSnapshot, type Near } from '../img/screen.ts';
 import { ad, adCall, calls, parseAnswer, type Answer, type Call } from './agent.ts';
 import { lines, quiet, say, tell, why } from './io.ts';
 import { mrelaunch } from './launch.ts';
 import { mnet, mopen, mperm } from './mctl.ts';
 import { mnear, mnearOf, mscreen, msnap, screenFollows, screenPy, snapFile, snapState, withNear } from './screen.ts';
 import { mshot } from './shot.ts';
+import { keyboardFreeSpot, keyboardUp, tapTarget, type SnapNode, type TapTarget } from './snap.ts';
 import { mstateGet } from './state.ts';
 import { firstSentence, msOf, plainWords, pyG, secondsOk, shellWords, WordsError } from './words.ts';
 
@@ -81,34 +82,53 @@ function answer(p: Platform, s: Said): boolean {
 
 // --- tap -----------------------------------------------------------------------------------------
 
-export const MTAP_USAGE = 'usage: vysu mtap ios|android "<label>" [--wait "<text>"] [--timeout <s>]';
+export const MTAP_USAGE = 'usage: vysu mtap ios|android "<label>" [--partial] [--wait "<text>"] [--timeout <s>]';
 
-// Press by accessible label, else by visible text, else by the first element whose label contains it
-// (a row announcing « title, description »), and settle. Nothing matched is a failed step, not the
-// end of vysu — it says so and answers false, exactly like a web click: `mflow` still stops on the
-// step that went wrong (with its number), while `mrec` reports it, plays the rest and keeps its clip.
-// --wait "<text>" then waits for what the press was meant to bring (10 s, --timeout), and the answer
-// stays one line: the press, then how long the text took.
+// Press by label, settled: the node whose label (or visible text) IS that label, case and runs of
+// spaces aside, the way the web's `click` reads a name. A label that is only part of a longer one is
+// not pressed (an agent's « Voir plus » pressed the photo of the card that held those words, 2026-10):
+// the miss names the labels that hold it, or the ones that read like it, so the next try copies one.
+// --partial presses the smallest node holding the text anywhere in its label, as `tap` did before.
+// Which point of the node is pressed is tapTarget's: the text itself rather than the card around it.
+// Nothing matched is a failed step, not the end of vysu — it says so and answers false, exactly like a
+// web click: `mflow` still stops on the step that went wrong (with its number), while `mrec` reports
+// it, plays the rest and keeps its clip. --wait "<text>" then waits for what the press was meant to
+// bring (10 s, --timeout), and the answer stays one line: the press, then how long the text took.
 export async function mtap(p: Platform, args: string[]): Promise<boolean> {
   const label = args[0] ?? '';
   if (!p || !label) die(MTAP_USAGE);
   let wait = '';
   let timeout = '10';
+  let partial = false;
   for (let i = 1; i < args.length; i++) {
     const a = args[i];
     if (a === '--wait') wait = args[++i] ?? '';
     else if (a === '--timeout') timeout = args[++i] ?? '';
+    else if (a === '--partial') partial = true;
     else {
-      tell(`vysu: ${p}: tap takes --wait "<text>" and --timeout <s>, not ${a}`);
+      tell(`vysu: ${p}: tap takes --partial, --wait "<text>" and --timeout <s>, not ${a}`);
       return false;
     }
   }
-  const pressed =
-    (await adPress(p, calls.press(`label="${label}"`, { settle: true }))) ??
-    (await adPress(p, calls.press(`text="${label}"`, { settle: true }))) ??
-    (await adPress(p, calls.findPress(label)));
+  const t = await tapAim(p, label, partial);
+  let pressed: string | null = null;
+  if (t.kind === 'hit') {
+    // iOS: a node the label alone names is pressed through its selector, agent-device's own element
+    // tap; coordinates are kept for what only a point can reach (a card's text, off its photo), since
+    // agent-device 0.21.7+ taps coordinates wrongly under iOS 26's glass (vysu #11).
+    if (p === 'ios' && t.alone) pressed = await adPress(p, calls.press(`label="${t.label}"`, { settle: true }));
+    pressed ??= await adPress(p, calls.pressAt(t.x, t.y, { settle: true }));
+    if (pressed !== null) pressed = `${pressed} · « ${t.label} »${t.note ? ` ${t.note}` : ''}`;
+  } else if (t.kind !== 'hidden') {
+    // Nothing in the snapshot carries it (or there was no snapshot to read): agent-device's own exact
+    // selectors, which read a tree of their own, then with --partial its contains-search.
+    pressed =
+      (await adPress(p, calls.press(`label="${label}"`, { settle: true }))) ??
+      (await adPress(p, calls.press(`text="${label}"`, { settle: true }))) ??
+      (partial ? await adPress(p, calls.findPress(label)) : null);
+  }
   if (pressed === null) {
-    tell(`vysu: ${p}: ${await tapMissed(p, label)}`);
+    tell(`vysu: ${p}: ${await tapMissed(p, label, t)}`);
     return false;
   }
   if (!wait) {
@@ -125,16 +145,30 @@ export async function mtap(p: Platform, args: string[]): Promise<boolean> {
   return false;
 }
 
+// Where a tap aims, read from a fresh snapshot of the screen; `unread` when there is none to read.
+type Aim = TapTarget | { kind: 'unread' };
+async function tapAim(p: Platform, label: string, partial: boolean): Promise<Aim> {
+  pressError = '';
+  if (!(await msnap(p))) return { kind: 'unread' };
+  return tapTarget(readSnapshot(snapFile(p)).nodes as SnapNode[], label, partial);
+}
+
 // A label written from memory is the common miss (« Ampoule grillée dans le hall B » for the
 // « Ampoule grillée hall d'entrée » on screen): the answer names what reads like it, or what the
 // screen holds, so the next try is a label copied rather than another guess. A label that is on
-// screen but under the floating tab bar or a sheet is a different miss, and says so.
-async function tapMissed(p: Platform, label: string): Promise<string> {
-  const near = await mnearOf(p, label);
-  if (near?.state === 'in') return `« ${label} » is on screen, but the press failed${pressError ? ` (${pressError})` : ''}`;
+// screen but under the floating tab bar, a sheet or the keyboard is a different miss, and says so; a
+// label that is only part of longer ones names them.
+async function tapMissed(p: Platform, label: string, t: Aim): Promise<string> {
+  if (t.kind === 'none' && t.holders.length) {
+    return `nothing labelled exactly « ${label} » · it is part of ${t.holders.map((h) => `« ${clip(h)} »`).join(' · ')} (tap that label, or --partial)`;
+  }
+  const near = await mnearOf(p, label, t.kind !== 'unread');
+  if (t.kind === 'hit' || (near?.state === 'in' && t.kind !== 'hidden')) return `« ${label} » is on screen, but the press failed${pressError ? ` (${pressError})` : ''}`;
   if (near?.state === 'covered' || near?.state === 'offscreen') return `cannot press « ${label} »: ${nearWords(near)}`;
+  if (t.kind === 'hidden') return `cannot press « ${label} »: it is under the keyboard, a bar or a sheet, or off the screen (key dismiss, or scroll-to it)`;
   return withNear(`nothing labelled « ${label} »`, nearWords(near, undefined, !screenFollows.on));
 }
+const clip = (s: string): string => (Array.from(s).length <= 40 ? s : `${Array.from(s).slice(0, 39).join('').trimEnd()}…`);
 
 // --- waits ---------------------------------------------------------------------------------------
 
@@ -345,12 +379,30 @@ export async function mkey(p: Platform, key: string): Promise<boolean> {
       return answer(p, await adJson(p, calls.keyboard('return')));
     case 'dismiss':
     case 'hide':
-      return answer(p, await adJson(p, calls.keyboard('dismiss')));
+      return answer(p, await keyDismiss(p));
     case 'back':
       return answer(p, await adJson(p, calls.back({ system: p === 'android', settle: true })));
     default:
       return answer(p, { ok: false, line: `key takes return, dismiss or back (not « ${key} »)` });
   }
+}
+
+// The keyboard put away: agent-device's own dismiss (the keyboard's hide / done key), and on iOS, when
+// the keyboard has no such key, a tap on a plain text above it (keyboardFreeSpot), checked: a keyboard
+// still up afterwards is a failure that says what was tried.
+async function keyDismiss(p: Platform): Promise<Said> {
+  const s = await adJson(p, calls.keyboard('dismiss'));
+  if (s.ok || p !== 'ios' || !/UNSUPPORTED_OPERATION/.test(s.line)) return s;
+  if (!(await msnap(p))) return s;
+  const spot = keyboardFreeSpot(readSnapshot(snapFile(p)).nodes as SnapNode[]);
+  if (!spot) return { ok: false, line: `${s.line} · no plain text above the keyboard to tap (key return, or tap the next control)` };
+  const pressed = await adJson(p, calls.pressAt(spot.x, spot.y, { settle: true }));
+  if (!pressed.ok) return { ok: false, line: `the keyboard has no dismiss key, and a tap on « ${spot.label} » failed: ${pressed.line}` };
+  snapState.fresh = true;
+  if ((await msnap(p)) && !keyboardUp(readSnapshot(snapFile(p)).nodes as SnapNode[])) {
+    return { ok: true, line: `keyboard dismissed by a tap on « ${spot.label} » (${spot.x}, ${spot.y}): it has no dismiss key` };
+  }
+  return { ok: false, line: `the keyboard has no dismiss key, and stays after a tap on « ${spot.label} » (key return, or tap the next control)` };
 }
 
 // --- the runner ----------------------------------------------------------------------------------
@@ -438,6 +490,14 @@ export async function mobileStep(p: Platform, shots: string, step: string): Prom
     const w = words(step);
     return w ? answer(p, await adJsonRaw(p, w)) : false;
   }
+  // `swipe x1 y1 x2 y2 <ms>`: agent-device dropped the duration from swipe (« The trailing durationMs
+  // positional was removed », 18 failed steps in the audit); a timed drag is its `gesture pan` now.
+  if (is('swipe')) {
+    const w = words(step);
+    if (!w) return false;
+    const pan = swipeAsPan(w);
+    return passthrough(p, pan ?? w);
+  }
   if (is('wait')) return mstepWait(p, rest('wait'));
   if (is('fill')) {
     const w = words(rest('fill'));
@@ -497,4 +557,12 @@ export async function mobileStep(p: Platform, shots: string, step: string): Prom
   }
   const w = words(step);
   return w ? passthrough(p, w) : false;
+}
+
+// `swipe x1 y1 x2 y2 ms` as agent-device now spells a timed drag: `gesture pan x1 y1 dx dy ms`. null for
+// any other swipe, which goes through as written.
+export function swipeAsPan(w: string[]): string[] | null {
+  if (w[0] !== 'swipe' || w.length !== 6 || !w.slice(1).every((x) => /^-?[0-9]+(\.[0-9]+)?$/.test(x))) return null;
+  const [x1, y1, x2, y2, ms] = w.slice(1).map(Number) as [number, number, number, number, number];
+  return ['gesture', 'pan', String(x1), String(y1), String(x2 - x1), String(y2 - y1), String(ms)];
 }

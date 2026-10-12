@@ -26,8 +26,9 @@ export interface AuthContext {
   mobPressAny(platform: Platform, labels: string): Promise<boolean>;
   mobPressAll(platform: Platform, labels: string): Promise<void>;
   mobWaitText(platform: Platform, text: string, ms?: number): Promise<boolean>;
-  // The text fields read from a capture, boxes in points, top to bottom — for a surface the
-  // platform's accessibility cannot read (a login in SafariViewService on iOS 18).
+  // The text fields read from a capture, boxes in what a press takes (points on iOS, pixels on
+  // Android), top to bottom — for a surface the platform's accessibility cannot read (a login in
+  // SafariViewService on iOS 18, a Custom Tab whose fields are not in the tree).
   mobFields(platform: Platform): Promise<Box[]>;
   mobileApp(platform: Platform): string;
   // The app killed and started straight onto its bundle (this owner's Metro, no dev-client launcher),
@@ -37,8 +38,16 @@ export interface AuthContext {
   // A dev-client sitting on Expo's launcher handed this owner's Metro, then waited for; a no-op
   // anywhere else. What a connector that opens the app itself calls after its `open`.
   mobileLoadBundle(platform: Platform): Promise<void>;
-  // Before the app is opened: the device locked, and on Android Metro's port reversed onto it.
+  // Before the app is opened: the device locked, and on Android Metro's port reversed onto it and a
+  // Custom Tab left open by an earlier login closed.
   mobilePrepare(platform: Platform): Promise<void>;
+  // A system dialog over the app that has a safe answer, answered (Android's « <app> ne répond pas »:
+  // « Attendre »); what was not responding, '' when nothing was in the way.
+  mobileUnblock(platform: Platform): Promise<string>;
+  // The app's data wiped and the app relaunched onto its first, signed-out screen: the way out when no
+  // logout can be reached. Android only (`pm clear`, notification permission granted back); false
+  // where it cannot be done.
+  mobileReset(platform: Platform): Promise<boolean>;
   mstateSet(platform: Platform, key: string, value: string): void;
   personaRequire(persona: string): { email: string; password: string };
   personaVar(persona: string, key: string): string;

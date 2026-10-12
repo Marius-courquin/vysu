@@ -59,6 +59,8 @@ export function context(): AuthContext {
     mobileRelaunch: (platform) => mobile.mobileRelaunch(platform),
     mobileLoadBundle: (platform) => mobile.mobileLoadBundle(platform),
     mobilePrepare: (platform) => mobile.mobilePrepare(platform),
+    mobileUnblock: (platform) => mobile.mobileUnblock(platform),
+    mobileReset: (platform) => mobile.mobileReset(platform),
     mstateSet: (platform, key, value) => mobile.mstateSet(platform, key, value),
     personaRequire: (persona) => personaRequire(persona),
     personaVar: (persona, key) => personaVar(persona, key),

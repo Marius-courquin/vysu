@@ -14,7 +14,7 @@ import { sheet } from '../img/sheet.ts';
 import { adCall, calls } from './agent.ts';
 import { androidSelect, androidSerial, forgetSerial } from './device.ts';
 import { Captured, captured, quiet, say, tell } from './io.ts';
-import { appUp, mobileApp, mobileKind, mrelaunch, relaunch, sessionOpen } from './launch.ts';
+import { anrClear, appUp, mobileApp, mobileKind, mrelaunch, relaunch, sessionOpen } from './launch.ts';
 import { mscreen, mscreenReset, screenFollows, snapFile, snapState } from './screen.ts';
 import { mobileStep, mwaitGone, mwaitIdle, mwaitText, shotRun } from './steps.ts';
 import { mstateGet } from './state.ts';
@@ -116,7 +116,16 @@ async function mdoStep(p: Platform, shots: string, n: number, step: string): Pro
   let err: string[];
   try {
     screenFollows.on = true;
-    const r = await captured(() => mobileStep(p, shots, step));
+    let r = await captured(() => mobileStep(p, shots, step));
+    // A step that failed under Android's « <app> ne répond pas » failed on the dialog, not on the
+    // screen it was written for: the dialog answered « Attendre », the step runs once more.
+    if (!r.value && p === 'android') {
+      const pkg = await anrClear(p);
+      if (pkg) {
+        say(`  (an ANR dialog was over the screen, ${pkg} not responding: pressed « Attendre », step run again)`);
+        r = await captured(() => mobileStep(p, shots, step));
+      }
+    }
     ok = r.value;
     out = r.out;
     err = r.err;

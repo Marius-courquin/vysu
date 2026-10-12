@@ -14,7 +14,7 @@ import { adb, adbShell, androidSelect, iosUdid, serial, sim, waitAndroidBoot, wa
 import { quiet, say, trace, why } from './io.ts';
 import { bundleErrorSince, linesAfter, metroIsIsolated, metroLines, metroLog, metroNeed, metroPort, metroTag, metroUrl } from './metro.ts';
 import { appearance, textsize } from './settings.ts';
-import { hasExact, nodesOf, onDevMenu, onLauncher, redbox, redboxMessage } from './snap.ts';
+import { anrPackage, anrWait, hasExact, nodesOf, onDevMenu, onLauncher, redbox, redboxMessage, type SnapNode } from './snap.ts';
 import { mstateGet, mstateSet } from './state.ts';
 import { crlf, xcrun } from './tools.ts';
 
@@ -81,6 +81,37 @@ export async function sessionRepair(p: Platform, said: string): Promise<boolean>
     if (last.ok) return true;
   }
   return false;
+}
+
+// --- Android's « <app> ne répond pas » -----------------------------------------------------------
+
+// The ANR dialog's « Attendre » / « Wait », pressed through adb at the centre of its box: agent-device
+// will not press through a system dialog (a `tap "Attendre"` failed under it, 2026-10-05), and a tap
+// sent to the display has no such rule. True when it was pressed.
+async function anrTap(nodes: SnapNode[]): Promise<boolean> {
+  const b = anrWait(nodes)?.rect;
+  if (!b || b.x === undefined || b.y === undefined || !b.width || !b.height) return false;
+  return (await adb(['shell', 'input', 'tap', String(Math.round(b.x + b.width / 2)), String(Math.round(b.y + b.height / 2))])).code === 0;
+}
+
+// An ANR dialog over the app, answered « Attendre » (never « Fermer », which would end the very app a
+// login or a step is in the middle of): one `dumpsys window` says whether one is up and whose it is,
+// then a snapshot gives the button's box. A system UI that misses its deadlines again under load puts
+// it back, so up to three in a row. The package that was not responding, '' when none was; a dialog
+// that could not be answered dies, saying so.
+export async function anrClear(p: Platform, who = `vysu: ${p}`): Promise<string> {
+  if (p !== 'android') return '';
+  let seen = '';
+  for (let i = 0; i < 3; i++) {
+    const pkg = anrPackage(await adbShell(['dumpsys', 'window']));
+    if (!pkg) return seen;
+    seen = pkg;
+    const nodes = nodesOf((await snapshotNodes(p, { interactive: true, timeoutMs: SNAPSHOT_TIMEOUT })).data);
+    if (!(await anrTap(nodes))) die(`${who}: an ANR dialog is on screen (${pkg} is not responding) and its « Attendre » / « Wait » could not be pressed`, 'vysu android snapshot -i, then vysu adb shell input tap <x> <y> on « Attendre »');
+    why(`android: ${pkg} was not responding: pressed « Attendre » on its dialog`);
+    await sleep(1500);
+  }
+  return seen;
 }
 
 // --- the dev-client ------------------------------------------------------------------------------
@@ -277,7 +308,12 @@ export async function waitBundled(p: Platform, log: string, from: number, budget
       const err = bundleErrorSince(from, log);
       die(`${who}: Metro could not bundle for ${tag}: ${err || `see ${log}`}`, `fix it (the edit may be another session's on the same checkout), then vysu mrelaunch ${p}`);
     }
-    if (!(nowS() - t0 < budget)) die(`${who}: Metro never served the ${tag} bundle in ${budget}s (see ${log})`);
+    if (!(nowS() - t0 < budget)) {
+      die(
+        `${who}: Metro never served the ${tag} bundle in ${budget}s: the app never asked for it, or Metro never answered (see ${log})`,
+        `vysu mlog --tail 30 says which; vysu mrelaunch ${p} to try again`,
+      );
+    }
     // Every few seconds, not on every turn: a look costs a snapshot on iOS. And not in the first 20 s
     // after a hand-off: the Android launcher holds the focus for as long as it fetches the manifest,
     // and on a loaded Mac that is many seconds of a load going well, which a new hand-off would
@@ -355,6 +391,12 @@ export async function waitReady(p: Platform, budget: number, openMs = openTimeou
       if (!(await mobPressAny(p, config().get('MOBILE_DISMISS_LABELS', 'Continue,Close'))) && p === 'android') {
         await adCall(p, calls.back({}));
       }
+      continue;
+    }
+    // An ANR dialog over a slow first screen: answered, and the wait goes on.
+    if (p === 'android' && (await anrTap(nodes))) {
+      why('android: an ANR dialog was over the app: pressed « Attendre »');
+      await sleep(1500);
       continue;
     }
     if (redbox(nodes)) {
@@ -465,8 +507,11 @@ export async function relaunch(p: Platform, o: RelaunchOptions = {}): Promise<st
   if (p === 'android') await androidSelect();
   else await iosLock();
   if (kind === 'expo') await metroNeed(who, p);
-  if (p === 'android') await adb(['shell', 'am', 'force-stop', bundle]);
-  else await sim('terminate', [bundle]);
+  // A system UI's ANR dialog outlives the app's stop and would sit over the new launch.
+  if (p === 'android') {
+    await anrClear(p, who);
+    await adb(['shell', 'am', 'force-stop', bundle]);
+  } else await sim('terminate', [bundle]);
   if (size) await quiet(() => textsize(p, size));
   if (mode) await quiet(() => appearance(p, mode));
   // The app reads the OS locale at launch (expo-localization). iOS takes it per launch; Android has to
