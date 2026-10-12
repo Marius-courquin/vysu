@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.10.0 — 2026-10-12
+
+An audit of the 16 403 vysu calls agents made from 25/09 to 12/10 (355 transcripts, 316 checker
+reports): a quarter of the reports ended partial because of the tooling, 38 % of the time went to
+getting a device ready, and the machine they shared ran out of memory (swap full, load 22 on 11
+cores, emulators losing `system_server`). This release answers the blockers in that order.
+
+**The machine**
+- **`vysu down idle [--minutes N] [--dry-run]`**, and the same pass on the way into `claim`, `up`
+  and `devices`: a simulator, an emulator or a Metro that vysu booted in its current boot and that
+  nobody claimed, locked or drove for `VYSU_IDLE_MINUTES` (15) is stopped. Use is read from every
+  vysu state folder of the machine (`~/.vysu/states` lists those kept elsewhere) and from
+  agent-device's own journals; a device vysu did not boot
+  is never touched, a Metro whose owner cannot be told is kept.
+- **Room before a boot**: `VYSU_IOS_MAX_BOOTED` (2) next to `VYSU_ANDROID_MAX_RUNNING`, and
+  `VYSU_MEMORY_MIN_FREE` (20 %, macOS's own « warn » pressure blocks too). Without room, the boot
+  stops idle devices of its platform, oldest first, then waits `VYSU_LOCK_WAIT`, then fails naming
+  what runs and who holds it. `vysu devices` ends on a `budget:` line.
+- **Lighter emulators**: 3 GB (`VYSU_ANDROID_MEMORY`), 2 cores (`VYSU_ANDROID_CORES`), no audio, and
+  a cold boot that saves no RAM image (it wrote 2-3 GB at every shutdown that nothing read back);
+  quickboot is opt-in (`VYSU_ANDROID_QUICKBOOT=1`: 4 s instead of 12 s, 11 s to stop, 2.8 GB per AVD).
+- **`VYSU_MOBILE_TIMEOUT`** (300 s, 600 for boot and login, per step under `mdo`/`mflow`/`mrec`):
+  past it the command stops what it waits on, gives its locks and claim back and exits 124. A hung
+  `mshot` held a device 45 minutes; agents typed `timeout 300 vysu …` 83 times, on a macOS without
+  `timeout`. Streams (`adb logcat`, `simctl … log stream`, `io recordVideo`) have none.
+- A claim is renewed while a long command holds its device; `release` of a claim that ran out says so.
+
+**Logging in**
+- **Web `login`** (auth0) waits for the door's button by its label (`VYSU_AUTH0_SIGNIN_WAIT`, 15 s)
+  instead of the first button of the page (a dev build's devtools), and follows a door to the next
+  one, three at most (« Commencer » → « Se connecter »): 237 « no sign-in button » in the audit. A
+  persona already signed in (a door-less page, a live token) is left as it is; a failure names the
+  page and its buttons.
+- **`mlogin` Android** (two failures in three): an ANR dialog is answered « Attendre », a Custom Tab
+  left open is closed, the door is waited for up to `VYSU_AUTH0_DOOR_WAIT` (30 s), fields missing
+  from the accessibility tree are read from the picture, a fill that does not take is pressed, filled
+  again, read back, then typed. With no logout in reach on an app showing its own screens, its data
+  is cleared and the notification permission granted back.
+- **`mlogin` iOS**: a field that did not take the focus is pressed again before typing; a runner build
+  failure says why (« iOS 26.5 is not installed ») and one with no known cause is retried once.
+
+**Taps and clicks**
+- `tap` / `mtap` (mobile) and `flow` / `rec` `click` (web) match the **whole** label, whatever the case
+  and spacing; a miss presses nothing and names the labels holding the text or the nearest ones.
+  `--partial` restores the old matching (a checker's `click "Passer"` had moved a real ticket to
+  « Passer en cours »). An `t:` key whose value interpolates still matches in part.
+- A mobile press lands on the node carrying the text, not the centre of the card around it (a loan
+  card's centre opened its photo); on iOS a coordinate press that fails falls back to the label.
+- An iOS press failing with `point.x != INFINITY` says what it is (#11): agent-device 0.21.9 and later
+  anchor it on an app frame XCTest reads as null under iOS 26 glass. `tools.env` gets
+  `AGENT_DEVICE_MAX=0.21.8`: setup and update install that one instead of `@latest`, doctor warns
+  above it. `AGENT_BROWSER_MIN=0.38.2` (Chrome's stderr drained: a full pipe froze the browser).
+- `mdo`: a look-only step failed under an ANR dialog runs again once the dialog is answered;
+  `swipe … <ms>` becomes `gesture pan`; iOS `key dismiss` taps a plain text when the keyboard has no
+  dismiss key.
+
+**Web**
+- **`VYSU_WEB_HIDE`**: CSS selectors hidden on every page of every session (a dev build's devtools
+  covering buttons and captures), through an agent-browser init script.
+- **`vysu up <service> --isolated [--dir]`**: this worktree's server on a port of
+  `VYSU_SERVICE_<name>_ISOLATED_PORTS`, reached at the SAME origin through Chromium host-resolver
+  rules, so the API's CORS and the identity provider's callbacks need nothing new; `down` stops it.
+  walk/shots record the sha of the checkout actually served.
+- `--baseline-url`: a baseline landing on a login logs the persona in there, or is refused; a page the
+  baseline does not have yet is captured as it is, with a `baseline: … has no such page` line.
+
+**The command line**
+- `vysu <command> --help` / `vysu help <command>` print that command's entries; a usage error points
+  to them (588 help calls in the audit). The passthrough reads `viewport`/`resize`/`go`/`nav`.
+- `vysu doctor --brief`: the problems and one summary line.
+- `sheet` takes several folders and folders of folders; `report --md` writes `report.md` (`--out`);
+  `prune --older`, `--force`, and folders touched in the last 6 h, or by another live owner in the
+  last 24 h, are kept; `simctl` / `adb` drop the owner's own device named again.
+- Skills: no `timeout` prefix (the shell tool's own parameter), `doctor --brief`, `up --isolated`,
+  `--partial`, `VYSU_WEB_HIDE`.
+
 ## 0.9.2 — 2026-09-25
 
 The issues Charles opened on the repo (#1 to #10), read against 0.9.1 and reproduced where they still
