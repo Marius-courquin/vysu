@@ -114,8 +114,7 @@ export function humanSize(bytes: number): string {
 export function isProblem(line: string): boolean {
   const l = line.replace(/\x1b\[[0-9;]*m/g, '');
   if (/^remotion: node_modules MISSING \(installed on the first/.test(l)) return false;
-  // An isolated server is not a problem, but who serves what is the first thing a brief check needs.
-  return /^[!✗] /.test(l) || /\bMISSING\b|\(unavailable — |^config: none found|^isolated: /.test(l);
+  return /^[!✗] /.test(l) || /\bMISSING\b|\(unavailable — |^config: none found/.test(l);
 }
 
 export async function run(args: string[]): Promise<void> {
@@ -143,7 +142,8 @@ export async function run(args: string[]): Promise<void> {
   const lines = said.join('').split('\n');
   const problems = lines.filter(isProblem);
   const c = config();
-  for (const l of problems) process.stdout.write(`${l}\n`);
+  // Not a problem, but who serves what is the first thing a brief check needs.
+  for (const l of lines.filter((x) => isProblem(x) || x.startsWith('isolated: '))) process.stdout.write(`${l}\n`);
   const shots = lines.find((l) => l.startsWith('shots: '))?.replace(/^shots: \S+ /, '').replace(', )', ')') ?? '';
   const personas = c.configFile && existsSync(c.personas) ? personaNames().length : 0;
   process.stdout.write(
