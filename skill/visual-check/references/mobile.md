@@ -26,7 +26,7 @@ simulator: the primitives are not the same.
   the agent CLI process, so a session and every sub-agent it spawns are **one** owner: one claim
   does not keep a sibling checker out, and the remembered device is the last one any of them
   claimed. While an owner holds two devices of a platform, a command that names none is refused
-  (`vysu: android: claude:41234 holds 2 devices (…) and this command names none`); the claim
+  (`vysu: android: <family>:41234 holds 2 devices (…) and this command names none`); the claim
   of the second one says so on a `name it:` line, with the prefix to use:
   `VYSU_ANDROID_AVD=<avd> vysu mdo android …`, `VYSU_IOS_DEVICE="<simulator>" vysu mshot ios …`,
   release included. `mdo --devices "<a>,<b>"` names its devices and needs no prefix.
@@ -58,9 +58,9 @@ so asking for the persona a claim already names costs nothing (`--force` logs in
 out by hand to help it: that is `mlogin`'s job, and it does it from any screen.
 
 **Long commands**: a login takes one to three minutes, `up` longer, a `mrelaunch` or a `claim --any`
-that boots a device a minute or two. Give the shell tool call itself a 5-minute timeout (Claude
-Code: the Bash call's `timeout` parameter; Codex: its exec timeout): left at 2 minutes, the tool
-moves the command to the background, where its answer is lost and the next command races it. Never
+that boots a device a minute or two. Give the shell tool call itself a 5-minute timeout (its
+timeout parameter): left at a shorter default, the tool may move the command to the background,
+where its answer is lost and the next command races it. Never
 prefix the command with `timeout 300`: macOS has no `timeout`, and vysu bounds its own calls
 (`VYSU_MOBILE_TIMEOUT`, 300 s by default, per step for `mdo` / `mflow` / `mrec`, none for a stream
 such as `vysu adb logcat`; `VYSU_WEB_TIMEOUT` on the web).
