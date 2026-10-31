@@ -17,10 +17,10 @@ cost twice what a new one cost for the same screen.
 ## Which model
 
 Model names belong to each agent tool, so the skill names none: `vysu checker` prints the one the
-project chose for the tool that asks (`VYSU_CHECKER_MODELS='claude=sonnet,codex=…'`, the family
-being the caller vysu detects, `claude:41234` → `claude`), or « inherit » when the project chose
-none. Spawn the checker with that model: the `model` of Claude Code's Agent tool, the `model` of
-Codex's `spawn_agent`, the equivalent elsewhere.
+project chose for the tool that asks (`VYSU_CHECKER_MODELS='<family>=<model>,…'`, the family
+being the caller vysu detects, `<family>:41234` → `<family>`), or « inherit » when the project
+chose none. Spawn the checker with that model, through the model parameter of your tool's
+sub-agent call.
 
 ## The brief (fill every heading; a missing answer costs the checker round trips)
 
@@ -74,10 +74,10 @@ code and the context.
 
 ## Agent definitions
 
-`vysu init` installs `visual-checker.md` into `.claude/agents/` (or `--agents-dir`): a Claude Code
-sub-agent limited to the shell and file reading (no MCP servers: their tool list alone weighs
-thousands of tokens on every call), on the model `VYSU_CHECKER_MODELS` names for `claude`, whose
+`vysu init` installs `visual-checker.md` into `.claude/agents/` (or `--agents-dir`), for the agent
+tools that read sub-agent definitions there: a sub-agent limited to the shell and file reading (no MCP servers: their tool list alone weighs
+thousands of tokens on every call), on the model `VYSU_CHECKER_MODELS` names for that tool, whose
 instructions are this contract. `vysu init --refresh-skills` refreshes it with the skills. A
-project overlay may ship its own instead (its personas, devices and routes). Codex reads no such
-file today: it spawns a sub-agent with this brief and the model `vysu checker` gives it. An agent
+project overlay may ship its own instead (its personas, devices and routes). A tool that reads no
+such file spawns a sub-agent with this brief and the model `vysu checker` gives it. An agent
 with no sub-agents at all (or a human) runs the brief as a checklist.

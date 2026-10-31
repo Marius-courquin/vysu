@@ -27,9 +27,9 @@ session and 185k in a sub-agent, and the long session also lost its thread. So:
   interaction pass. The brief template and the report contract are in `references/delegate.md`.
   **`vysu checker`** names the model to spawn it on for the agent tool you are (the project sets
   it per tool in `VYSU_CHECKER_MODELS`: driving and capturing need no frontier model, you judge
-  the design on the sheet it returns); pass it as the sub-agent's model (Claude Code's Agent tool,
-  Codex's spawn_agent). Claude Code also gets a ready `visual-checker` agent from `vysu init`. An
-  agent without sub-agents runs the same brief itself.
+  the design on the sheet it returns); pass it as the model of the call that spawns the sub-agent.
+  Where the agent tool reads sub-agent definitions, `vysu init` also installs a ready
+  `visual-checker`. An agent without sub-agents runs the same brief itself.
 - **Inline** only for one `vysu walk` / one `mshot` you will read yourself.
 - Give the checker **what changed and what should now look different**: it reports facts (what is
   on screen, what moved, what the logs say); you judge.
