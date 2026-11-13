@@ -235,9 +235,13 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
     }
   }
   // The device is pointed at the isolated Metro now, and proves it: the relaunch waits for that
-  // Metro's own « Bundled » line.
-  if (isolated) await mrelaunch(p, []);
-  else if (launch) {
+  // Metro's own « Bundled » line. Not when the app already runs on that very Metro: a second `up` of
+  // the same owner used to relaunch all the same (77 calls, 47 s each, October sessions), and a
+  // device inherited from another owner still points elsewhere, so it still relaunches.
+  if (isolated) {
+    if ((await appUp(p, bundle)) && mstateGet(p, 'metro') === `localhost:${port}`) say(`${p}: ${mobileApp(p)} already up on :${port} (vysu mrelaunch ${p} to start it again)`);
+    else await mrelaunch(p, []);
+  } else if (launch) {
     // The app, started onto this owner's Metro, unless it already runs there past the launcher. The
     // hint this line replaced (`vysu <platform> open … --foreground`) started a dev-client without the
     // Metro URL: Expo's launcher, which Android never leaves by itself.

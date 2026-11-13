@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseNetstatListeners, parseProcessLines } from '../../src/core/winps.ts';
-import { cmdQuote, isWindows, processEntry, processName, processTable, which, windowsBash } from '../../src/core/host.ts';
+import { cmdQuote, isWindows, processEntry, processName, processTable, toolPath, which, windowsBash } from '../../src/core/host.ts';
 
 const fixture = (name: string): string => readFileSync(join(import.meta.dirname, '..', 'fixtures', 'windows', name), 'utf8');
 
@@ -60,6 +61,24 @@ test('a tool on the PATH', () => {
   assert.ok(npm, 'npm is on the PATH');
   if (isWindows) assert.match(npm, /\.cmd$/i);
   assert.equal(which('vysu-no-such-tool-here'), '');
+});
+
+test('a driver off the PATH is found where it was last seen', { skip: isWindows }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vysu-tools-'));
+  const bin = join(dir, 'vysu-fake-driver');
+  writeFileSync(bin, '#!/bin/sh\n');
+  chmodSync(bin, 0o755);
+  const before = process.env.VYSU_TOOLS_FILE;
+  process.env.VYSU_TOOLS_FILE = join(dir, 'tools');
+  try {
+    assert.equal(toolPath('vysu-fake-driver'), '');
+    writeFileSync(process.env.VYSU_TOOLS_FILE, `vysu-fake-driver=${bin}\nvysu-gone-driver=${join(dir, 'gone')}\n`);
+    assert.equal(toolPath('vysu-fake-driver'), bin);
+    assert.equal(toolPath('vysu-gone-driver'), '');
+  } finally {
+    if (before === undefined) delete process.env.VYSU_TOOLS_FILE;
+    else process.env.VYSU_TOOLS_FILE = before;
+  }
 });
 
 // What the helper exists for: the table in tens of milliseconds instead of PowerShell's second.

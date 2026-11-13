@@ -17,7 +17,7 @@ import { config } from '../core/ctx.ts';
 import { ENGINE } from '../core/config.ts';
 import { die } from '../core/errors.ts';
 import { devices, iosLock, type Platform } from '../core/hold.ts';
-import { isWindows, toolArgv, which } from '../core/host.ts';
+import { isWindows, toolArgv, toolPath, which } from '../core/host.ts';
 import { run, type RunResult } from '../core/proc.ts';
 import { slug } from '../core/text.ts';
 import { iosNeedBooted } from './booted.ts';
@@ -27,7 +27,7 @@ import { needMac } from './tools.ts';
 export type Json = Record<string, unknown>;
 
 export function agentDeviceBin(): string {
-  const bin = which('agent-device');
+  const bin = toolPath('agent-device');
   if (!bin) die('agent-device is not installed', 'vysu setup');
   return bin;
 }
@@ -176,7 +176,7 @@ export function versionBelow(v: string, min: string): boolean {
 // The package root behind the `agent-device` on the PATH: through the npm symlink on macOS and Linux,
 // beside the .cmd shim on Windows (npm puts both in the prefix, the package under node_modules).
 function packageRoot(): string {
-  const bin = which('agent-device');
+  const bin = toolPath('agent-device');
   if (!bin) return '';
   const candidates: string[] = [];
   try {
