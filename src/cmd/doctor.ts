@@ -10,7 +10,7 @@ import { ENGINE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
 import { die, VysuError } from '../core/errors.ts';
 import { locksReport } from '../core/hold.ts';
-import { isWindows, which } from '../core/host.ts';
+import { isWindows, toolPath, which } from '../core/host.ts';
 import { personaNames } from '../core/personas.ts';
 import { run as spawnRun, runTool } from '../core/proc.ts';
 import { noColor, ok, warn } from '../core/ui.ts';
@@ -142,8 +142,11 @@ export async function run(args: string[]): Promise<void> {
   const lines = said.join('').split('\n');
   const problems = lines.filter(isProblem);
   const c = config();
-  // Not a problem, but who serves what is the first thing a brief check needs.
-  for (const l of lines.filter((x) => isProblem(x) || x.startsWith('isolated: '))) process.stdout.write(`${l}\n`);
+  // Not problems, but what a brief check is run for: who serves what, where the project is and where
+  // its skills are. Without those two lines every checker ran the whole report a second time through
+  // a grep (2.4 doctors per agent over 136 agents, October sessions).
+  const keep = (x: string): boolean => isProblem(x) || /^(?:✓ )?(isolated|project|skills): /.test(x.replace(/\x1b\[[0-9;]*m/g, ''));
+  for (const l of lines.filter(keep)) process.stdout.write(`${l}\n`);
   const shots = lines.find((l) => l.startsWith('shots: '))?.replace(/^shots: \S+ /, '').replace(', )', ')') ?? '';
   const personas = c.configFile && existsSync(c.personas) ? personaNames().length : 0;
   process.stdout.write(
@@ -158,7 +161,7 @@ async function report(): Promise<void> {
   const shotsSize = diskUsage(c.shots);
   // `agent-browser doctor` would answer this too, but it launches a browser to do it: the help page is
   // the same yes-or-no for a tenth of the time.
-  const record = which('agent-browser') ? runTool('agent-browser', ['record', '--help']) : Promise.resolve({ code: 1 });
+  const record = toolPath('agent-browser') ? runTool(toolPath('agent-browser'), ['record', '--help']) : Promise.resolve({ code: 1 });
   const mobile = settle(mobileDoctorLines());
   const web = settle(webDoctorLines());
 

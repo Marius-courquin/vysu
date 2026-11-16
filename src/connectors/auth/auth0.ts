@@ -396,10 +396,31 @@ export const connector: AuthConnector = {
       console.log(`${platform}: logged in as ${persona} (${email}) — fields read from the capture (${surface} not readable)`);
       return;
     }
-    let missed = await fillField(v, platform, ['role="textfield"', 'id="username"'], email);
+    const emailField = ['role="textfield"', 'id="username"'];
+    let missed = await fillField(v, platform, emailField, email);
     if (missed) v.die(`${platform}: the e-mail field could not be filled: ${missed}`);
     await submit(v, platform);
-    await v.mob(platform, 'wait', 'text', passwordText, '20000');
+    // A fill agent-device reported as done left the field empty on one machine for three days (62
+    // Android logins, 11 to 13/11): the form answered « Veuillez saisir une adresse e-mail », the wait
+    // for the password page timed out with agent-device's own wording, and the login was run again as
+    // it was, fourteen times in an hour. The e-mail is typed once more, key by key, and a form still on
+    // its first page after that says what happened.
+    if (!(await v.mobWaitText(platform, passwordText, 20000))) {
+      let typed = false;
+      for (const sel of emailField) {
+        if ((await v.mobTry(platform, 'press', sel)).code !== 0) continue;
+        await v.sleep(1);
+        await v.mobTry(platform, 'fill', sel, '');
+        typed = (await v.mobTry(platform, 'type', email)).code === 0;
+        break;
+      }
+      if (typed) await submit(v, platform);
+      if (!typed || !(await v.mobWaitText(platform, passwordText, 20000))) {
+        v.die(
+          `${platform}: the login form stayed on its e-mail page: the e-mail was ${typed ? 'typed twice and not taken' : 'not taken, and the field could not be pressed to type it again'} (a keyboard that does not pass keys on? vysu ${platform} keyboard status; vysu ${platform} snapshot -i shows the form). Running the same login again will not help`,
+        );
+      }
+    }
     missed = await fillField(v, platform, ['role="securetextfield"', 'id="password"', 'label="Mot de passe"'], password);
     if (missed) v.die(`${platform}: the password field could not be filled: ${missed}`);
     await submit(v, platform);

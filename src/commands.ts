@@ -57,6 +57,7 @@ export const commands: Record<string, () => Promise<CommandModule>> = {
   box: () => import('./cmd/box.ts'),
   login: () => import('./cmd/login.ts'),
   mlogin: () => import('./cmd/mlogin.ts'),
+  ready: () => import('./cmd/ready.ts'),
   auth: () => import('./cmd/auth.ts'),
   token: () => import('./cmd/token.ts'),
   prune: () => import('./cmd/prune.ts'),
