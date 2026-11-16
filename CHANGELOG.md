@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.1 — 2026-11-16
 
 - `mlogin` with a session link opens the device's agent-device session before the link
   (`mobileOpenUrl` does): on a device that had none, the wait for the app's answer failed at once and
