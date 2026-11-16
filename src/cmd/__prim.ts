@@ -59,6 +59,8 @@ export async function run(args: string[]): Promise<number> {
     case 'mobile_prepare':
       await mobile.mobilePrepare(platform(a));
       return 0;
+    case 'mobile_open_url':
+      return (await mobile.mobileOpenUrl(platform(a), rest[0] ?? '')) ? 0 : 1;
     case 'mstate_set':
       mobile.mstateSet(platform(a), rest[0] ?? '', rest[1] ?? '');
       return 0;

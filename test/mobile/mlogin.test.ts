@@ -77,6 +77,8 @@ function fake(s: Script = {}): { v: AuthContext; calls: string[] } {
       calls.push(`reset ${p}`);
       return !!s.reset;
     },
+    mobileOpenUrl: async () => true,
+    fetch: () => Promise.reject(new Error('no network in this test')),
     mstateSet(p, k, value) {
       calls.push(`mstate ${p} ${k}=${value}`);
     },

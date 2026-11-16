@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `mlogin` with the auth0 connector hands the app a session instead of typing into Auth0's sheet when
+  the project names a link for it (`VYSU_AUTH0_MOBILE_SESSION_LINK`, a route of the app's development
+  builds): the refresh token is minted over HTTP as the app's own client (1.7 s), the link stores it,
+  the app is started again on it. A step that does not hold says which and the login is typed as
+  before. Connectors get two primitives for it: `mobileOpenUrl` (a link opened and never printed) and
+  `fetch`.
 - agent-device is held at 0.21.37 instead of 0.21.8: its presses work again under iOS 26 glass
   (checked on iOS 26.2 and Android API 36), and a step costs 12 % less on iOS. A machine on 0.21.8
   keeps working; `npm i -g agent-device@0.21.37` moves it. agent-browser 0.43.0 was checked against

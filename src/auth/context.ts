@@ -79,6 +79,8 @@ export function context(): AuthContext {
     mobilePrepare: (platform) => mobile.mobilePrepare(platform),
     mobileUnblock: (platform) => mobile.mobileUnblock(platform),
     mobileReset: (platform) => mobile.mobileReset(platform),
+    mobileOpenUrl: (platform, url) => mobile.mobileOpenUrl(platform, url),
+    fetch: (url, init) => fetch(url, init),
     mstateSet: (platform, key, value) => mobile.mstateSet(platform, key, value),
     personaRequire: (persona) => personaRequire(persona),
     personaVar: (persona, key) => personaVar(persona, key),
