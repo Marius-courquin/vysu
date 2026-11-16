@@ -44,7 +44,7 @@ the parts, and how a change is checked. What vysu does for its users is in the
 | `skill/` | the skills `vysu init` installs into a project |
 | `remotion/` | the video toolkit `vysu video` renders with, installed on its first run |
 | `assets/` | the Inter faces and the glyph outlines drawn from them (`node scripts/build-glyphs.ts` when a font changes) |
-| `test/` | unit tests, the platform smoke, the parity scripts, fixtures |
+| `test/` | unit tests, the platform smoke, fixtures |
 | `scripts/` | `bench.ts` (paired timings of two engines), `build-glyphs.ts` |
 | `install.sh`, `install.ps1` | the installers: clone, Node check, `npm ci --omit=dev`, PATH |
 
@@ -164,10 +164,6 @@ no shell pipelines, a tool found with `which()`, a config's command line run wit
 - `node test/platform/smoke.ts` runs the launcher of the platform and every command that needs no
   device and no browser; CI runs it with the two above on macOS, Linux and Windows × Node 22 and 24,
   then each installer against the checkout.
-- **Parity**: `test/parity/` runs a reference engine and this one on the same inputs and compares
-  their lines, exit codes and files (images: same size, near-identical pixels). The reference is a
-  bash vysu named by `VYSU_REF`; `test/parity/README.md` says how to get one and what each script
-  needs.
 - `node scripts/bench.ts --a <vysu A> --b bin/vysu -- "<args>" …` times two engines in pairs
   (medians), which is what holds on a machine other agents are using.
 - The machine is shared: take a device with `vysu claim ios|android --any` and `vysu release` it,
