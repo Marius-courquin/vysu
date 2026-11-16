@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — 2026-11-16
 
 From the transcripts of 145 agent sessions on two Macs (9 October to 13 November): where the time
 and the tokens of a visual check went.
