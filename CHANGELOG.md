@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.0 — 2026-11-16
 
 - `mlogin` with the auth0 connector hands the app a session instead of typing into Auth0's sheet when
   the project names a link for it (`VYSU_AUTH0_MOBILE_SESSION_LINK`, a route of the app's development
