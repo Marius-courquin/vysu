@@ -62,24 +62,6 @@ async function confirmIos(): Promise<void> {
   }
 }
 
-// The link handed to the app, nothing printed (a link may carry a token) and nothing waited for:
-// '' once it is delivered, else why it was not.
-export async function openLink(p: Platform, url: string, bundle: string): Promise<string> {
-  if (p === 'ios') {
-    if ((await sim('openurl', [url])).code !== 0) return 'no app claims that scheme?';
-    await confirmIos();
-    return '';
-  }
-  // To the package, so no chooser and no browser picks it up. `am start` always adds NEW_TASK, and
-  // with the singleTask activity an Expo app declares, that brings the existing task forward and
-  // hands the link to it (onNewIntent) instead of stacking a second copy of the app.
-  const r = await adb(['shell', `am start -a android.intent.action.VIEW -d ${shQuote(url)} ${bundle}`]);
-  const out = crlf(`${r.stdout}${r.stderr}`);
-  // `am` echoes the intent it starts, link included: only its error line is kept, without the link.
-  const bad = out.split('\n').find((l) => /Error|Exception/.test(l));
-  return bad === undefined ? '' : bad.replaceAll(url, '<link>') || 'am start failed';
-}
-
 // What is on screen, reduced to one string: the tree before the link against the tree after it.
 const mopenSig = async (p: Platform): Promise<string> => signature(await snapNodes(p));
 
@@ -127,8 +109,17 @@ export async function mopen(p: string, args: string[]): Promise<boolean> {
     await adCall(p, calls.waitStable(400, 4000));
     before = await mopenSig(p);
   }
-  const refused = await openLink(p, url, bundle);
-  if (refused) return mctlWhy(p === 'ios' ? `ios: simctl refused ${url} (${refused})` : `android: ${refused}`);
+  if (p === 'ios') {
+    if ((await sim('openurl', [url])).code !== 0) return mctlWhy(`ios: simctl refused ${url} (no app claims that scheme?)`);
+    await confirmIos();
+  } else {
+    // To the package, so no chooser and no browser picks it up. `am start` always adds NEW_TASK, and
+    // with the singleTask activity an Expo app declares, that brings the existing task forward and
+    // hands the link to it (onNewIntent) instead of stacking a second copy of the app.
+    const r = await adb(['shell', `am start -a android.intent.action.VIEW -d ${shQuote(url)} ${bundle}`]);
+    const out = crlf(`${r.stdout}${r.stderr}`);
+    if (/Error|Exception/.test(out)) return mctlWhy(`android: ${out.split('\n').find((l) => /Error|Exception/.test(l)) ?? ''}`);
+  }
   if (waitText) {
     if (!(await adCall(p, calls.waitText(waitText, timeout * 1000))).ok) {
       return mctlWhy(`${p}: opened ${url} but « ${waitText} » did not show within ${timeout}s · ${await mscreenLine(p)}`);

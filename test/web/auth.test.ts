@@ -20,8 +20,6 @@ interface Script {
   refuse?: boolean; // mobileRelaunch dies: the app cannot start
   anr?: string; // mobileUnblock answers an ANR dialog of that package, once
   reset?: boolean; // mobileReset clears the app data (Android)
-  http?: (url: string, init?: RequestInit) => Promise<Response>; // the auth server, for a token login
-  closed?: boolean; // mobileOpenUrl answers false: the link was not delivered
   said?: Record<string, string>; // what a failing mobTry call prints
 }
 
@@ -84,11 +82,6 @@ function fake(s: Script = {}): { v: AuthContext; calls: string[]; out: string[] 
       calls.push(`reset ${p}`);
       return !!s.reset;
     },
-    async mobileOpenUrl(p, url) {
-      calls.push(`openurl ${p} ${url}`);
-      return !s.closed;
-    },
-    fetch: (url, init) => (s.http ? s.http(url, init) : Promise.reject(new Error('no network in this test'))),
     mstateSet(p, k, value) {
       calls.push(`mstate ${p} ${k}=${value}`);
     },
@@ -448,108 +441,4 @@ test('the bash bridge keeps the values off the command line, in a file only this
   assert.ok(argv!.includes('auth_describe') && !argv!.includes('secret.example'), argv);
   assert.equal(mode, '-rw-------');
   assert.equal(existsSync(script!), false);
-});
-
-// Auth0's Universal Login as the token path walks it: /authorize → the e-mail page → the password
-// page → /authorize/resume → the app's own scheme, then the code exchanged for tokens.
-function tenant(o: { wrongPassword?: boolean; noRefresh?: boolean } = {}): { http: (url: string, init?: RequestInit) => Promise<Response>; seen: string[] } {
-  const seen: string[] = [];
-  let state = '';
-  const to = (location: string, cookie = ''): Response => new Response(null, { status: 302, headers: cookie ? { location, 'set-cookie': cookie } : { location } });
-  const http = async (url: string, init: RequestInit = {}): Promise<Response> => {
-    const u = new URL(url);
-    const body = typeof init.body === 'string' ? init.body : '';
-    seen.push(`${init.method ?? 'GET'} ${u.pathname}`);
-    if (u.pathname === '/authorize') {
-      state = u.searchParams.get('state') ?? '';
-      assert.equal(u.searchParams.get('client_id'), 'app-client');
-      assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
-      return to('/u/login/identifier?state=s1', 'auth0=jar1; Path=/; HttpOnly');
-    }
-    if (u.pathname === '/u/login/identifier') {
-      if (init.method !== 'POST') return new Response('<form>', { status: 200 });
-      assert.match(String((init.headers as Record<string, string>).cookie), /auth0=jar1/);
-      assert.match(body, /username=a%40b\.fr/);
-      return to('/u/login/password?state=s2');
-    }
-    if (u.pathname === '/u/login/password') {
-      if (init.method !== 'POST') return new Response('<form>', { status: 200 });
-      if (o.wrongPassword) return new Response('<form>wrong', { status: 400 });
-      assert.match(body, /password=pw/);
-      return to('/authorize/resume?state=s3');
-    }
-    if (u.pathname === '/authorize/resume') return to(`myapp://auth/callback?code=c0de&state=${state}`);
-    if (u.pathname === '/oauth/token') {
-      const sent = JSON.parse(body) as Record<string, string>;
-      assert.equal(sent.code, 'c0de');
-      assert.equal(sent.grant_type, 'authorization_code');
-      assert.ok((sent.code_verifier ?? '').length >= 43);
-      return Response.json(o.noRefresh ? { access_token: 'at' } : { access_token: 'at', refresh_token: 'rt/1+2' });
-    }
-    return new Response('', { status: 404 });
-  };
-  return { http, seen };
-}
-
-const TOKEN_CFG = {
-  AUTH0_MOBILE_SESSION_LINK: 'myapp://auth/dev-session?rt={refresh_token}',
-  AUTH0_MOBILE_ISSUER: 'https://auth.example.test',
-  AUTH0_MOBILE_CLIENT_ID: 'app-client',
-  AUTH0_MOBILE_REDIRECT_URI: 'myapp://auth/callback',
-};
-
-test('auth0 mlogin with a session link: the token minted over HTTP, handed to the app, nothing typed', async () => {
-  const t = tenant();
-  const { v, calls } = fake({ cfg: TOKEN_CFG, http: t.http });
-  const out = await capture(() => auth0.mobileLogin(v, 'android', 'alice'));
-  assert.deepEqual(t.seen, ['GET /authorize', 'GET /u/login/identifier', 'POST /u/login/identifier', 'GET /u/login/password', 'POST /u/login/password', 'GET /authorize/resume', 'POST /oauth/token']);
-  assert.deepEqual(calls, [
-    'prepare android',
-    'openurl android myapp://auth/dev-session?rt=rt%2F1%2B2',
-    'wait android dev-session: stored 30000',
-    'relaunch android',
-    'pressAny android Autoriser,Allow',
-    'wait android Menu 20000',
-    'mstate android persona=alice',
-  ]);
-  assert.deepEqual(out, ['android: logged in as alice (a@b.fr) — session handed to the app, nothing typed']);
-});
-
-test('auth0 mlogin with a session link: a first sign-in passes the entry screens before the menu shows', async () => {
-  const t = tenant();
-  let waits = 0;
-  const f = fake({ cfg: TOKEN_CFG, http: t.http });
-  const wait = f.v.mobWaitText;
-  f.v.mobWaitText = async (p, text, ms) => {
-    await wait(p, text, ms);
-    return text !== 'Menu' || ++waits > 1;
-  };
-  await capture(() => auth0.mobileLogin(f.v, 'ios', 'alice'));
-  assert.deepEqual(f.calls.slice(-5), ['wait ios Menu 20000', `pressAll ios ${AFTER}`, 'pressAny ios Plus tard,Not Now', 'wait ios Menu 8000', 'mstate ios persona=alice']);
-});
-
-test('auth0 mlogin with a session link: any step that does not hold falls back to the typed login', async () => {
-  // The tenant refuses the password: nothing was opened on the device before the typed login starts.
-  const refused = fake({ cfg: TOKEN_CFG, http: tenant({ wrongPassword: true }).http });
-  await capture(() => auth0.mobileLogin(refused.v, 'android', 'alice'));
-  assert.ok(!refused.calls.some((c) => c.startsWith('openurl')));
-  assert.equal(refused.calls[0], 'prepare android');
-  assert.equal(refused.calls.at(-1), 'mstate android persona=alice');
-  assert.ok(refused.calls.includes(`pressAll android ${AFTER}`));
-
-  // No refresh token in the answer.
-  const none = fake({ cfg: TOKEN_CFG, http: tenant({ noRefresh: true }).http });
-  await capture(() => auth0.mobileLogin(none.v, 'android', 'alice'));
-  assert.ok(!none.calls.some((c) => c.startsWith('openurl')));
-
-  // The app has no such route: the link opens, the line never shows, the login is typed.
-  const old = fake({ cfg: TOKEN_CFG, http: tenant().http, absent: ['dev-session: stored'] });
-  const out = await capture(() => auth0.mobileLogin(old.v, 'android', 'alice'));
-  assert.ok(old.calls.includes('wait android dev-session: stored 30000'));
-  assert.deepEqual(out, ['android: logged in as alice (a@b.fr)']);
-
-  // A link without its place for the token, or without the client: not even asked.
-  const half = fake({ cfg: { AUTH0_MOBILE_SESSION_LINK: 'myapp://auth/dev-session' }, http: () => Promise.reject(new Error('must not be called')) });
-  await capture(() => auth0.mobileLogin(half.v, 'android', 'alice'));
-  assert.equal(half.calls.at(-1), 'mstate android persona=alice');
 });

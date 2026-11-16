@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The session link of 0.12.0 is gone (`VYSU_AUTH0_MOBILE_SESSION_LINK` and its keys, `mobileOpenUrl`,
+  `fetch`, `mobile_open_url`): it only worked with a route the app had to carry for its test
+  tooling, which is not what vysu asks of an app. `mlogin` types the login, as before.
+
 ## 0.12.1 — 2026-11-16
 
 - `mlogin` with a session link opens the device's agent-device session before the link

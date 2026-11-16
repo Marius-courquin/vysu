@@ -99,8 +99,6 @@ connector as functions.
 | `mobileRelaunch(platform)` | `mobile_relaunch <platform>` | the app killed and started again straight onto its bundle (this owner's Metro, never Expo's launcher), on its root screen whatever it was left on, the dev menu cleared, the agent-device session open: where a login starts. Ends vysu with the reason when the app cannot start |
 | `mobileApp(platform)` · `mobileLoadBundle(platform)` | `mobile_app` · `mobile_load_bundle` | the app to open, and the dev-client hand-off for a connector that opens the app itself (an agent-device `open` starts a dev-client on Expo's launcher) |
 | `mobilePrepare(platform)` | `ios_lock` · `android_select` | before the app is opened: the device locked, and on Android Metro's port reversed onto it |
-| `mobileOpenUrl(platform, url)` → boolean | `mobile_open_url <platform> "<url>"` | a link handed to the app as the system would, **never printed** (it may carry a token), the app started first when it is not up; true once delivered, the app routes it a beat later |
-| `fetch(url, init)` | `curl` | an HTTP call, for a connector that asks its auth server itself rather than through a page |
 | `mstateSet(platform, 'persona', name)` | `mstate_set <platform> persona <name>` | record who the install is signed in as |
 | `personaRequire(persona)` → `{ email, password }` | `persona_require <persona>` (sets `$PERSONA_EMAIL` / `$PERSONA_PASSWORD`) | load the credentials |
 | `personaVar(persona, KEY)` | `persona_var <persona> <KEY>` | any other key the project set (`vysu persona set alice TOTP …`) |
