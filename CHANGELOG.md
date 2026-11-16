@@ -17,6 +17,9 @@ and the tokens of a visual check went.
 - `doctor --brief` keeps the `project:` and `skills:` lines.
 - Web flow: `wait 0.5`, `wait 2` are refused with what was meant (`sleep`, `wait idle`) instead of
   waiting out agent-browser's timeout on a selector named « 0.5 ».
+- `mlogin` on Android and iOS: a login form still on its e-mail page after the submit gets the
+  e-mail typed once more, key by key, then fails saying so, instead of agent-device's « wait timed
+  out for text: mot de passe » that 62 logins were retried on.
 - The visual-checker agent definition carries a command card: no skill file and no `vysu help` to
   read before the first command.
 
