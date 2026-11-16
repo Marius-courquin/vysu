@@ -139,8 +139,26 @@ async function doorOrSignedIn(v: AuthContext, platform: Platform): Promise<'door
 
 // The login form inside the system web surface, by role (the visible « e-mail » field on iOS) or by
 // the bare `username` id Auth0 gives it in the Custom Tab.
+// Looked for in turns, 28 s in all: the role was given 20 s before the id got its 8, and in the Custom
+// Tab, where only the id answers, every Android login waited those 20 s out (94 s for a login, 2026-11-16).
 async function formShows(v: AuthContext, platform: Platform): Promise<boolean> {
-  return (await v.mobTry(platform, 'wait', 'role="textfield"', '20000')).code === 0 || (await v.mobTry(platform, 'wait', 'id="username"', '8000')).code === 0;
+  for (let left = 28000; left > 0; left -= 4500) {
+    if ((await v.mobTry(platform, 'wait', 'role="textfield"', '3000')).code === 0) return true;
+    if ((await v.mobTry(platform, 'wait', 'id="username"', '1500')).code === 0) return true;
+  }
+  return false;
+}
+
+// The login went through: the welcome a first sign-in opens on (HOME_TEXT), or the app's own home,
+// told by its menu, for an account that has seen the welcome already. The welcome alone used to be
+// waited for, 30 s, which every login of a returning account waited out. In turns, 30 s in all.
+async function landed(v: AuthContext, platform: Platform, home: string): Promise<boolean> {
+  const menu = opt(v, 'MENU_LABEL', 'Menu');
+  for (let left = 30000; left > 0; left -= 4500) {
+    if (await v.mobWaitText(platform, home, 3000)) return true;
+    if (await v.mobWaitText(platform, menu, 1500)) return true;
+  }
+  return false;
 }
 
 // The buttons on screen that carry one of these labels (as the selectors read them, whatever the case:
@@ -390,7 +408,7 @@ export const connector: AuthConnector = {
       await v.mob(platform, 'keyboard', 'return');
       await v.sleep(6);
       await v.mobPressAny(platform, 'Autoriser,Allow');
-      await v.mobWaitText(platform, home, 30000);
+      await landed(v, platform, home);
       await v.mobPressAll(platform, after);
       v.mstateSet(platform, 'persona', persona);
       console.log(`${platform}: logged in as ${persona} (${email}) — fields read from the capture (${surface} not readable)`);
@@ -427,7 +445,7 @@ export const connector: AuthConnector = {
     await v.sleep(3);
     await v.mobPressAny(platform, 'Plus tard,Not Now'); // Safari's « save this password? »
     await v.mobPressAny(platform, 'Autoriser,Allow'); // push notification permission
-    await v.mobWaitText(platform, home, 30000);
+    await landed(v, platform, home);
     // The dev-launcher URL handed over at install is captured as a pending deep link and replayed
     // after login, which the router answers with a not-found screen: a dev-client artefact, not a
     // product bug. AFTER_LOGIN_LABELS is the way back out of it.

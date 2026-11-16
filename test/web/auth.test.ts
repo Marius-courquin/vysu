@@ -129,7 +129,7 @@ test('auth0 on android: the door, the Custom Tab, both fields by role', async ()
     'pressAny android Continuer,Continue',
     'pressAny android Accepter et continuer,Accept & continue',
     'pressAny android Non merci,No thanks',
-    'try android wait role="textfield" 20000',
+    'try android wait role="textfield" 3000',
     'try android fill role="textfield" a@b.fr',
     'try android keyboard return',
     'wait android mot de passe 20000',
@@ -138,7 +138,7 @@ test('auth0 on android: the door, the Custom Tab, both fields by role', async ()
     'sleep 3',
     'pressAny android Plus tard,Not Now',
     'pressAny android Autoriser,Allow',
-    'wait android Bienvenue 30000',
+    'wait android Bienvenue 3000',
     `pressAll android ${AFTER}`,
     'mstate android persona=alice',
   ]);
@@ -147,7 +147,7 @@ test('auth0 on android: the door, the Custom Tab, both fields by role', async ()
 
 test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => {
   const { v, calls } = fake({
-    failing: ['ios wait role="textfield" 20000', 'ios wait id="username" 8000'],
+    failing: ['ios wait role="textfield" 3000', 'ios wait id="username" 1500'],
     absent: ['Se connecter'],
     fields: [{ x: 20, y: 300, w: 335, h: 45 }],
   });
@@ -164,9 +164,9 @@ test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => 
     'wait ios Se connecter 15000',
   ];
   assert.deepEqual(calls.slice(calls.indexOf('wait ios Se connecter 4000')), ['wait ios Se connecter 4000', 'wait ios Menu 1500', ...once, 'relaunch ios', ...once, 'reset ios']);
-  const ok = fake({ failing: ['ios wait role="textfield" 20000', 'ios wait id="username" 8000'], fields: [{ x: 20, y: 300, w: 335, h: 45 }] });
+  const ok = fake({ failing: ['ios wait role="textfield" 3000', 'ios wait id="username" 1500'], fields: [{ x: 20, y: 300, w: 335, h: 45 }] });
   const out = await capture(() => auth0.mobileLogin(ok.v, 'ios', 'alice'));
-  const tail = ok.calls.slice(ok.calls.indexOf('try ios wait id="username" 8000') + 1);
+  const tail = ok.calls.slice(ok.calls.lastIndexOf('try ios wait id="username" 1500') + 1);
   assert.deepEqual(tail, [
     'unblock ios',
     'fields ios',
@@ -182,14 +182,14 @@ test('auth0 on the iOS 18 sheet: the fields read from the capture', async () => 
     'mob ios keyboard return',
     'sleep 6',
     'pressAny ios Autoriser,Allow',
-    'wait ios Bienvenue 30000',
+    'wait ios Bienvenue 3000',
     `pressAll ios ${AFTER}`,
     'mstate ios persona=alice',
   ]);
   assert.deepEqual(out, ['ios: logged in as alice (a@b.fr) — fields read from the capture (sheet not readable)']);
-  const none = fake({ failing: ['ios wait role="textfield" 20000', 'ios wait id="username" 8000'] });
+  const none = fake({ failing: ['ios wait role="textfield" 3000', 'ios wait id="username" 1500'] });
   await assert.rejects(auth0.mobileLogin(none.v, 'ios', 'alice'), /die: ios: the login form did not show up: no text field in the tree nor on the sheet/);
-  const droid = fake({ failing: ['android wait role="textfield" 20000', 'android wait id="username" 8000'] });
+  const droid = fake({ failing: ['android wait role="textfield" 3000', 'android wait id="username" 1500'] });
   await assert.rejects(auth0.mobileLogin(droid.v, 'android', 'alice'), /die: android: the login form did not show up/);
 });
 

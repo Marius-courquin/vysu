@@ -155,37 +155,37 @@ test('android with neither the door nor the app showing: the app data is not cle
 test('an ANR dialog over the Custom Tab: answered, and the form looked for again', async () => {
   const f = fake({
     anr: 'com.android.chrome',
-    failing: { 'android wait role="textfield" 20000': { times: 1 }, 'android wait id="username" 8000': { times: 1 } },
+    failing: { 'android wait role="textfield" 3000': { times: 7 }, 'android wait id="username" 1500': { times: 7 } },
   });
   await quietly(() => auth0.mobileLogin(f.v, 'android', 'alice'));
   const at = f.calls.indexOf('unblock android');
   assert.deepEqual(f.calls.slice(at - 2, at + 3), [
-    'try android wait role="textfield" 20000',
-    'try android wait id="username" 8000',
+    'try android wait role="textfield" 3000',
+    'try android wait id="username" 1500',
     'unblock android',
-    'try android wait role="textfield" 20000',
+    'try android wait role="textfield" 3000',
     'try android fill role="textfield" a@b.fr',
   ]);
 });
 
 test('android: Auth0 fields missing from the tree are read from the picture, as on the iOS 18 sheet', async () => {
   const f = fake({
-    failing: { 'android wait role="textfield" 20000': {}, 'android wait id="username" 8000': {} },
+    failing: { 'android wait role="textfield" 3000': {}, 'android wait id="username" 1500': {} },
     fields: [{ x: 40, y: 900, w: 1000, h: 120 }],
   });
   const out = await quietly(() => auth0.mobileLogin(f.v, 'android', 'alice'));
   const at = f.calls.indexOf('fields android');
   assert.deepEqual(f.calls.slice(at, at + 6), ['fields android', 'mob android press 540 960', 'sleep 1', 'try android type a@b.fr', 'mob android keyboard return', 'sleep 4']);
   assert.deepEqual(out, ['android: logged in as alice (a@b.fr) — fields read from the capture (Custom Tab not readable)']);
-  const none = fake({ failing: { 'android wait role="textfield" 20000': {}, 'android wait id="username" 8000': {} } });
+  const none = fake({ failing: { 'android wait role="textfield" 3000': {}, 'android wait id="username" 1500': {} } });
   await assert.rejects(auth0.mobileLogin(none.v, 'android', 'alice'), /die: android: the login form did not show up: no text field in the tree nor on the Custom Tab/);
 });
 
 test('a field that does not take the focus is pressed again before typing (TEXT_INPUT_NOT_FOCUSED)', async () => {
   const f = fake({
     failing: {
-      'ios wait role="textfield" 20000': {},
-      'ios wait id="username" 8000': {},
+      'ios wait role="textfield" 3000': {},
+      'ios wait id="username" 1500': {},
       'ios type a@b.fr': { times: 1, said: 'Error (TEXT_INPUT_NOT_FOCUSED): No focused text input was available for typing.' },
     },
     fields: [{ x: 20, y: 300, w: 335, h: 45 }],

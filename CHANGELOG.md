@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A typed mobile login no longer waits out two timeouts: 42 to 47 s instead of 94 on a Pixel 8
+  emulator, 59 to 71 s instead of 97 on an iPhone 17 Pro simulator (auth0 connector). The welcome
+  text was waited for 30 s on an account that had already seen the welcome, where the app's menu
+  shows instead; and the form was looked for by role for 20 s before its id got a turn, in a Custom
+  Tab where only the id answers. Both are now looked for in turns.
 - The session link of 0.12.0 is gone (`VYSU_AUTH0_MOBILE_SESSION_LINK` and its keys, `mobileOpenUrl`,
   `fetch`, `mobile_open_url`): it only worked with a route the app had to carry for its test
   tooling, which is not what vysu asks of an app. `mlogin` types the login, as before.
