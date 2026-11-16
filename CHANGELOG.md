@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- agent-device is held at 0.21.37 instead of 0.21.8: its presses work again under iOS 26 glass
+  (checked on iOS 26.2 and Android API 36), and a step costs 12 % less on iOS. A machine on 0.21.8
+  keeps working; `npm i -g agent-device@0.21.37` moves it. agent-browser 0.43.0 was checked against
+  0.39.4 on the same flows: same captures to the byte, same timings, nothing to change.
+
 ## 0.11.0 — 2026-11-16
 
 From the transcripts of 145 agent sessions on two Macs (9 October to 13 November): where the time
