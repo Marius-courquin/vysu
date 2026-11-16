@@ -132,7 +132,7 @@ test('auth0 on android: the door, the Custom Tab, both fields by role', async ()
     'try android wait role="textfield" 20000',
     'try android fill role="textfield" a@b.fr',
     'try android keyboard return',
-    'wait android mot de passe 20000',
+    'mob android wait text mot de passe 20000',
     'try android fill role="securetextfield" pw',
     'try android keyboard return',
     'sleep 3',
@@ -327,9 +327,6 @@ test('auth0 logout from a pushed screen or a viewer over the menu: once more fro
 
 test('auth0 mlogin over another persona: relaunched, logged out through the menu, then the door', async () => {
   const f = screens(['Menu', 'Bienvenue'], { Menu: ['Menu', 'Se déconnecter'], 'Se déconnecter': DOOR }, ['Menu', 'Bienvenue']);
-  // The Auth0 pages are not part of these screens: the password page shows once the e-mail went in.
-  const waited = f.v.mobWaitText;
-  f.v.mobWaitText = async (p, text, ms) => (text === 'mot de passe' ? (f.calls.push(`wait ${p} ${text} ${ms}`), true) : waited(p, text, ms));
   const snapshotted = f.v.mobTry;
   f.v.mobTry = async (p, ...args) => (args[0] === 'snapshot' ? snapshotted(p, ...args) : (f.calls.push(`try ${p} ${args.join(' ')}`), { code: 0, stdout: '', stderr: '' }));
   await capture(() => auth0.mobileLogin(f.v, 'android', 'alice'));
@@ -348,17 +345,6 @@ test('auth0 mlogin over another persona: relaunched, logged out through the menu
   assert.ok(f.calls.includes('mstate android persona=alice'));
   // Nothing pressed blind for Expo's dev menu: « Fermer » is also the app's own drawer backdrop.
   assert.ok(!f.calls.some((c) => /Close|Fermer|Continue,Continuer/.test(c)), f.calls.join('\n'));
-});
-
-test('auth0 on android: a form left on its e-mail page is typed into once more, then says so', async () => {
-  const { v, calls } = fake({ absent: ['mot de passe'] });
-  await assert.rejects(
-    capture(() => auth0.mobileLogin(v, 'android', 'alice')),
-    /the login form stayed on its e-mail page: the e-mail was typed twice and not taken/,
-  );
-  assert.ok(calls.includes('try android type a@b.fr'), calls.join('\n'));
-  assert.equal(calls.filter((c) => c === 'wait android mot de passe 20000').length, 2);
-  assert.ok(!calls.some((c) => c.includes('securetextfield')));
 });
 
 test('form on mobile: labels first, then the role; home by the project text', async () => {

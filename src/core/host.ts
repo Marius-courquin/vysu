@@ -2,9 +2,8 @@
 // drives vysu), which process listens on a port, how a file is opened for a human, where a tool is.
 // Everything above this file is the same code on macOS, Linux and Windows.
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { delimiter, dirname, extname, isAbsolute, join, win32 } from 'node:path';
+import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node:fs';
+import { delimiter, extname, isAbsolute, join, win32 } from 'node:path';
 import { connect } from 'node:net';
 import { parseNetstatListeners, parseProcessLines, windowsProcessLines } from './winps.ts';
 
@@ -162,51 +161,6 @@ export function which(cmd: string, fresh = false): string {
   }
   whichCache.set(cmd, found);
   return found;
-}
-
-// Where the two drivers were last seen. An agent's sub-shell often starts without the profile that
-// puts a node version manager on the PATH: vysu itself still runs (another node is there), the
-// drivers installed under that manager are not found, and every command of 43 sub-agents carried an
-// `export PATH=…` prefix to get around it. `vysu setup`, `doctor` and `update` write down where they
-// found each driver; a PATH that no longer shows one falls back on that place.
-const toolsFile = (): string => process.env.VYSU_TOOLS_FILE || join(homedir(), '.vysu', 'tools');
-
-function remembered(): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const line of safeRead(toolsFile()).split('\n')) {
-    const i = line.indexOf('=');
-    if (i > 0) out.set(line.slice(0, i), line.slice(i + 1));
-  }
-  return out;
-}
-
-export function rememberTool(cmd: string): void {
-  const found = which(cmd, true);
-  if (!found) return;
-  const known = remembered();
-  if (known.get(cmd) === found) return;
-  known.set(cmd, found);
-  try {
-    mkdirSync(dirname(toolsFile()), { recursive: true });
-    writeFileSync(toolsFile(), [...known].map(([k, v]) => `${k}=${v}\n`).join(''));
-  } catch {
-    // a home that cannot be written: the PATH stays the only source
-  }
-}
-
-// A driver: on the PATH, else where it was last seen when that file is still there.
-export function toolPath(cmd: string, fresh = false): string {
-  const onPath = which(cmd, fresh);
-  if (onPath) return onPath;
-  const last = remembered().get(cmd) ?? '';
-  if (!last) return '';
-  try {
-    if (!statSync(last).isFile()) return '';
-    if (!isWindows) accessSync(last, constants.X_OK);
-    return last;
-  } catch {
-    return '';
-  }
 }
 
 // The bash a shell script runs in. On Windows, System32's bash.exe (and the WindowsApps alias) is

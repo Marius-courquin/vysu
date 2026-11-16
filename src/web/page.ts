@@ -355,14 +355,6 @@ export async function webStep(persona: string, shots: string, step: string, prin
     return webGo(persona, w[0]!, reload);
   }
   if (step === 'wait idle' || step.startsWith('wait idle ')) return webWaitIdle(persona, step.slice('wait idle'.length).trim() || '10', print);
-  // agent-browser's `wait <n>` counts milliseconds and reads anything else as a selector to wait
-  // for: « wait 0.5 » and « wait 2.5 », meant as seconds, each sat out its 25 s timeout, ten steps and
-  // 274 s for a flow that takes 32 s.
-  const bare = /^wait (\S+)$/.exec(step)?.[1] ?? '';
-  if (bare && Number.isFinite(Number(bare)) && (!Number.isInteger(Number(bare)) || Number(bare) < 50)) {
-    process.stderr.write(`vysu: « ${step} »: wait counts milliseconds — sleep ${bare} for seconds, wait idle for a page that has gone quiet\n`);
-    return false;
-  }
   if (step.startsWith('viewport ')) {
     const wh = after('viewport ');
     const x = wh.lastIndexOf('x');

@@ -43,11 +43,6 @@
 #                                           `vysu down metro` hands the device back to the shared Metro
 #                                           (VYSU_METRO_PORT, 8081) on its next relaunch
 #   vysu ios|android <agent-device args…>   passthrough on the chosen simulator / emulator
-#   vysu ready ios|android [<persona>] [--isolated] [--device <name> | --avd <name>]   a device ready to drive, in
-#                                           one call: claim (the one this owner holds, else --any), up, then mlogin
-#                                           when a persona is named; each step prints what that command prints, a
-#                                           step already done says so, the first one that fails stops it (its exit
-#                                           code). Minutes when it boots and logs in: a 10-minute tool timeout
 #   vysu mlogin ios|android <persona> [--force]   log the persona in inside the app (one install = one
 #                                           session); a device vysu recorded with that persona, whose app
 #                                           shows someone signed in, is left as it is (--force: log in anyway).

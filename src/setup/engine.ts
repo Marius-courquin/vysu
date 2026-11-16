@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { ENGINE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
 import { onCleanup } from '../core/errors.ts';
-import { rememberTool, toolPath, which } from '../core/host.ts';
+import { which } from '../core/host.ts';
 import { run, runTool } from '../core/proc.ts';
 import { parseShellEnv } from '../core/shellenv.ts';
 import { sleep } from '../core/text.ts';
@@ -113,11 +113,11 @@ function packageVersion(tool: string, bin: string): string {
 
 // The three numbers, whatever the tool wraps them in.
 export async function toolVersion(tool: string, fresh = false): Promise<string> {
-  const bin = toolPath(tool, fresh);
+  const bin = which(tool, fresh);
   if (!bin) return '';
   const fromPackage = packageVersion(tool, bin);
   if (fromPackage) return /\d+\.\d+\.\d+/.exec(fromPackage)?.[0] ?? '';
-  const r = await runTool(bin, ['--version']);
+  const r = await runTool(tool, ['--version']);
   const first = r.stdout.split('\n')[0] ?? '';
   return /\d+\.\d+\.\d+/.exec(first)?.[0] ?? '';
 }
@@ -162,8 +162,7 @@ export async function toolsCheck(mode: 'install' | 'report'): Promise<void> {
       warn(`${tool}: ${have}, newer than ${max}, the last release this engine was checked with (tools.env)`, `npm i -g ${spec}`);
       continue;
     }
-    rememberTool(tool);
-    ok(`${tool}: ${have}${which(tool) ? '' : ' (not on this shell\'s PATH: found where setup last saw it)'}`);
+    ok(`${tool}: ${have}`);
   }
 }
 

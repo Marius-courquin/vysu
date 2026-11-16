@@ -7,7 +7,7 @@ import { basename, join } from 'node:path';
 import { HOME, IOS_DEFAULT_DEVICE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
 import { die } from '../core/errors.ts';
-import { toolPath, which } from '../core/host.ts';
+import { which } from '../core/host.ts';
 import { runTool } from '../core/proc.ts';
 import { shellQuote } from '../core/shellenv.ts';
 import { allRequiredPresent, head, info, miss, noColor, ok, summary } from '../core/ui.ts';
@@ -94,7 +94,7 @@ export async function run(args: string[]): Promise<number> {
     ok(`browser: ${basename(wantBrowser)} — your own; a page may render unlike a baseline captured elsewhere`);
   } else if (existsSync(join(HOME, '.agent-browser', 'browsers'))) {
     ok('browser: Chrome for Testing, headless (same rendering everywhere)');
-  } else if (dry || !toolPath('agent-browser')) {
+  } else if (dry || !which('agent-browser')) {
     miss('browser: nothing to drive — Chrome for Testing is not downloaded', 'agent-browser install');
   } else {
     info('browser: downloading Chrome for Testing…');
