@@ -457,7 +457,7 @@ so two versions installed side by side share one state folder and wait on each o
   `doctor` 1.5 s → 0.5 s on the Nidz project), a driver's version is read from its `package.json`,
   a port is answered by a connection rather than `lsof`, a url by `fetch` rather than `curl`, an
   image helper costs no interpreter start-up.
-- **Tested against a reference.** `test/parity/` runs a reference engine (`VYSU_REF`, a bash vysu
-  such as v0.5.1) and this one on the same inputs in mirrored scratch folders and compares stdout,
-  stderr, exit codes and the files written; `test/platform/smoke.ts` is what CI runs on the three
-  systems.
+- **Tested against a reference.** Until 0.12.2, parity scripts ran a bash vysu (v0.5.1) and this
+  engine on the same inputs and compared stdout, stderr, exit codes and the files written; they
+  left with the reference they compared against. `test/platform/smoke.ts` is what CI runs on the
+  three systems.
