@@ -69,6 +69,10 @@ Options of the `auth0` connector, all optional; the defaults live in
 | `VYSU_AUTH0_MENU_LABEL` / `VYSU_AUTH0_LOGOUT_LABEL` | the two labels of the mobile sign-out: the control that opens the menu, and the logout in it (or on a screen with no menu) | `Menu` / `Sign out` |
 | `VYSU_AUTH0_LOGOUT_CONFIRM_LABELS` | the button of a dialog that confirms the logout, when the app asks | the logout label |
 | `VYSU_AUTH0_AFTER_LOGIN_LABELS` | buttons pressed if they show up after the login | `Continue,Back home` |
+| `VYSU_AUTH0_MOBILE_SESSION_LINK` | mobile: a link of the app's development builds that stores a refresh token, `{refresh_token}` where it goes. Set, `mlogin` mints the token over HTTP as the app's own client (authorization code + PKCE, no browser), opens the link, waits for `VYSU_AUTH0_MOBILE_SESSION_TEXT`, and starts the app again on that session: nothing is typed. Any step that does not hold says so and the login is typed as before | `myapp://auth/dev-session?rt={refresh_token}` |
+| `VYSU_AUTH0_MOBILE_ISSUER` / `_CLIENT_ID` / `_REDIRECT_URI` | what that token is asked with: the tenant's url, the mobile app's client id and its redirect (a custom scheme, read and never followed) | `https://my-tenant.eu.auth0.com`, `AbC…`, `myapp://auth/callback` |
+| `VYSU_AUTH0_MOBILE_AUDIENCE` / `_SCOPE` | the API audience the app asks for, and its scope (default `openid profile email offline_access`) | `https://api.example.com` |
+| `VYSU_AUTH0_MOBILE_SESSION_TEXT` | the text the app shows once the token is stored (default `dev-session: stored`) | |
 
 Options of the `form` connector — a plain e-mail + password page — all optional; the defaults live
 in [`src/connectors/auth/form.ts`](../src/connectors/auth/form.ts).

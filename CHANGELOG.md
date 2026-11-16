@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `mlogin` with the auth0 connector hands the app a session instead of typing into Auth0's sheet when
+  the project names a link for it (`VYSU_AUTH0_MOBILE_SESSION_LINK`, a route of the app's development
+  builds): the refresh token is minted over HTTP as the app's own client (1.7 s), the link stores it,
+  the app is started again on it. A step that does not hold says which and the login is typed as
+  before. Connectors get two primitives for it: `mobileOpenUrl` (a link opened and never printed) and
+  `fetch`.
+
 ## 0.11.0 — 2026-11-16
 
 From the transcripts of 145 agent sessions on two Macs (9 October to 13 November): where the time

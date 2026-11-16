@@ -54,6 +54,12 @@ export interface AuthContext {
   // logout can be reached. Android only (`pm clear`, notification permission granted back); false
   // where it cannot be done.
   mobileReset(platform: Platform): Promise<boolean>;
+  // A link handed to the app as the system would, never printed (it may carry a token); the app is
+  // started first when it is not up. True once it is delivered: the app routes it a beat later, so
+  // the connector waits for what it expects.
+  mobileOpenUrl(platform: Platform, url: string): Promise<boolean>;
+  // An HTTP call, for a connector that asks its auth server itself rather than through a page.
+  fetch(url: string, init?: RequestInit): Promise<Response>;
   mstateSet(platform: Platform, key: string, value: string): void;
   personaRequire(persona: string): { email: string; password: string };
   personaVar(persona: string, key: string): string;

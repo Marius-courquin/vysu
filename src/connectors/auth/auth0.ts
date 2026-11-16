@@ -16,9 +16,16 @@
 //   VYSU_AUTH0_LOGOUT_LABEL       [Se déconnecter]                mobile: logging another persona out
 //   VYSU_AUTH0_LOGOUT_CONFIRM_LABELS [the logout label]           mobile: the button of a dialog confirming the logout
 //   VYSU_AUTH0_AFTER_LOGIN_LABELS [Entrer directement,Retour à l'accueil]   buttons pressed if they show up
+//   VYSU_AUTH0_MOBILE_SESSION_LINK [none]                         mobile: a link of the app's development builds that stores a
+//                                                                 refresh token, `{refresh_token}` where it goes; set, `mlogin`
+//                                                                 hands the app a session instead of typing (tokenLogin below)
+//   VYSU_AUTH0_MOBILE_ISSUER / _CLIENT_ID / _REDIRECT_URI         the tenant's url, the app's own client and redirect
+//   VYSU_AUTH0_MOBILE_AUDIENCE [none] / _SCOPE [openid profile email offline_access]
+//   VYSU_AUTH0_MOBILE_SESSION_TEXT [dev-session: stored]          what the app shows once the token is stored
 import type { AuthConnector, AuthContext } from '../../auth/types.ts';
 import { exit } from '../../core/errors.ts';
 import type { Platform } from '../../core/hold.ts';
+import { refreshTokenByPassword } from './auth0-native.ts';
 
 const opt = (v: AuthContext, key: string, def: string): string => v.cfg(`AUTH0_${key}`, def);
 const domain = (v: AuthContext): string => opt(v, 'DOMAIN', 'auth0.com');
@@ -282,6 +289,59 @@ async function door(v: AuthContext, persona: string, url: string, signin: string
   return false;
 }
 
+// The app handed a session instead of being typed into, for an app that has a link for it
+// (VYSU_AUTH0_MOBILE_SESSION_LINK, a route of its development builds): the refresh token is minted
+// over HTTP as the app's own client, the link stores it in the app, which says so, and the app is
+// started again on it, as after any launch of a signed-in app. Whoever was signed in leaves through
+// the app's own logout, on the app's side of the link. False whenever a step does not hold, each
+// time saying which, and the login is then typed as it always was: an app without the route, a
+// release build, a tenant that asks for more than a password.
+async function tokenLogin(v: AuthContext, platform: Platform, persona: string, email: string, password: string, after: string): Promise<boolean> {
+  const link = opt(v, 'MOBILE_SESSION_LINK', '');
+  if (!link) return false;
+  const typing = (why: string): boolean => {
+    v.log(`${platform}: ${why}: typing the login instead`);
+    return false;
+  };
+  const grant = {
+    issuer: opt(v, 'MOBILE_ISSUER', ''),
+    clientId: opt(v, 'MOBILE_CLIENT_ID', ''),
+    redirectUri: opt(v, 'MOBILE_REDIRECT_URI', ''),
+    audience: opt(v, 'MOBILE_AUDIENCE', ''),
+    scope: opt(v, 'MOBILE_SCOPE', 'openid profile email offline_access'),
+  };
+  if (!link.includes('{refresh_token}') || !grant.issuer || !grant.clientId || !grant.redirectUri) {
+    return typing('VYSU_AUTH0_MOBILE_SESSION_LINK needs {refresh_token} in it, and VYSU_AUTH0_MOBILE_ISSUER, _CLIENT_ID and _REDIRECT_URI beside it');
+  }
+  let token: string;
+  try {
+    token = await refreshTokenByPassword(grant, email, password, v.fetch);
+  } catch (e) {
+    return typing(`no session token for ${persona} (${e instanceof Error ? e.message : String(e)})`);
+  }
+  const menu = opt(v, 'MENU_LABEL', 'Menu');
+  const stored = opt(v, 'MOBILE_SESSION_TEXT', 'dev-session: stored');
+  await v.mobilePrepare(platform);
+  // Onto the app as it stands, whatever screen it is on: the link is routed over it, and the app is
+  // started again right after, so no relaunch is spent on getting it to its root first.
+  if (!(await v.mobileOpenUrl(platform, link.replace('{refresh_token}', encodeURIComponent(token))))) return typing('the session link was not delivered to the app');
+  if (!(await v.mobWaitText(platform, stored, 30000))) return typing(`the app did not answer the session link with « ${stored} » (a build without that route, a release build?)`);
+  await v.mobileRelaunch(platform);
+  await v.mobPressAny(platform, 'Autoriser,Allow');
+  // A first launch on a session puts things over the home, which hold no menu: the app's entry
+  // screens, its own « turn notifications on » sheet. Each is answered if it is there, three rounds.
+  let signedIn = await v.mobWaitText(platform, menu, 20000);
+  for (let round = 0; round < 3 && !signedIn; round++) {
+    await v.mobPressAll(platform, after);
+    await v.mobPressAny(platform, 'Plus tard,Not Now');
+    signedIn = await v.mobWaitText(platform, menu, 8000);
+  }
+  if (!signedIn) return typing(`the app stored the session and did not come up signed in (« ${menu} » never showed)`);
+  v.mstateSet(platform, 'persona', persona);
+  console.log(`${platform}: logged in as ${persona} (${email}) — session handed to the app, nothing typed`);
+  return true;
+}
+
 export const connector: AuthConnector = {
   describe: (v) => `Auth0 Universal Login on *${domain(v)}*, identifier-first (sign-in: ${opt(v, 'SIGNIN_LABELS', 'Se connecter,Sign in')})`,
 
@@ -333,6 +393,7 @@ export const connector: AuthConnector = {
     const after = opt(v, 'AFTER_LOGIN_LABELS', "Entrer directement,Retour à l'accueil");
     const app = v.mobileApp(platform);
     if (!app) v.die('mlogin: VYSU_IOS_APP / VYSU_MOBILE_BUNDLE is not set');
+    if (await tokenLogin(v, platform, persona, email, password, after)) return;
 
     await v.mobilePrepare(platform);
     // Straight onto the bundle, on the app's root, with Expo's dev menu and its intro cleared on the

@@ -73,6 +73,8 @@ function fake(s: Script): { v: AuthContext; calls: string[] } {
     mobilePrepare: async () => undefined,
     mobileUnblock: async () => '',
     mobileReset: async () => false,
+    mobileOpenUrl: async () => true,
+    fetch: () => Promise.reject(new Error('no network in this test')),
     mstateSet: () => undefined,
     personaRequire: () => ({ email: 'a@b.fr', password: 'pw' }),
     personaVar: () => '',
