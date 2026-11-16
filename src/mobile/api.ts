@@ -146,6 +146,10 @@ export async function mobileOpenUrl(platform: Platform, url: string): Promise<bo
     await launch.mobileRelaunch(platform);
     if (launch.mobileKind() === 'expo') await launch.mobileLoadBundle(platform);
   }
+  // The agent-device session too, before the link rather than after: without one a wait for what
+  // the link brings fails at once instead of waiting, and opening one can take a minute on iOS (the
+  // runner to start), longer than the screen the connector then looks for may stay.
+  await launch.sessionEnsure(platform);
   const refused = await openLink(platform, url, bundle);
   if (refused) why(`${platform}: the link was not opened (${refused})`);
   return !refused;
