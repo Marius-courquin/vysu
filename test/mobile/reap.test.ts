@@ -106,7 +106,9 @@ test('memory: the kernel level and pressure on macOS, MemAvailable on Linux, and
   assert.equal(linuxMemory('MemTotal: 10 kB\n'), null);
   assert.equal(memoryBlock({ free: 58, pressure: 'normal' }, 20), '');
   assert.match(memoryBlock({ free: 14, pressure: 'normal' }, 20), /14% of memory free, under VYSU_MEMORY_MIN_FREE=20%/);
-  assert.match(memoryBlock({ free: 40, pressure: 'warn' }, 20), /memory pressure warn/);
+  assert.equal(memoryBlock({ free: 40, pressure: 'warn' }, 20), '');
+  assert.match(memoryBlock({ free: 14, pressure: 'warn' }, 20), /14% of memory free/);
+  assert.match(memoryBlock({ free: 40, pressure: 'critical' }, 20), /memory pressure critical/);
   assert.equal(memoryBlock({ free: 5, pressure: 'critical' }, 0), '');
   assert.equal(memoryBlock(null, 20), '');
 });

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+From the transcripts of 145 agent sessions on two Macs (9 October to 13 November): where the time
+and the tokens of a visual check went.
+
+- `vysu ready ios|android [<persona>] [--isolated]`: claim, up and mlogin in one call, each step
+  skipped when it is already done. A checker spent a median of 17 tool calls before its first capture.
+- The two drivers are found where `setup`, `doctor` or `update` last saw them when the shell's PATH
+  no longer shows them (a sub-agent's shell without the node version manager): no more
+  « agent-device is not installed » or `export PATH=…` in front of every command.
+- A boot is no longer refused at the kernel's memory pressure « warn »: under
+  `VYSU_MEMORY_MIN_FREE` and at « critical » only. Warn stays on the `budget:` line.
+- `up ios|android --isolated` on an app already running on this owner's isolated Metro leaves it
+  running instead of relaunching it.
+- `doctor --brief` keeps the `project:` and `skills:` lines.
+- Web flow: `wait 0.5`, `wait 2` are refused with what was meant (`sleep`, `wait idle`) instead of
+  waiting out agent-browser's timeout on a selector named « 0.5 ».
+- `mlogin` on Android and iOS: a login form still on its e-mail page after the submit gets the
+  e-mail typed once more, key by key, then fails saying so, instead of agent-device's « wait timed
+  out for text: mot de passe » that 62 logins were retried on.
+- The visual-checker agent definition carries a command card: no skill file and no `vysu help` to
+  read before the first command.
+
 ## 0.10.1 — 2026-10-12
 
 From a real acceptance pass of 0.10.0 on an iPhone 17 Pro simulator, a Pixel 10 Pro emulator and

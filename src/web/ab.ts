@@ -10,7 +10,7 @@ import { homedir } from 'node:os';
 import { basename, join, posix, win32 } from 'node:path';
 import { config } from '../core/ctx.ts';
 import { die, log } from '../core/errors.ts';
-import { descendants, isExecutable, isWindows, nativeTarget, processName, toolArgv, which } from '../core/host.ts';
+import { descendants, isExecutable, isWindows, nativeTarget, processName, toolArgv, toolPath } from '../core/host.ts';
 import { lockTake } from '../core/hold.ts';
 import type { RunResult } from '../core/proc.ts';
 import { personaBase, personaSessionSuffix, webResource } from '../core/personas.ts';
@@ -24,7 +24,7 @@ import { hideJs } from './js.ts';
 let binary = '';
 export function abBinary(): string {
   if (binary) return binary;
-  const onPath = which('agent-browser');
+  const onPath = toolPath('agent-browser');
   if (!onPath) return (binary = 'agent-browser');
   let real = onPath;
   try {

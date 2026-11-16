@@ -541,11 +541,13 @@ export async function readMemory(): Promise<Memory | null> {
 // The floor is the kernel's own measure, not swap: on 12/10 this Mac carried 10-11 GB of swap at
 // 51-64 % « free » and pressure normal, and swap stays used long after the pressure has gone, so a
 // swap gate would have refused every boot for days. Healthy, this Mac reads 50-80 %; 20 % is a
-// machine where one more 3-4 GB device is what tips it, and the kernel's warn level says the same
-// from its side.
+// machine where one more 3-4 GB device is what tips it. The kernel's critical level refuses too; its
+// warn level does not: from 09/10 to 05/11 it refused 147 boots, nearly all of them between 20 and
+// 49 % free (9 at critical), each after a 90 s wait the agent then repeated, 4 h in all, and 28 of
+// them with no other device session running. Warn is said on the `budget:` line and left there.
 export function memoryBlock(m: Memory | null, floor: number): string {
   if (!m || !floor) return '';
-  if (m.pressure === 'warn' || m.pressure === 'critical') return `memory pressure ${m.pressure} (${m.free}% free)`;
+  if (m.pressure === 'critical') return `memory pressure critical (${m.free}% free)`;
   if (m.free < floor) return `${m.free}% of memory free, under VYSU_MEMORY_MIN_FREE=${floor}%`;
   return '';
 }
@@ -612,7 +614,7 @@ export async function budgetLine(): Promise<string> {
   parts.push(`android ${(pool.emus ?? []).length}/${androidMaxRunning()} running (VYSU_ANDROID_MAX_RUNNING)`);
   const m = await readMemory();
   const floor = memoryFloor();
-  if (m) parts.push(`memory ${m.free}% free${m.pressure ? `, pressure ${m.pressure}` : ''} (no boot under ${floor}%: VYSU_MEMORY_MIN_FREE)`);
+  if (m) parts.push(`memory ${m.free}% free${m.pressure ? `, pressure ${m.pressure}` : ''} (no boot under ${floor}% or at pressure critical: VYSU_MEMORY_MIN_FREE)`);
   const idle = idleMinutes();
   parts.push(idle ? `unused devices stop after ${idle} min (VYSU_IDLE_MINUTES)` : 'idle stop off (VYSU_IDLE_MINUTES=0)');
   return `budget: ${parts.join(' · ')}`;
