@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `mlogin` with a session link opens the device's agent-device session before the link
+  (`mobileOpenUrl` does): on a device that had none, the wait for the app's answer failed at once and
+  the login was typed after all (97 s instead of 20).
+
 ## 0.12.0 — 2026-11-16
 
 - `mlogin` with the auth0 connector hands the app a session instead of typing into Auth0's sheet when

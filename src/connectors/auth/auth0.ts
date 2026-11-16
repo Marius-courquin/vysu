@@ -324,6 +324,8 @@ async function tokenLogin(v: AuthContext, platform: Platform, persona: string, e
   await v.mobilePrepare(platform);
   // Onto the app as it stands, whatever screen it is on: the link is routed over it, and the app is
   // started again right after, so no relaunch is spent on getting it to its root first.
+  // (mobileOpenUrl opens the agent-device session first when there is none: the wait below failed
+  // at once without it, and the login was typed after all, 97 s instead of 20.)
   if (!(await v.mobileOpenUrl(platform, link.replace('{refresh_token}', encodeURIComponent(token))))) return typing('the session link was not delivered to the app');
   if (!(await v.mobWaitText(platform, stored, 30000))) return typing(`the app did not answer the session link with « ${stored} » (a build without that route, a release build?)`);
   await v.mobileRelaunch(platform);
