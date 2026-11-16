@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.2 — 2026-11-16
 
 - A typed mobile login no longer waits out two timeouts: 42 to 47 s instead of 94 on a Pixel 8
   emulator, 59 to 71 s instead of 97 on an iPhone 17 Pro simulator (auth0 connector). The welcome
