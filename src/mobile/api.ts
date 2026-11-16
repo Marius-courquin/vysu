@@ -10,7 +10,6 @@ import { tool } from '../img/tools.ts';
 import { ad, adCall, calls } from './agent.ts';
 import { adb, adbShell, androidAvdOf, androidSelect, androidSerial, captureOptions, emulatorSerials, mobileScale } from './device.ts';
 import * as launch from './launch.ts';
-import { openLink } from './mctl.ts';
 import { why } from './io.ts';
 import { customTabPackages } from './snap.ts';
 import { metroPort as port } from './metro.ts';
@@ -132,27 +131,6 @@ export async function mobilePrepare(platform: Platform): Promise<void> {
     await adb(['shell', 'am', 'force-stop', pkg]);
     why(`android: closed a Custom Tab left open in ${pkg}`);
   }
-}
-// A link handed to the app as the system would (a custom scheme, a universal link), never printed:
-// what a connector opens may carry a token. The app is started first when it is not up. True once the
-// link is delivered; the app routes it a beat later.
-export async function mobileOpenUrl(platform: Platform, url: string): Promise<boolean> {
-  const bundle = config().get('MOBILE_BUNDLE');
-  if (!bundle) return false;
-  if (platform === 'android') await androidSelect();
-  // An app that is not up (not running, or parked on Expo's launcher) is started first, as `mopen`
-  // does: the link has to reach the app's own router.
-  if (!(await launch.appUp(platform, bundle))) {
-    await launch.mobileRelaunch(platform);
-    if (launch.mobileKind() === 'expo') await launch.mobileLoadBundle(platform);
-  }
-  // The agent-device session too, before the link rather than after: without one a wait for what
-  // the link brings fails at once instead of waiting, and opening one can take a minute on iOS (the
-  // runner to start), longer than the screen the connector then looks for may stay.
-  await launch.sessionEnsure(platform);
-  const refused = await openLink(platform, url, bundle);
-  if (refused) why(`${platform}: the link was not opened (${refused})`);
-  return !refused;
 }
 // What was done to the device (persona, textsize, appearance, lang, net), read back by `vysu claim`.
 export function mstateSet(platform: Platform, key: string, value: string): void {
