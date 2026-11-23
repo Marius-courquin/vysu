@@ -327,11 +327,19 @@ test('auth0 logout from a pushed screen or a viewer over the menu: once more fro
 
 test('auth0 mlogin over another persona: relaunched, logged out through the menu, then the door', async () => {
   const f = screens(['Menu', 'Bienvenue'], { Menu: ['Menu', 'Se déconnecter'], 'Se déconnecter': DOOR }, ['Menu', 'Bienvenue']);
-  // The Auth0 pages are not part of these screens: the password page shows once the e-mail went in.
+  // The Auth0 pages are not part of these screens: the password page shows once the e-mail went in,
+  // and the app's welcome once the password did.
+  let passwordIn = false;
   const waited = f.v.mobWaitText;
-  f.v.mobWaitText = async (p, text, ms) => (text === 'mot de passe' ? (f.calls.push(`wait ${p} ${text} ${ms}`), true) : waited(p, text, ms));
+  f.v.mobWaitText = async (p, text, ms) =>
+    text === 'mot de passe' || (text === 'Bienvenue' && passwordIn) ? (f.calls.push(`wait ${p} ${text} ${ms}`), true) : waited(p, text, ms);
   const snapshotted = f.v.mobTry;
-  f.v.mobTry = async (p, ...args) => (args[0] === 'snapshot' ? snapshotted(p, ...args) : (f.calls.push(`try ${p} ${args.join(' ')}`), { code: 0, stdout: '', stderr: '' }));
+  f.v.mobTry = async (p, ...args) => {
+    if (args[0] === 'snapshot') return snapshotted(p, ...args);
+    f.calls.push(`try ${p} ${args.join(' ')}`);
+    if (args[0] === 'fill' && args.includes('pw')) passwordIn = true;
+    return { code: 0, stdout: '', stderr: '' };
+  };
   await capture(() => auth0.mobileLogin(f.v, 'android', 'alice'));
   assert.deepEqual(f.calls.slice(0, 10), [
     'prepare android',

@@ -195,6 +195,14 @@ test('a field that does not take the focus is pressed again before typing (TEXT_
   assert.deepEqual(f.calls.slice(at, at + 5), ['try ios type a@b.fr', 'mob ios press 187 322', 'sleep 2', 'mob ios type a@b.fr', 'mob ios keyboard return']);
 });
 
+test('a login that never reaches the app fails, and does not record the persona on the device', async () => {
+  // The password went in, then neither the welcome nor the app's menu: the sheet on the web app's door.
+  const f = fake({ sees: (t) => t !== 'Bienvenue' && t !== 'Menu' && t !== 'Se déconnecter' });
+  await assert.rejects(quietly(() => auth0.mobileLogin(f.v, 'ios', 'alice')), /die: ios: the login never reached the app: neither « Bienvenue » nor « Menu » showed within 30 s of the password/);
+  assert.ok(!f.calls.some((c) => c.startsWith('mstate ')), f.calls.join('\n'));
+  assert.ok(!f.calls.some((c) => c.startsWith("pressAll ios Entrer directement")), f.calls.join('\n'));
+});
+
 test('fillField: a fill that did not take is pressed and filled again, read back, then cleared and typed', async () => {
   const verify = 'Error (COMMAND_FAILED): Android fill verification failed';
   // Taken on the second fill.

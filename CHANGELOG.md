@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- A `simctl clone` no longer runs its apps out of the simulator it was cloned from. The clone kept
+  its source's LaunchServices store, so every app's bundle and data container still resolved to the
+  source's folders: all the clones of a device shared one app data folder, one login, and the
+  Firestore LevelDB that the second app to open it aborted on. Before a shut-down simulator boots
+  (`claim`, `up`), a store that points into another simulator is removed, and iOS rebuilds it from
+  the clone's own containers. The clones `claim --any` made before are repaired at their next boot.
+- `mlogin` fails when the login never reaches the app, instead of printing « logged in » and
+  recording the persona on the device: the answer of the wait for the welcome or the menu was not
+  read.
+- Mobile logins on one machine take turns (lock `login-mobile`, waited up to ten minutes): when two
+  overlapped, Auth0 sent the second one's e-mail page to the web app's own door, every time, and
+  never when they did not.
+
 ## 0.12.2 — 2026-11-16
 
 - A typed mobile login no longer waits out two timeouts: 42 to 47 s instead of 94 on a Pixel 8

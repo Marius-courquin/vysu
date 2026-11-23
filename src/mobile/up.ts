@@ -18,6 +18,7 @@ import { appUp, mobileApp, mobileKind, mrelaunch, quietDevMenu, relaunch } from 
 import { metroDown, metroIsIsolated, metroIsolatedUp, metroNeed, metroPort, metroSharedUp, worktreeMobileDir } from './metro.ts';
 import { poolPower, simulatorWindow, startEmulator } from './pool.ts';
 import { admit, bootMark, reapSoon } from './reap.ts';
+import { simBootRepair } from './simclone.ts';
 import { mstateGet } from './state.ts';
 import { crlf, xcrun } from './tools.ts';
 
@@ -212,9 +213,11 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
     const udid = await iosUdid(true);
     if (udid === 'booted') die(`ios: no simulator named « ${dev} » (xcrun simctl list devices)`);
     await reapSoon();
-    if ((await poolPower('ios', dev)) !== 'booted') {
+    const power = await poolPower('ios', dev);
+    if (power !== 'booted') {
       await admit('ios', dev);
       bootMark('ios', dev);
+      if (power === 'shut down') simBootRepair(udid, dev, say);
     }
     await xcrun(['simctl', 'boot', udid]);
     await simulatorWindow();
