@@ -36,6 +36,7 @@ import { mobileKind } from './launch.ts';
 import { metroPort } from './metro.ts';
 import { admit, androidMaxRunning, bootMark, budgetLine, iosMaxBooted, reapIdle, reapSoon } from './reap.ts';
 import { simBootRepair } from './simclone.ts';
+import { slimBeforeBoot } from './slim.ts';
 import { mstateFile, mstateLine } from './state.ts';
 import { adbPath, emulatorPath, needMac, xcrun } from './tools.ts';
 
@@ -412,6 +413,7 @@ async function iosBoot(): Promise<boolean> {
   ceilingDoing(`booting « ${devices.ios} »`);
   bootMark('ios', devices.ios);
   simBootRepair(udid, devices.ios, (l) => tell(`vysu: ${l}`));
+  await slimBeforeBoot(udid, devices.ios, true, (l) => tell(`vysu: ${l}`));
   await xcrun(['simctl', 'boot', udid]);
   await simulatorWindow();
   await xcrun(['simctl', 'bootstatus', udid], { timeoutMs: 180000 });

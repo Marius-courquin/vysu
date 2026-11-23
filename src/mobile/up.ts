@@ -16,9 +16,10 @@ import { adb, adbShell, androidSerial, forgetSerial, iosFreezeStatusBar, iosUdid
 import { say } from './io.ts';
 import { appUp, mobileApp, mobileKind, mrelaunch, quietDevMenu, relaunch } from './launch.ts';
 import { metroDown, metroIsIsolated, metroIsolatedUp, metroNeed, metroPort, metroSharedUp, worktreeMobileDir } from './metro.ts';
-import { poolPower, simulatorWindow, startEmulator } from './pool.ts';
+import { iosNames, poolPower, simulatorWindow, startEmulator } from './pool.ts';
 import { admit, bootMark, reapSoon } from './reap.ts';
 import { simBootRepair } from './simclone.ts';
+import { slimBeforeBoot } from './slim.ts';
 import { mstateGet } from './state.ts';
 import { crlf, xcrun } from './tools.ts';
 
@@ -217,7 +218,10 @@ export async function mobileUp(p: Platform, args: string[]): Promise<void> {
     if (power !== 'booted') {
       await admit('ios', dev);
       bootMark('ios', dev);
-      if (power === 'shut down') simBootRepair(udid, dev, say);
+      if (power === 'shut down') {
+        simBootRepair(udid, dev, say);
+        await slimBeforeBoot(udid, dev, iosNames().includes(dev), say);
+      }
     }
     await xcrun(['simctl', 'boot', udid]);
     await simulatorWindow();
