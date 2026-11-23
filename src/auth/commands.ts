@@ -34,8 +34,15 @@ export async function mlogin(platform: string, persona: string, force = false): 
     console.log(`${p}: already logged in as ${persona} (${email}), left as it is (--force logs in again)`);
     return;
   }
+  await loginTurn();
   await a.connector.mobileLogin(context(), p, persona);
 }
+
+// Two mobile logins at once on one machine: the second one's e-mail page sent its sheet to the web
+// app's own door instead of the password page, each time two overlapped and never when they did not
+// (three simulators on a Mac mini, 2026-11-23). One at a time, whatever the device and the owner;
+// a login takes a minute, so the turn is waited for up to ten.
+const loginTurn = (): Promise<void> => lockTake('login-mobile', 600);
 
 // The API access token of a persona's session, or '' (undefined: the connector has none to give).
 export async function token(persona: string): Promise<string | undefined> {
@@ -63,6 +70,7 @@ export async function test(persona: string, platform: string): Promise<void> {
     // One install is one session: there is no throwaway device, and the test logs the persona in
     // for real — which also rotates whatever the identity provider rotates on a login.
     console.log(`device: the real ${platform} app (one install = one session): this logs ${persona} in for good`);
+    await loginTurn();
     await a.connector.mobileLogin(v, platform, persona);
     v.step(`mobile login as ${persona}`);
     console.log('auth test: ok');

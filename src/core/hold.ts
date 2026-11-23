@@ -312,8 +312,9 @@ export function stateRegister(dir = config().state): void {
   }
 }
 
-// Waits for a foreign lock or claim, then holds the resource until this process exits.
-export async function lockTake(r: string): Promise<void> {
+// Waits for a foreign lock or claim, then holds the resource until this process exits. A resource
+// held for minutes at a time (a login) waits longer than VYSU_LOCK_WAIT: `waitSeconds`.
+export async function lockTake(r: string, waitSeconds?: number): Promise<void> {
   if (held.has(r)) return;
   stateRegister();
   const c = config();
@@ -327,7 +328,7 @@ export async function lockTake(r: string): Promise<void> {
     held.add(r);
     return;
   }
-  const wait = c.lockWait;
+  const wait = Math.max(c.lockWait, waitSeconds ?? 0);
   // Everything the lock will say is known before the mkdir that publishes it: finding the owner walks
   // the process tree, and a lock left without its pid meanwhile looked dead to a waiter.
   const me = owner();

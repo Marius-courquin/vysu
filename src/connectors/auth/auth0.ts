@@ -161,6 +161,14 @@ async function landed(v: AuthContext, platform: Platform, home: string): Promise
   return false;
 }
 
+// Its answer was not read until 0.12.2: a login that never reached the app still printed « logged in »,
+// and recorded the persona on the device, while the sheet sat on the web app's own door (Auth0 sending
+// the form elsewhere) or the app had died behind it (2026-11-23).
+async function mustLand(v: AuthContext, platform: Platform, home: string): Promise<void> {
+  if (await landed(v, platform, home)) return;
+  v.die(`${platform}: the login never reached the app: neither « ${home} » nor « ${opt(v, 'MENU_LABEL', 'Menu')} » showed within 30 s of the password (vysu ${platform} snapshot -i shows where it stopped)`);
+}
+
 // The buttons on screen that carry one of these labels (as the selectors read them, whatever the case:
 // Nidz's gate screens draw « SE DÉCONNECTER »), each by its ref in this snapshot and its box.
 export function buttonsLabelled(snapshotJson: string, labels: string[]): Array<{ ref: string; box: string }> {
@@ -408,7 +416,7 @@ export const connector: AuthConnector = {
       await v.mob(platform, 'keyboard', 'return');
       await v.sleep(6);
       await v.mobPressAny(platform, 'Autoriser,Allow');
-      await landed(v, platform, home);
+      await mustLand(v, platform, home);
       await v.mobPressAll(platform, after);
       v.mstateSet(platform, 'persona', persona);
       console.log(`${platform}: logged in as ${persona} (${email}) — fields read from the capture (${surface} not readable)`);
@@ -445,7 +453,7 @@ export const connector: AuthConnector = {
     await v.sleep(3);
     await v.mobPressAny(platform, 'Plus tard,Not Now'); // Safari's « save this password? »
     await v.mobPressAny(platform, 'Autoriser,Allow'); // push notification permission
-    await landed(v, platform, home);
+    await mustLand(v, platform, home);
     // The dev-launcher URL handed over at install is captured as a pending deep link and replayed
     // after login, which the router answers with a not-found screen: a dev-client artefact, not a
     // product bug. AFTER_LOGIN_LABELS is the way back out of it.
