@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 — 2026-11-23
 
 - `VYSU_IOS_SLIM`: the simulators of the pool are slimmed by simslim before they boot (`default`, or a
   simslim profile file), once per simulator: on a Mac mini, six slim clones running a login and a flow
