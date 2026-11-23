@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.3 — 2026-11-23
 
 - A `simctl clone` no longer runs its apps out of the simulator it was cloned from. The clone kept
   its source's LaunchServices store, so every app's bundle and data container still resolved to the
