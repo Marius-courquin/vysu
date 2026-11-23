@@ -2,7 +2,7 @@
 // [--browser <path|default>]`: the machine — tools, browser, simulators, emulators. Every line is
 // fine, optional and missing, or required and missing; it ends on the counts and the commands to run,
 // and exits 1 when something required is missing.
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { HOME, IOS_DEFAULT_DEVICE } from '../core/config.ts';
 import { config } from '../core/ctx.ts';
@@ -125,7 +125,7 @@ export async function run(args: string[]): Promise<number> {
   } else {
     const values: Record<string, string> = { VYSU_IOS_DEVICE: wantIos, VYSU_IOS_OLD_DEVICE: wantOld, VYSU_ANDROID_AVDS: wantAvds };
     if (wantBrowser) values.VYSU_BROWSER_PATH = wantBrowser;
-    writeFileSync(machineEnv, machineEnvText(values));
+    writeFileSync(machineEnv, machineEnvText(values, existsSync(machineEnv) ? readFileSync(machineEnv, 'utf8') : ''));
     ok(`machine.env: ${machineEnv}`);
     if (existsSync(join(HOME, '.vysu', 'devices.env'))) {
       info('devices.env: still read, and below machine.env — delete it once you have moved its keys over');
@@ -145,9 +145,16 @@ export async function run(args: string[]): Promise<number> {
 // Each value quoted the way the settings reader reads it back: a device name or a browser path that
 // holds a `'` (C:\Users\O'Brien\…) once left a quote open, and every command on that machine died
 // reading the file.
-export function machineEnvText(values: Record<string, string>): string {
+// A setting added to the file by hand (VYSU_IOS_SLIM, VYSU_IOS_MAX_BOOTED…) is kept as it was: setup
+// rewrites only what it asks about, where it used to drop the rest of the machine's settings.
+export function machineEnvText(values: Record<string, string>, previous = ''): string {
   const lines = ['# written by vysu setup — what this machine drives.'];
   for (const [k, v] of Object.entries(values)) lines.push(`${k}=${shellQuote(v)}`);
+  const kept = previous.split('\n').filter((l) => {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=/.exec(l);
+    return !!m && !(m[1]! in values);
+  });
+  if (kept.length) lines.push('# kept as they were (vysu setup does not manage them):', ...kept);
   return `${lines.join('\n')}\n`;
 }
 

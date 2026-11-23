@@ -90,6 +90,15 @@ test('machine.env reads back what setup wrote, quotes included', () => {
   assert.deepEqual(read, values);
 });
 
+test('machine.env: the settings setup does not ask about are kept, the ones it asks about rewritten', () => {
+  const before = ["# written by vysu setup — what this machine drives.", "VYSU_IOS_DEVICE='iPhone 16'", "VYSU_IOS_SLIM=\"$HOME/.vysu/slim.json\"", "export VYSU_IOS_MAX_BOOTED='6'", '# a note'].join('\n');
+  const text = machineEnvText({ VYSU_IOS_DEVICE: 'iPhone 17 Pro', VYSU_ANDROID_AVDS: 'a:36:pixel_8:' }, before);
+  const read = Object.fromEntries(parseShellEnv(text, (n) => (n === 'HOME' ? '/home/me' : undefined), '/home/me').map((a) => [a.key, a.value]));
+  assert.deepEqual(read, { VYSU_IOS_DEVICE: 'iPhone 17 Pro', VYSU_ANDROID_AVDS: 'a:36:pixel_8:', VYSU_IOS_SLIM: '/home/me/.vysu/slim.json', VYSU_IOS_MAX_BOOTED: '6' });
+  // Written again from what it wrote: nothing doubles.
+  assert.equal(machineEnvText({ VYSU_IOS_DEVICE: 'iPhone 17 Pro', VYSU_ANDROID_AVDS: 'a:36:pixel_8:' }, text), text);
+});
+
 // `npm ci` in the engine deleted node_modules while other agents' vysu ran from it: the install now
 // happens beside it, under the bootstrap's lock, and the live folder is only ever renamed.
 test('the engine dependencies are installed beside the live ones and swapped in', async () => {

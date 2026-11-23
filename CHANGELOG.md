@@ -5,6 +5,8 @@
 - `VYSU_IOS_SLIM`: the simulators of the pool are slimmed by simslim before they boot (`default`, or a
   simslim profile file), once per simulator: on a Mac mini, six slim clones running a login and a flow
   loaded 15 cores to 44, where three stock ones reached 495. Off by default; simslim missing, stock.
+- `vysu setup` keeps the settings of `~/.vysu/machine.env` it does not ask about (`VYSU_IOS_SLIM`,
+  `VYSU_IOS_MAX_BOOTED`…): it rewrote the whole file, and a machine's other settings went with every run.
 
 ## 0.12.3 — 2026-11-23
 
