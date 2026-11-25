@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 — 2026-11-25
 
 - `VYSU_SERVICE_<name>_REFUSE`: a computer several people share says, in its `~/.vysu/machine.env`,
   that the shared service must not start there and what to do instead. `vysu up <name>` stops with
