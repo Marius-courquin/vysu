@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `VYSU_SERVICE_<name>_REFUSE`: a computer several people share says, in its `~/.vysu/machine.env`,
+  that the shared service must not start there and what to do instead. `vysu up <name>` stops with
+  that text before looking at its port, where it used to call someone else's server « already
+  listening » and hand it to the session; `vysu up all` skips it; `--isolated` still runs.
+
 ## 0.13.0 — 2026-11-23
 
 - `VYSU_IOS_SLIM`: the simulators of the pool are slimmed by simslim before they boot (`default`, or a
