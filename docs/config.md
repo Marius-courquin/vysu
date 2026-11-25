@@ -174,6 +174,7 @@ One service, key by key (`<name>` is a name from `VYSU_SERVICES`):
 | `VYSU_SERVICE_<name>_TIMEOUT` | seconds to wait for `HEALTH` | `30` |
 | `VYSU_SERVICE_<name>_STOP` | how to stop it | kill whatever listens on `_PORT` |
 | `VYSU_SERVICE_<name>_ISOLATED_PORTS` | the ports `vysu up <name> --isolated` may serve this owner's copy on: a range, a list, or both (`8101-8105`, `8101,8103`) | empty: `--isolated` refused |
+| `VYSU_SERVICE_<name>_REFUSE` | why the shared one must not start on this machine, and what to do instead: `vysu up <name>` stops with this text, before even looking at whether something already listens on `_PORT` (it would be someone else's), and `vysu up all` skips it. `--isolated` still runs. A machine setting: set it in `~/.vysu/machine.env` of a computer several people work on, each with their own server | empty |
 
 ```bash
 VYSU_SERVICE_web_CMD='pnpm --filter web exec vite --port 8100 --strictPort'

@@ -89,7 +89,10 @@ export async function up(args: string[]): Promise<void> {
   mkdirSync(c.logs, { recursive: true });
   if (what === 'all') {
     c.needProject();
-    for (const s of services()) await up([s]);
+    for (const s of services()) {
+      if (serviceKey(s, 'REFUSE')) console.log(`${s}: not started here (${serviceKey(s, 'REFUSE')})`);
+      else await up([s]);
+    }
     return;
   }
   if (what === 'ios' || what === 'android') return mobileUp(what, rest);
@@ -108,6 +111,11 @@ export async function up(args: string[]): Promise<void> {
   const cmd = serviceKey(what, 'CMD');
   if (!cmd) die(`vysu up ${what}: VYSU_SERVICE_${what}_CMD is not set`);
   if (isolated) return upIsolated(what, cmd, envPairs, isoDir);
+  // A machine where the shared one must not run (several people on one computer, each served
+  // their own way) says so in its machine.env; checked before « already listening », which would
+  // hand this session someone else's server.
+  const refuse = serviceKey(what, 'REFUSE');
+  if (refuse) die(`vysu up ${what}: not on this machine: ${refuse}`);
   const dir = serviceDir(what);
   const port = serviceKey(what, 'PORT');
   const timeout = Number(serviceKey(what, 'TIMEOUT', '30')) || 30;

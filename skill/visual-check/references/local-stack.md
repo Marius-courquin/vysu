@@ -26,6 +26,8 @@ stops yours. A walk's header then shows your worktree's sha.
 folder, and waits for its health check (a url to poll, the literal `port` for a TCP listen check,
 or a command that has to succeed) up to `_TIMEOUT` seconds, 30 by default. A service that is
 already listening on its port is not a failure: `up` only guarantees it is there afterwards.
+A computer several people share can refuse the shared one (`VYSU_SERVICE_<name>_REFUSE` in its
+`~/.vysu/machine.env`): `up` then stops with what to do instead, and that is the way.
 `vysu down <service>` runs `_STOP` when the config declares one, and otherwise kills whatever
 listens on `_PORT`. `_CMD`, a command `_HEALTH` and `_STOP` run through the machine's shell: `sh` on
 macOS and Linux, `cmd.exe` on Windows - a config shared across systems names commands both run
