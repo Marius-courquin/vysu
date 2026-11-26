@@ -7,7 +7,7 @@ import { die, VysuError } from '../core/errors.ts';
 import { langCheck } from '../core/i18n.ts';
 import { metaWrite, repoBranch, repoSha } from '../core/meta.ts';
 import { tool } from '../img/tools.ts';
-import { ab, bboxes, bcmd, brun, lastLine, lastResult } from './ab.ts';
+import { ab, absUrl, bboxes, bcmd, brun, lastLine, lastResult } from './ab.ts';
 import { ignoreJs, langReadJs, pyJsonList } from './js.ts';
 import { bchrome, bexpand, bopen, bsettle, bunexpand, bwarm, webApi } from './page.ts';
 import { servedDir } from '../services/isolated.ts';
@@ -160,7 +160,7 @@ export async function shots(persona: string, name: string, args: string[], print
     const a = args[i]!;
     switch (a) {
       case '--url':
-        url = optValue(args, i++, 'shots');
+        url = absUrl(optValue(args, i++, 'shots'));
         break;
       case '--sizes':
       // The spellings the passthrough and a flow use for one size (`set viewport`, `viewport WxH`).

@@ -24,7 +24,7 @@ export const SHEET_EDGE = 1568;
 // none of its own, and 30 fps is what the video output asks for.
 export const CLIP_FPS = 30;
 
-type Origin = 'env' | 'config' | 'machine.env' | 'devices.env' | 'default';
+type Origin = 'env' | '.vysu.env' | 'config' | 'machine.env' | 'devices.env' | 'default';
 
 const isFile = (p: string): boolean => {
   try {
@@ -71,6 +71,30 @@ function defaults(v: Map<string, string>, projectDir: string): Array<[string, st
   ];
 }
 
+// `.vysu.env` from the project folder down to the working directory, when the one is inside the other:
+// nothing outside a project, so a stray file in a home folder never changes a project's values.
+export function subtreeFiles(cwd: string, projectDir: string): string[] {
+  if (!projectDir) return [];
+  const real = (p: string): string => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return resolve(p);
+    }
+  };
+  const top = real(projectDir);
+  let dir = real(cwd);
+  const out: string[] = [];
+  for (;;) {
+    const f = join(dir, '.vysu.env');
+    if (isFile(f)) out.unshift(f);
+    if (dir === top) return out;
+    const up = dirname(dir);
+    if (up === dir) return [];
+    dir = up;
+  }
+}
+
 export class Config {
   projectDir = '';
   configFile = '';
@@ -78,6 +102,10 @@ export class Config {
   // beside it. It is <project>/.vysu in the ordinary case, and not in the one that matters: a config
   // kept in a worktree while VYSU_PROJECT_DIR stays the checkout its relative paths point into.
   vysuDir = '';
+  // The `.vysu.env` files between the working directory and the project, the farthest first: a
+  // folder's own values for whatever runs under it, above the project config. A worktree that serves
+  // the app at an address of its own says so there, and every check started in it goes there.
+  subtreeFiles: string[] = [];
   readonly values = new Map<string, string>();
   // Every variable the files assigned, VYSU_ or not: a settings file is read as if sourced under
   // `set -a`, so each one reaches every process vysu starts.
@@ -97,6 +125,7 @@ export class Config {
       [join(HOME, '.vysu', 'machine.env'), 'machine.env'],
     ];
     if (c.configFile) files.push([c.configFile, 'config']);
+    for (const f of c.subtreeFiles) files.push([f, '.vysu.env']);
     for (const [file, origin] of files) {
       if (!isFile(file)) continue;
       for (const [k, v] of readShellEnv(file, (name) => c.fileVars.get(name) ?? env[name])) {
@@ -141,6 +170,7 @@ export class Config {
       }
     }
     if (this.configFile) this.vysuDir = dirname(this.configFile);
+    this.subtreeFiles = subtreeFiles(cwd, this.projectDir);
   }
 
   // The one reader a connector, a driver and every module use: the value in force, or the default.

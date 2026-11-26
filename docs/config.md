@@ -9,7 +9,9 @@ in force and where each one came from (`env`, `config`, `machine.env`, `devices.
 `~/.vysu/machine.env` is what `vysu setup` writes about this machine — its simulators, its AVDs, its
 browser — and sits below the project config: a machine says what it has, a project says what it
 wants. It was called `devices.env` until 0.4.0, and a file of that name is still read, just below
-it.
+it. A `.vysu.env` in a folder between the working directory and the project (a worktree, say) sits
+above the project config, the closest one winning: what that folder needs to differ, most often the
+`VYSU_ORIGIN` its own app is served at. None is read outside the project, and it is not versioned.
 
 Every key is optional except `VYSU_PROJECT`, whose default is the project folder's name. A value an
 app has to decide — an origin, a bundle id, a locales folder — has no sensible default and stays
@@ -31,7 +33,7 @@ empty; the command that needs one says which key is missing.
 
 | Key | Meaning | Default | Example |
 |---|---|---|---|
-| `VYSU_ORIGIN` | default web origin: what `vysu login` opens, and what a relative flow step is read against | empty | `http://localhost:3000` |
+| `VYSU_ORIGIN` | default web origin: what `vysu login` opens, where `claim` looks for a login, and what a path is read against (`--url /path`, `open /path`, a flow's `go /path`) | empty | `http://localhost:3000` |
 | `VYSU_LOGIN_PATH` | the path the web login starts at, appended to the origin | `/login` | `/auth/login` |
 | `VYSU_BASELINE_ORIGIN` | what `--baseline-url @` means: the same path on the deployed main | empty | `https://main.example.com` |
 | `VYSU_SIZES` | the viewports `vysu shots` captures | `360x800,768x1024,1280x800,1440x900` | `390x844,1440x900` |

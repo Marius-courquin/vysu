@@ -17,7 +17,9 @@ VYSU_PROJECT='my-project'
 
 # --- the web app --------------------------------------------------------------------------------
 
-# Default web origin: what `vysu login` opens, and what a relative flow step is read against.
+# Default web origin: what `vysu login` opens, where `claim` looks for a login, and what a path is read
+# against (`--url /path`, `open /path`, a flow's `go /path`). A worktree served at an address of its own
+# sets it in a `.vysu.env` at its root.
 VYSU_ORIGIN='http://localhost:3000'
 # The path the web login starts at, appended to the origin. Default: /login
 VYSU_LOGIN_PATH='/login'

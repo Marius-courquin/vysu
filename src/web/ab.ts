@@ -325,7 +325,21 @@ export function savedElsewhere(persona: string, project: string, dir = join(home
   return out.sort();
 }
 
+// `open /path`: the path on VYSU_ORIGIN, not on whatever page the session happens to show. Left alone,
+// agent-browser read it against that page, which in a session last used on another address (another
+// worktree's app, a deployed one) is that address, or nothing at all once it is gone.
+export function onOrigin(args: string[], origin = config().get('ORIGIN')): string[] {
+  const [verb, target, ...rest] = args;
+  if (verb !== 'open' || !target) return args;
+  return [verb, absUrl(target, origin), ...rest];
+}
+export function absUrl(url: string, origin = config().get('ORIGIN')): string {
+  if (!url.startsWith('/') || url.startsWith('//') || !origin) return url;
+  return origin.replace(/\/+$/, '') + url;
+}
+
 export async function ab(persona: string, args: string[], o: AbOptions = {}): Promise<AbResult> {
+  args = onOrigin(args);
   await lockTake(webLockOf(persona));
   const session = sessionOf(persona);
   await noteSession(persona, session);
@@ -377,7 +391,7 @@ export async function sessionRunning(persona: string): Promise<boolean> {
 // command parser's quoting rules.
 const queue: string[][] = [];
 export function bcmd(...args: string[]): void {
-  queue.push(args);
+  queue.push(onOrigin(args));
 }
 // persona → the batch results as JSON, the queue emptied.
 export async function brun(persona: string): Promise<string> {

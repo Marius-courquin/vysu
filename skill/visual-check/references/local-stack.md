@@ -22,6 +22,11 @@ a port of `VYSU_SERVICE_<name>_ISOLATED_PORTS`, and your browser sessions get th
 provider's callbacks are unchanged - while everyone else keeps the shared one. `vysu down <service>`
 stops yours. A walk's header then shows your worktree's sha.
 
+**A worktree served at its own address.** When a worktree's app has an origin of its own (a dev
+proxy that names it), a `.vysu.env` at its root holding `VYSU_ORIGIN='<that address>'` sends every
+check started under it there: `--url /path`, `login`, `claim`. The sessions stay the persona's;
+`claim` logs one in on that address when it holds no login there yet.
+
 `vysu up` starts the service in the background, logs it to `logs/<name>.log` under the state
 folder, and waits for its health check (a url to poll, the literal `port` for a TCP listen check,
 or a command that has to succeed) up to `_TIMEOUT` seconds, 30 by default. A service that is

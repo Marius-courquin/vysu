@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- `.vysu.env`: a folder's own values for whatever runs under it, between the working directory and the
+  project, above the project config and below the environment. A worktree whose app is served at an
+  address of its own writes `VYSU_ORIGIN` there, and every check started in it goes to that address,
+  with no variable to remember. `vysu doctor` names the files read and where the origin comes from.
+- A path opens on `VYSU_ORIGIN`: `--url /path` (walk, shots), `open /path` on the passthrough and a
+  flow's `go /path`. agent-browser read it against the page the session showed, which in a session last
+  used on another address was that address, or nothing once it was gone.
+- `vysu claim <persona> --any` looks for the login on `VYSU_ORIGIN`: a session last used on another
+  address passed for logged in with that address's login, and one left on a blank page stopped the
+  claim (« Access is denied for this document ») instead of logging in.
+
 ## 0.14.0 — 2026-11-25
 
 - `VYSU_SERVICE_<name>_REFUSE`: a computer several people share says, in its `~/.vysu/machine.env`,

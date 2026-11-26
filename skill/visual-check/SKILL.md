@@ -37,7 +37,7 @@ session and 185k in a sub-agent, and the long session also lost its thread. So:
 ## 2. When (definition of done)
 
 - **Web** - every screen the change touches:
-  `vysu walk <persona> <name> --url <origin>/<path> --baseline-url @`, and `check: clean`.
+  `vysu walk <persona> <name> --url /<path> --baseline-url @` (the path on `VYSU_ORIGIN`), and `check: clean`.
 - **Mobile** - every screen on the **recent and the old** device of each platform, then in `xl`
   text (`vysu mdo … --devices "<recent>,<old>" --textsize normal,xl` does the matrix in one call).
 - **Interaction** - a screen that scrolls, drags, pulls to refresh, opens a sheet or animates: one
