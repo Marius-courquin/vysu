@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 — 2026-11-26
 
 - `VYSU_METRO_LOG`: the log of a shared Metro vysu did not start, for a workspace that runs its own and
   hands it over through `VYSU_METRO_PORT` (in its `.vysu.env`). vysu read its own log, which that
