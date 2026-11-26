@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.0 — 2026-11-26
 
 - `.vysu.env`: a folder's own values for whatever runs under it, between the working directory and the
   project, above the project config and below the environment. A worktree whose app is served at an
