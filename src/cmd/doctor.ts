@@ -170,6 +170,8 @@ async function report(): Promise<void> {
   out(`vysu ${engineVersion()} (${await sha}) — ${ENGINE}`);
   out(`project: ${c.get('PROJECT')}${c.projectDir ? ` · ${c.projectDir}` : ''}${c.configFile ? ` · ${c.configFile}` : ''}`);
   if (!c.configFile) warn('config: none found — anonymous web captures only', 'vysu init');
+  for (const f of c.subtreeFiles) out(`also: ${f}`);
+  if (c.get('ORIGIN')) out(`origin: ${c.get('ORIGIN')} (${c.origin('ORIGIN')})`);
   await toolsCheck('report');
   await nodeCheck();
   engineDepsCheck();

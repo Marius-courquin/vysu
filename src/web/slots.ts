@@ -6,11 +6,11 @@
 import { existsSync, rmSync } from 'node:fs';
 import { login, token } from '../auth/commands.ts';
 import { config } from '../core/ctx.ts';
-import { die } from '../core/errors.ts';
+import { die, VysuError } from '../core/errors.ts';
 import { claimField, claimFile, claimWhy, claimWrite, lockBusy, lockDrop, lockTake, owner } from '../core/hold.ts';
 import { personaRefName, personaSlot, webResource } from '../core/personas.ts';
 import { hhmm, sleep } from '../core/text.ts';
-import { abRaw, restoreFile, sessionOf } from './ab.ts';
+import { ab, abRaw, lastLine, restoreFile, sessionOf } from './ab.ts';
 import { webClaimState } from './api.ts';
 
 export function webSlots(): number {
@@ -52,9 +52,35 @@ async function pickSlot(base: string): Promise<Pick> {
 
 // Never saved, or saved with no token in it (a login that failed half way, a logout). A connector with
 // no token to give (a static site, a cookie session) is taken at its word once the session exists.
+// The token is read where the login is kept, on VYSU_ORIGIN: a session last used on another address
+// (another worktree's app, a deployed one) holds that address's login, not this one's, and a blank
+// page has no storage at all (« Access is denied for this document », 2026-11-26).
 async function needsLogin(ref: string): Promise<boolean> {
   if (!existsSync(restoreFile(sessionOf(ref)))) return true;
-  return (await token(ref)) === '';
+  await onAppOrigin(ref);
+  try {
+    return (await token(ref)) === '';
+  } catch (e) {
+    if (e instanceof VysuError) return true;
+    throw e;
+  }
+}
+
+async function onAppOrigin(ref: string): Promise<void> {
+  const origin = config().get('ORIGIN');
+  if (!origin) return;
+  const at = lastLine((await ab(ref, ['get', 'url'], { stderr: 'drop' })).stdout).trim();
+  if (sameOrigin(at, origin)) return;
+  await ab(ref, ['open', origin], { stderr: 'drop' });
+  await ab(ref, ['wait', '--load', 'networkidle', '--timeout', '2500'], { stderr: 'drop' });
+}
+
+export function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
 }
 
 export async function claimAnyWeb(persona: string, minutes: number, note: string, nowait: boolean): Promise<void> {
