@@ -46,7 +46,7 @@ test('the closest .vysu.env wins, and none outside the project is read', () => {
   const c = Config.load(env(), deep);
   assert.equal(c.get('ORIGIN'), 'http://near');
   assert.equal(c.get('LANG'), 'en');
-  assert.deepEqual(subtreeFiles(deep, dir).map((f) => f.slice(f.indexOf('/apps'))), ['/apps/.vysu.env', '/apps/web/.worktrees/topic/.vysu.env']);
+  assert.deepEqual(subtreeFiles(deep, dir), [join(dir, 'apps', '.vysu.env'), join(tree, '.vysu.env')]);
   assert.deepEqual(subtreeFiles(tmpdir(), dir), []);
   assert.deepEqual(subtreeFiles(deep, ''), []);
 });
