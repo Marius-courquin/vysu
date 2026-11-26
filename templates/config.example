@@ -130,6 +130,9 @@ VYSU_AUTH='none'
 # Expo: the port of the Metro every session shares (an isolated one, `vysu up <platform> --isolated`,
 # takes its own). Default: 8081
 # VYSU_METRO_PORT='8081'
+# Expo: the log of that Metro when something else than vysu runs it (a dev workspace serving its own).
+# Default: vysu's own, under the state folder
+# VYSU_METRO_LOG='/home/me/ws/topic/metro.log'
 # Log lines `vysu mlog` drops: extended regexes, « | » apart. Default: none
 # VYSU_MLOG_IGNORE='\[boot |i18next is made possible'
 # The simulators, recent and old. Defaults: iPhone 17 Pro · vysu iPhone SE (iOS 18)

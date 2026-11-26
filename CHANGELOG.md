@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `VYSU_METRO_LOG`: the log of a shared Metro vysu did not start, for a workspace that runs its own and
+  hands it over through `VYSU_METRO_PORT` (in its `.vysu.env`). vysu read its own log, which that
+  Metro never writes: `mlog` found nothing and `mrelaunch` waited three minutes for a bundle built in 8 s.
+
 ## 0.15.0 — 2026-11-26
 
 - `.vysu.env`: a folder's own values for whatever runs under it, between the working directory and the
