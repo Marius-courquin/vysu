@@ -64,7 +64,12 @@ export function metroPort(): string {
 export const metroIsIsolated = (): boolean => config().origin('METRO_PORT') !== 'env' && isolatedPort() !== '';
 
 // 8081 keeps the path it always had: every reader written before ports existed still finds it.
+// VYSU_METRO_LOG: the log of a shared Metro vysu did not start (a workspace that runs its own and
+// hands it over through VYSU_METRO_PORT). Without it, the bundle a relaunch waits for is never seen
+// and every relaunch ran to its timeout, three minutes, on a device that had its bundle in 8 s.
 export function metroLog(port = metroPort()): string {
+  const own = config().get('METRO_LOG');
+  if (own && port === sharedPort()) return config().projectPath(own);
   return port === '8081' ? join(config().logs, 'metro.log') : join(config().logs, `metro-${port}.log`);
 }
 
